@@ -1,0 +1,10 @@
+/docs/plans/
+/.local/
+/dist/
+/.direnv/
+/result
+/result-*
+**/__pycache__/
+/tools/*/.venv/
+/vrc-tsuyaku
+*.exe
