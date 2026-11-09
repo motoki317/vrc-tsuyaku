@@ -299,6 +299,10 @@ func (a *app) stop(name string) {
 func (a *app) saveSettings(s config.Settings) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
+	if a.statSettings() != a.settingsFile {
+		a.reloadSettingsLocked()
+		return errcode.With(errcode.SettingsChanged, errors.New("settings changed on disk: reload and retry"))
+	}
 	s = a.preserveControls(s)
 	if err := a.writeSettings(s); err != nil {
 		return err
@@ -395,6 +399,7 @@ func (a *app) changeFlow(name, action string) error {
 func (a *app) startDownload(id string, accept bool) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
+	a.reloadSettingsLocked()
 	a.mu.Lock()
 	state, ok := a.artifacts[id]
 	s := cloneSettings(a.settings)

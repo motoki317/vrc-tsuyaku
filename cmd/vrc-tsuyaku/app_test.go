@@ -485,6 +485,7 @@ func TestSettingsValidationAndWriteStatus(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(a.dir, "settings.yaml"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	pollSettings(a)
 	s.Chatbox.Address = "127.0.0.1:47123"
 	body, _ = json.Marshal(s)
 	response := request(a, "PUT", "/api/settings", string(body), a.token)

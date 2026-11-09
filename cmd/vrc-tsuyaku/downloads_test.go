@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -56,6 +57,77 @@ func pendingDownloadApp(t *testing.T, missing ...string) (*app, *atomic.Int32) {
 	}
 	a.downloadArtifact = func(context.Context, string, string, func(download.Progress)) error { return nil }
 	return a, starts
+}
+
+func TestDownloadAcceptancePreservesExternalSettings(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		invalid bool
+	}{
+		{name: "valid"},
+		{name: "invalid", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := testApp(t)
+			seedSafeFlowSettings(t, a)
+			var fetches atomic.Int32
+			a.downloadArtifact = func(context.Context, string, string, func(download.Progress)) error {
+				fetches.Add(1)
+				return nil
+			}
+			key := a.artifacts[catalog.PLaMo].Artifact.AcceptanceKey
+			if key == "" {
+				t.Fatal("test artifact does not require license acceptance")
+			}
+			before := a.statSettings()
+			path := filepath.Join(a.dir, "settings.yaml")
+			external := cloneSettings(a.settings)
+			external.UI.Language = "ja"
+			external.Chatbox.Template = "{{.Translation}}"
+			if tc.invalid {
+				if err := os.WriteFile(path, []byte("ui: {language: invalid}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := config.Save(a.dir, external); err != nil {
+				t.Fatal(err)
+			}
+			if a.statSettings().size == before.size {
+				t.Fatal("external edit did not change the file size")
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := request(a, "POST", "/api/downloads/"+catalog.PLaMo, `{"acceptLicense":true}`, a.token)
+			a.downloadsWG.Wait()
+			if tc.invalid {
+				if w.Code != http.StatusConflict || fetches.Load() != 0 {
+					t.Fatalf("invalid settings: status %d, fetches %d", w.Code, fetches.Load())
+				}
+				if after, err := os.ReadFile(path); err != nil || string(after) != string(data) {
+					t.Fatal("acceptance overwrote invalid external settings", err)
+				}
+				if a.settingsError == "" || a.settings.LicensesAccepted[key] != "" {
+					t.Fatal("invalid external settings did not prevent acceptance", a.settingsError)
+				}
+				return
+			}
+			if w.Code != http.StatusAccepted || fetches.Load() != 1 {
+				t.Fatalf("valid settings: status %d, fetches %d", w.Code, fetches.Load())
+			}
+			saved, err := config.Load(a.dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved.LicensesAccepted[key] == "" {
+				t.Fatal("explicit license acceptance was not saved")
+			}
+			external.LicensesAccepted[key] = saved.LicensesAccepted[key]
+			if !reflect.DeepEqual(saved, external) || !reflect.DeepEqual(a.settings, external) {
+				t.Fatalf("acceptance lost external settings: saved %+v, live %+v, want %+v", saved, a.settings, external)
+			}
+		})
+	}
 }
 
 func TestLanguageChangeStartsAfterRecognizerDownload(t *testing.T) {

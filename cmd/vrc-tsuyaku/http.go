@@ -58,7 +58,9 @@ func (a *app) handler() http.Handler {
 		}
 		if err := a.saveSettings(s); err != nil {
 			status := http.StatusInternalServerError
-			if errors.Is(err, config.ErrInvalidSettings) {
+			if errcode.Of(err) == errcode.SettingsChanged {
+				status = http.StatusConflict
+			} else if errors.Is(err, config.ErrInvalidSettings) {
 				status = http.StatusBadRequest
 			}
 			apiError(w, err, status)

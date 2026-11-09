@@ -8,6 +8,8 @@ type Code string
 const (
 	// Unknown tells the page to show the server's diagnostic text.
 	Unknown Code = "unknown"
+	// SettingsChanged asks the page to reload settings and reapply the player's change.
+	SettingsChanged Code = "settings_changed"
 	// MissingDownloads asks the player to download the flow's missing artifacts.
 	MissingDownloads Code = "missing_downloads"
 	// MicrophoneUnavailable asks the player to select an available microphone in Audio settings and retry.

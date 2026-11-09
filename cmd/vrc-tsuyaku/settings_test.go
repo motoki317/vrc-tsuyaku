@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -176,6 +177,106 @@ func TestAppSettingsWritesDoNotReload(t *testing.T) {
 	after, _ := a.events.after(0)
 	if len(after) != len(before) {
 		t.Fatal("app write counted as an external edit", after)
+	}
+}
+
+func TestSettingsSaveRejectsUnobservedExternalChange(t *testing.T) {
+	for _, tc := range []struct {
+		name, external string
+		invalid        bool
+	}{
+		{name: "valid", external: "ui: {language: ja}\nflows: {world: {target: ko}}\n"},
+		{name: "invalid", external: "ui: {language: invalid}\n", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := testApp(t)
+			initial := config.Defaults()
+			initial.UI.Language = "en"
+			body, err := json.Marshal(initial)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w := request(a, "PUT", "/api/settings", string(body), a.token); w.Code != http.StatusOK {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			if saved, err := config.Load(a.dir); err != nil || !reflect.DeepEqual(saved, initial) {
+				t.Fatal("save without external change failed", saved, err)
+			}
+			before := a.statSettings()
+			path := filepath.Join(a.dir, "settings.yaml")
+			if err := os.WriteFile(path, []byte(tc.external), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if a.statSettings().size == before.size {
+				t.Fatal("external edit did not change the file size")
+			}
+			stale := cloneSettings(initial)
+			stale.Chatbox.Template = "{{.Translation}}"
+			body, err = json.Marshal(stale)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := request(a, "PUT", "/api/settings", string(body), a.token)
+			if w.Code != http.StatusConflict {
+				t.Fatalf("stale save returned %d, want 409", w.Code)
+			}
+			var failure struct {
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &failure); err != nil || failure.Code != "settings_changed" {
+				t.Fatal("missing settings_changed code", failure, err)
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != tc.external {
+				t.Fatal("stale save overwrote the external edit", string(data), err)
+			}
+			w = request(a, "GET", "/api/state", "", a.token)
+			type settingsSnapshot struct {
+				Settings      config.Settings `json:"settings"`
+				SettingsError string          `json:"settingsError"`
+			}
+			var state settingsSnapshot
+			if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil || w.Code != http.StatusOK {
+				t.Fatal(w.Code, err)
+			}
+			want := cloneSettings(initial)
+			kind, text := "error", "ui.language"
+			if tc.invalid {
+				if !strings.Contains(state.SettingsError, "ui.language") {
+					t.Fatal("invalid external edit did not set settingsError", state.SettingsError)
+				}
+			} else {
+				want = config.Defaults()
+				want.UI.Language, want.Flows.World.Target = "ja", "ko"
+				kind, text = "settings", "reloaded"
+				if state.SettingsError != "" {
+					t.Fatal(state.SettingsError)
+				}
+			}
+			if !reflect.DeepEqual(state.Settings, want) {
+				t.Fatalf("settings = %+v, want %+v", state.Settings, want)
+			}
+			history, _ := a.events.after(0)
+			if len(history) != 2 || history[1].Kind != kind || !strings.Contains(history[1].Text, text) {
+				t.Fatal("external edit did not emit the reload result", history)
+			}
+			retry := cloneSettings(state.Settings)
+			retry.Chatbox.Template = stale.Chatbox.Template
+			body, err = json.Marshal(retry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w = request(a, "PUT", "/api/settings", string(body), a.token)
+			if w.Code != http.StatusOK {
+				t.Fatal("retry failed", w.Code, w.Body.String())
+			}
+			if saved, err := config.Load(a.dir); err != nil || !reflect.DeepEqual(saved, retry) {
+				t.Fatal("retry did not save the refreshed settings", saved, err)
+			}
+			state = settingsSnapshot{}
+			if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil || state.SettingsError != "" || !reflect.DeepEqual(state.Settings, retry) {
+				t.Fatal("retry did not apply the refreshed settings", state, err)
+			}
+		})
 	}
 }
 
