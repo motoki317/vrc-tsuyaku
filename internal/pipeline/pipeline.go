@@ -85,6 +85,12 @@ func Run(ctx context.Context, s Stages) error {
 	start(func() error {
 		defer close(phrases)
 		var segmenter vad.Segmenter
+		speech := func(text string) { emit(Event{Kind: "speech", Text: text}) }
+		defer func() {
+			if segmenter.Active() {
+				speech("end")
+			}
+		}()
 		var window [vad.WindowSamples]float32
 		n := 0
 		publish := func(phrase []float32) error {
@@ -103,9 +109,19 @@ func Run(ctx context.Context, s Stages) error {
 			if err != nil {
 				return err
 			}
+			active := segmenter.Active()
 			phrase, err := segmenter.Push(window[:], p)
 			if err != nil {
 				return err
+			}
+			if !active && segmenter.Active() {
+				speech("start")
+			}
+			if active && (!segmenter.Active() || len(phrase) > 0) {
+				speech("end")
+			}
+			if len(phrase) > 0 && segmenter.Active() {
+				speech("start")
 			}
 			return publish(phrase)
 		}
@@ -134,6 +150,9 @@ func Run(ctx context.Context, s Stages) error {
 			if err := score(); err != nil {
 				return err
 			}
+		}
+		if segmenter.Active() {
+			speech("end")
 		}
 		return publish(segmenter.Flush())
 	})

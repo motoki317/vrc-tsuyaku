@@ -77,6 +77,91 @@ func TestPhraseOrder(t *testing.T) {
 	}
 }
 
+func TestSpeechEvents(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		voice, silent int
+		emptyText     bool
+		want          []string
+		recognized    int
+	}{
+		{"silence", 0, 20, false, nil, 0},
+		{"phrase", 8, 16, false, []string{"start", "end"}, 1},
+		{"too short", 1, 16, false, []string{"start", "end"}, 0},
+		{"empty recognition", 8, 16, true, []string{"start", "end"}, 0},
+		{"flush", 8, 0, false, []string{"start", "end"}, 1},
+		{"cut", 477, 0, false, []string{"start", "end", "start", "end"}, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := fakeStages()
+			s.Source = sourceFunc(func(_ context.Context, consume func([]float32) error) error {
+				samples := make([]float32, 512*(tc.voice+tc.silent))
+				for i := range 512 * tc.voice {
+					samples[i] = 1
+				}
+				return consume(samples)
+			})
+			if tc.emptyText {
+				s.Recognize = func(context.Context, []float32) (string, error) { return "", nil }
+			}
+			var mu sync.Mutex
+			var speech []string
+			ends, recognized := 0, 0
+			s.Emit = func(e Event) {
+				mu.Lock()
+				defer mu.Unlock()
+				if e.Kind == "speech" {
+					speech = append(speech, e.Text)
+					if e.Text == "end" {
+						ends++
+					}
+				}
+				if e.Kind == "recognized" {
+					recognized++
+					if ends < recognized {
+						t.Error("recognized preceded its speech end")
+					}
+				}
+			}
+			if err := Run(t.Context(), s); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(speech, tc.want) || recognized != tc.recognized {
+				t.Fatal(speech, recognized)
+			}
+		})
+	}
+}
+
+func TestCancellationEndsSpeech(t *testing.T) {
+	s := fakeStages()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	s.Source = sourceFunc(func(ctx context.Context, consume func([]float32) error) error {
+		x := make([]float32, 512)
+		for i := range x {
+			x[i] = 1
+		}
+		if err := consume(x); err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	var got []string
+	s.Emit = func(e Event) {
+		if e.Kind == "speech" {
+			got = append(got, e.Text)
+			if e.Text == "start" {
+				cancel()
+			}
+		}
+	}
+	if err := Run(ctx, s); !errors.Is(err, context.Canceled) || !reflect.DeepEqual(got, []string{"start", "end"}) {
+		t.Fatal(err, got)
+	}
+}
+
 func TestPhraseIdentityAcrossRuns(t *testing.T) {
 	seen := make(map[uint64]bool)
 	for _, send := range []bool{true, false, true} {
@@ -96,6 +181,9 @@ func TestPhraseIdentityAcrossRuns(t *testing.T) {
 		}
 		phrases := make(map[uint64][]string)
 		for _, e := range events {
+			if e.Kind == "speech" {
+				continue
+			}
 			if e.SourceLang != "ja" || e.TargetLang != "en" {
 				t.Fatalf("missing phrase languages: %+v", e)
 			}
@@ -157,7 +245,13 @@ func TestLanguageChangesApplyToNextPhrase(t *testing.T) {
 	}
 	var mu sync.Mutex
 	phrases := make(map[uint64][]Event)
-	s.Emit = func(e Event) { mu.Lock(); defer mu.Unlock(); phrases[e.PhraseID] = append(phrases[e.PhraseID], e) }
+	s.Emit = func(e Event) {
+		if e.Kind != "speech" {
+			mu.Lock()
+			defer mu.Unlock()
+			phrases[e.PhraseID] = append(phrases[e.PhraseID], e)
+		}
+	}
 	if err := Run(t.Context(), s); err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +364,13 @@ func TestTemplateErrorContinuesToNextPhrase(t *testing.T) {
 	}
 	var mu sync.Mutex
 	phrases := make(map[uint64][]Event)
-	s.Emit = func(e Event) { mu.Lock(); defer mu.Unlock(); phrases[e.PhraseID] = append(phrases[e.PhraseID], e) }
+	s.Emit = func(e Event) {
+		if e.Kind != "speech" {
+			mu.Lock()
+			defer mu.Unlock()
+			phrases[e.PhraseID] = append(phrases[e.PhraseID], e)
+		}
+	}
 	if err := Run(t.Context(), s); err != nil {
 		t.Fatal("template error stopped the flow", err)
 	}
