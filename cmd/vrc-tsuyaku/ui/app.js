@@ -1745,7 +1745,7 @@ async function stream() {
 // '' until the player presses Exit, then 'waiting' until the server stops, then 'exited'.
 let exitState = '';
 
-// While the server does not answer, the connection bar's error disables the controls below it, and Exit too.
+// Once the connection bar reports that the server is not answering, its error disables the controls below it, and Exit too.
 // A pending exit disables every control but Exit.
 function lockControls() {
   const blocked = connection === 'down', waiting = exitState === 'waiting';

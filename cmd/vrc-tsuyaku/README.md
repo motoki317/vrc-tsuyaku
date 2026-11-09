@@ -31,8 +31,8 @@ The check compares the release tag with the module version that Go stamped into 
 ## API
 
 The server returns 403 for a request whose `Host` is neither its own address, such as `127.0.0.1:54321`, nor `localhost` with its port, which stops DNS rebinding.
-It also returns 403 for a request whose `Sec-Fetch-Site` header is `cross-site` or `same-site`, so another web page in the browser can neither open the app's page nor call the API. The same goes for a request other than GET or HEAD whose `Origin` header is not the server's own origin, `null` included, which covers browsers that send no `Sec-Fetch-Site`.
-A request without these headers, such as one from `curl`, passes, so every program and user on the PC can use the API.
+It also returns 403 for a request whose `Sec-Fetch-Site` header is `cross-site` or `same-site`, so another web page in the browser can neither open the app's page nor call the API. The same goes for a request other than GET or HEAD whose `Origin` header is not the server's own origin, which covers browsers that send no `Sec-Fetch-Site`. `Origin: null` counts as another origin.
+A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, passes, so every program and user on the PC can use the API.
 
 | Method and path | Purpose |
 | --- | --- |
