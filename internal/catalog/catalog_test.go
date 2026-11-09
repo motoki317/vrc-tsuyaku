@@ -134,8 +134,8 @@ func TestCopiesAndPaths(t *testing.T) {
 
 func TestPLaMoLicenseAvailableOffline(t *testing.T) {
 	a, _ := Lookup(PLaMo, "linux")
-	if a.AcceptanceKey != PLaMoAcceptanceKey || !strings.Contains(a.AcceptanceKey, plamoRevision) {
-		t.Fatal("acceptance revision differs")
+	if a.AcceptanceKey != "plamo-community-license@2026-11-09" {
+		t.Fatalf("license acceptance key = %q", a.AcceptanceKey)
 	}
 	if len(a.Licenses) != 1 || !strings.Contains(a.Licenses[0].Text, "legal guardian") {
 		t.Fatal("full license unavailable before network")
@@ -144,7 +144,29 @@ func TestPLaMoLicenseAvailableOffline(t *testing.T) {
 		t.Fatalf("required credit = %q, want Built with PLaMo", a.Licenses[0].Credit)
 	}
 	sum := sha256.Sum256([]byte(a.Licenses[0].Text))
-	if hex.EncodeToString(sum[:]) != "d9979039b8f1a96fa81e1be61c4550d06f8542b25119e3f765c7c011a68597fb" {
+	if hex.EncodeToString(sum[:]) != "ca0c5e90f6de6799fc2d2d4f2b2647cc088444c19f286f689e525d4ad28f9ed6" {
 		t.Fatal("embedded license differs from pinned bytes")
+	}
+}
+
+func TestPLaMoPin(t *testing.T) {
+	const base = "https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/resolve/4f672106b847200bfdc0f6af6c321cd94eba1aed/"
+	for _, goos := range []string{"linux", "windows"} {
+		t.Run(goos, func(t *testing.T) {
+			a, err := Lookup(PLaMo, goos)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(a.Licenses) != 1 || a.Licenses[0].URL != base+"LICENSE/en" {
+				t.Fatalf("license URL differs from pinned revision: %+v", a.Licenses)
+			}
+			if len(a.Sources) != 1 {
+				t.Fatalf("model sources = %d, want 1", len(a.Sources))
+			}
+			s := a.Sources[0]
+			if s.URL != base+"plamo-3-translate-2b-Q4_K_M.gguf" || s.Size != 1807203040 || s.SHA256 != "1ffd9073afcc70e35ccc942428aa2b73d7aa2b9ea779bf504b775369e0276c13" {
+				t.Fatalf("model pin differs: %+v", s)
+			}
+		})
 	}
 }
