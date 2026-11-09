@@ -16,16 +16,20 @@
       <button type="button" class="tab" data-screen="translation"><svg class="icon" aria-hidden="true"><use href="#i-captions"></use></svg><span data-i18n="label.translation"></span></button>
       <button type="button" class="tab" data-screen="settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span data-i18n="label.settings"></span><span class="update-dot" aria-hidden="true" hidden></span></button>
     </nav>
-    <div class="menu">
-      <button type="button" id="ui-language" class="menu-button" aria-haspopup="menu" aria-expanded="false" aria-controls="ui-language-menu">
-        <svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span id="ui-language-name" class="menu-name"></span><svg class="icon small" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+    <div class="bar-item menu">
+      <button type="button" id="ui-language" class="bar-button" aria-haspopup="menu" aria-expanded="false" aria-controls="ui-language-menu">
+        <svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span id="ui-language-name" class="bar-label"></span><svg class="icon small" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
       </button>
       <div id="ui-language-menu" class="menu-list" role="menu" data-i18n-aria-label="label.uiLanguage" hidden>
         <button type="button" role="menuitemradio" data-value="" data-i18n="value.languageBrowser"></button>
         <button type="button" role="menuitemradio" data-value="en" lang="en" data-i18n="value.languageEnglish"></button>
         <button type="button" role="menuitemradio" data-value="ja" lang="ja" data-i18n="value.languageJapanese"></button>
       </div>
-      <p id="ui-language-error" class="menu-error error-text" hidden></p>
+      <p id="ui-language-error" class="bar-error error-text" hidden></p>
+    </div>
+    <div class="bar-item">
+      <button type="button" id="exit" class="bar-button" data-i18n-aria-label="action.exit"><svg class="icon" aria-hidden="true"><use href="#i-power"></use></svg><span class="bar-label" data-i18n="action.exit"></span></button>
+      <p id="exit-error" class="bar-error error-text" hidden></p>
     </div>
   </div>
 </header>
@@ -157,6 +161,12 @@
     <div class="switchbar-inner"></div>
   </div>
 </main>
+
+<section id="screen-exited" class="screen exited" hidden>
+  <svg class="icon large" aria-hidden="true"><use href="#i-power"></use></svg>
+  <h2 id="exited-title" tabindex="-1" data-i18n="title.exited"></h2>
+  <p id="exited-close" role="status"></p>
+</section>
 
 <dialog id="license-dialog" class="dialog license" aria-labelledby="license-title">
   <div class="dialog-head">

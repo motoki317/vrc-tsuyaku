@@ -1496,8 +1496,6 @@ function revealRailItem() {
 
 function renderFrame() {
   const settingsError = !!state.settingsError;
-  const blocked = !['ok', 'reconnecting'].includes(connection);
-  $('main').inert = blocked;
   $('tabs').hidden = screen === 'setup' || settingsError;
   for (const tab of document.querySelectorAll('.tab')) {
     if (tab.dataset.screen === screen) tab.setAttribute('aria-current', 'page');
@@ -1531,7 +1529,7 @@ function renderFrame() {
 }
 
 function render() {
-  if (!state) return;
+  if (!state || exitState === 'exited') return;
   renderFrame();
   renderPlan();
   renderSwitchBar();
@@ -1638,6 +1636,9 @@ function buildMenu() {
 // Connection
 
 function showConnection() {
+  // After the player presses Exit, the connection drops as the server stops. A refused exit shows the bar again.
+  if (exitState) return;
+  lockControls();
   const bar = $('connection');
   bar.hidden = connection === 'ok';
   bar.dataset.kind = connection;
@@ -1685,12 +1686,72 @@ async function stream() {
         }
       }
     } catch (e) {
+      if (exitState === 'exited') return;
       if (e.status === 401) return setConnection('stale');
       failures++;
       setConnection(failures > 2 ? 'down' : 'reconnecting');
       await sleep(2000);
     }
   }
+}
+
+// Exit
+
+// '' until the player presses Exit, then 'waiting' until the server stops, then 'exited'.
+let exitState = '';
+
+// An error in the connection bar disables the controls below it, and a pending exit disables every control but Exit.
+// Exit needs the server that opened this page, so the bar's errors disable it too.
+function lockControls() {
+  const blocked = !['ok', 'reconnecting'].includes(connection), waiting = exitState === 'waiting';
+  $('main').inert = blocked || waiting;
+  $('tabs').inert = waiting;
+  document.querySelector('.menu').inert = waiting;
+  setDisabled($('exit'), blocked);
+  const mark = $('exit').querySelector('.icon');
+  setIcon(mark, waiting ? 'loader-circle' : 'power');
+  mark.classList.toggle('spin', waiting);
+}
+
+async function exitApp() {
+  if (exitState || isDisabled($('exit'))) return;
+  exitState = 'waiting';
+  setError($('exit-error'), null);
+  lockControls();
+  try {
+    await api('exit', {method: 'POST'});
+  } catch (e) {
+    exitState = '';
+    showConnection();
+    if (e.status) {
+      setError($('exit-error'), () => errorText(e.code, e.message));
+      announce($('exit-error').textContent);
+    }
+    return;
+  }
+  // The server answers before it shuts down, and has stopped once a request gets no answer.
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    try {
+      await fetch('/', {method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(1000)});
+    } catch {
+      break;
+    }
+    await sleep(250);
+  }
+  showExited();
+}
+
+function showExited() {
+  exitState = 'exited';
+  for (const node of [$('tabs'), $('connection'), $('main'), ...document.querySelectorAll('.bar-item')]) node.hidden = true;
+  $('screen-exited').hidden = false;
+  $('exited-title').focus();
+  // A script can close a tab only while the tab's history holds one entry, and every screen change adds one.
+  setTimeout(() => {
+    window.close();
+    setTimeout(() => setText($('exited-close'), t('action.closeTab')), 500);
+  }, 3000);
 }
 
 // Start
@@ -1706,6 +1767,9 @@ function bind() {
     const error = $(button.dataset.error);
     button.addEventListener('click', () => openTarget(button.dataset.open, button, e => setError(error, e && (() => errorText(e.code, e.message)))));
   }
+  $('exit').addEventListener('click', exitApp);
+  // The error covers the screen below the top bar, so it closes as the UI-language menu's error does.
+  document.addEventListener('click', event => { if (!$('exit').parentElement.contains(event.target)) setError($('exit-error'), null); });
   $('next').addEventListener('click', () => { if (!isDisabled($('next'))) show('translation'); });
   $('unread').addEventListener('click', scrollLogToBottom);
   log().addEventListener('scroll', trackScroll);
