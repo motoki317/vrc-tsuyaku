@@ -21,6 +21,7 @@ import (
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
@@ -120,34 +121,39 @@ func wantRequirements(t *testing.T, spoken string) []string {
 	return required
 }
 
-func TestMissingDownloadsLeaveFlowStopped(t *testing.T) {
+func TestMissingDownloadsRejectStartWithoutEnabling(t *testing.T) {
 	for _, flow := range []string{"self", "world"} {
 		t.Run(flow, func(t *testing.T) {
 			a := testApp(t)
+			seedSafeFlowSettings(t, a)
 			before := cloneSettings(a.settings)
+			fileBefore, err := os.ReadFile(filepath.Join(a.dir, "settings.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
 			response := request(a, "POST", "/api/flows/"+flow+"/start", "", a.token)
 			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "missing downloads:") {
 				t.Fatal(response.Code, response.Body.String())
 			}
-			if got := a.flows[flow].status; got != (flowState{State: "stopped"}) {
+			if got := a.flows[flow].status; got.State != "error" || got.Code != errcode.MissingDownloads {
 				t.Fatal(got)
 			}
 			history, _ := a.events.after(0)
 			if len(history) != 1 || history[0].Flow != flow || history[0].Kind != "error" || history[0].Operation != "start" ||
-				!strings.HasPrefix(history[0].Text, "missing downloads:") {
+				history[0].Code != errcode.MissingDownloads || !strings.HasPrefix(history[0].Text, "missing downloads:") {
 				t.Fatal(history)
 			}
 			if !reflect.DeepEqual(a.settings, before) {
 				t.Fatal("refused start changed settings", a.settings)
 			}
-			if _, err := os.Stat(filepath.Join(a.dir, "settings.yaml")); !errors.Is(err, os.ErrNotExist) {
+			if after, err := os.ReadFile(filepath.Join(a.dir, "settings.yaml")); err != nil || !bytes.Equal(after, fileBefore) {
 				t.Fatal("refused start wrote settings", err)
 			}
 			for id, state := range a.artifacts {
 				state.State = "installed"
 				a.artifacts[id] = state
 			}
-			if got := a.flows[flow].status; got != (flowState{State: "stopped"}) || a.flows[flow].cancel != nil {
+			if got := a.flows[flow].status; got.State != "error" || got.Code != errcode.MissingDownloads || a.flows[flow].cancel != nil {
 				t.Fatal("artifact availability changed the flow", got)
 			}
 		})

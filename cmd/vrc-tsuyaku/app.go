@@ -64,17 +64,18 @@ type app struct {
 	events        events
 	// operations serializes settings, flow and storage changes, including close.
 	// Callers hold it while calling start or stop.
-	operations   sync.Mutex
-	settingsWG   sync.WaitGroup
-	downloadsWG  sync.WaitGroup
-	modelTurn    chan struct{}
-	engine       *asr.Engine
-	translator   *translate.Supervisor
-	queue        *chatbox.Queue
-	queueAddress string
-	source       func(flowName, microphoneID string) audio.Source
-	prepare      func(ctx context.Context, flowName string, settings config.Settings) (pipeline.Stages, error)
-	open         func(string) error
+	operations       sync.Mutex
+	settingsWG       sync.WaitGroup
+	downloadsWG      sync.WaitGroup
+	modelTurn        chan struct{}
+	engine           *asr.Engine
+	translator       *translate.Supervisor
+	queue            *chatbox.Queue
+	queueAddress     string
+	source           func(flowName, microphoneID string) audio.Source
+	prepare          func(ctx context.Context, flowName string, settings config.Settings) (pipeline.Stages, error)
+	downloadArtifact func(context.Context, string, string, func(download.Progress)) error
+	open             func(string) error
 }
 
 func newApp(ctx context.Context, dir string) (*app, error) {
@@ -88,6 +89,7 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		source: flowSource, open: openFile,
 	}
 	a.prepare = a.prepareModels
+	a.downloadArtifact = manager.Download
 	a.settingsFile = a.statSettings()
 	settings, loadErr := config.Load(dir)
 	if loadErr != nil {
@@ -257,6 +259,11 @@ func (a *app) checkStart(name string, s config.Settings) error {
 }
 
 func (a *app) refuseStart(name string, err error) {
+	a.mu.Lock()
+	if !a.flows[name].status.active() {
+		a.flows[name].status = flowError(err)
+	}
+	a.mu.Unlock()
 	a.events.publishEvent(event{Flow: name, Operation: "start", Event: pipeline.Event{Kind: "error", Code: errcode.Of(err), Text: err.Error()}})
 }
 
@@ -326,11 +333,7 @@ func (a *app) applySettings(s config.Settings, event string) {
 	a.settingsError = ""
 	a.mu.Unlock()
 	for _, name := range restart {
-		if err := a.start(name, s); err != nil {
-			a.mu.Lock()
-			a.flows[name].status = flowError(err)
-			a.mu.Unlock()
-		}
+		_ = a.start(name, s)
 	}
 	a.emit("", "settings", event)
 }
@@ -422,7 +425,7 @@ func (a *app) startDownload(id string, accept bool) error {
 	a.mu.Unlock()
 	a.downloadsWG.Go(func() {
 		last := time.Time{}
-		err := a.downloads.Download(a.ctx, id, runtime.GOOS, func(p download.Progress) {
+		err := a.downloadArtifact(a.ctx, id, runtime.GOOS, func(p download.Progress) {
 			a.mu.Lock()
 			state.Progress = p
 			a.artifacts[id] = state
@@ -432,6 +435,8 @@ func (a *app) startDownload(id string, accept bool) error {
 				last = time.Now()
 			}
 		})
+		a.operations.Lock()
+		defer a.operations.Unlock()
 		state.State = "installed"
 		if err != nil {
 			state.Error = withDataDirHint(err).Error()
@@ -447,9 +452,36 @@ func (a *app) startDownload(id string, accept bool) error {
 			a.emitError("", err)
 		}
 		a.emit("", "download", id)
+		if state.State == "installed" {
+			a.startWaitingFlows()
+		}
 	})
 	a.emit("", "download", id)
 	return nil
+}
+
+// Callers hold operations to serialize retries with stop and settings changes.
+func (a *app) startWaitingFlows() {
+	a.reloadSettingsLocked()
+	a.mu.Lock()
+	s := cloneSettings(a.settings)
+	var waiting []string
+	if a.settingsError == "" && a.ctx.Err() == nil {
+		for _, name := range []string{"self", "world"} {
+			enabled := s.Flows.Self.Enabled
+			if name == "world" {
+				enabled = s.Flows.World.Enabled
+			}
+			status := a.flows[name].status
+			if enabled && !status.active() && status.Code == errcode.MissingDownloads && a.checkStart(name, s) == nil {
+				waiting = append(waiting, name)
+			}
+		}
+	}
+	a.mu.Unlock()
+	for _, name := range waiting {
+		_ = a.start(name, s)
+	}
 }
 
 func (a *app) artifactDir(id string) string {
@@ -527,11 +559,14 @@ func (a *app) close() error {
 	a.cancel()
 	a.settingsWG.Wait()
 	a.operations.Lock()
-	defer a.operations.Unlock()
 	for _, name := range []string{"self", "world"} {
 		a.stop(name)
 	}
+	// Download completion takes operations; cancellation and this barrier prevent new downloads.
+	a.operations.Unlock()
 	a.downloadsWG.Wait()
+	a.operations.Lock()
+	defer a.operations.Unlock()
 	if a.engine != nil {
 		a.engine.Close()
 	}
