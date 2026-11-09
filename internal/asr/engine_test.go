@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,87 @@ type cachedTestModel struct {
 }
 
 func (m *cachedTestModel) close() { m.closes++ }
+
+type inferenceTestModel struct {
+	infer   func(context.Context) error
+	release func()
+}
+
+func testInferenceModels(t *testing.T) (*Engine, map[string]inferenceTestModel) {
+	t.Helper()
+	e := &Engine{
+		ort: &ort.Engine{}, models: make(map[catalog.HaasFiles]*cachedModel[*Haas]),
+		parakeets: make(map[catalog.ParakeetFiles]*cachedModel[*Parakeet]), sileros: make(map[string]*cachedModel[*Silero]),
+	}
+	t.Cleanup(e.Close)
+	haas, releaseHaas, err := loadModel(e, e.models, catalog.HaasFiles{}, func() (*Haas, error) {
+		return &Haas{engine: e, encoder: &ort.Session{}}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parakeet, releaseParakeet, err := loadModel(e, e.parakeets, catalog.ParakeetFiles{}, func() (*Parakeet, error) {
+		return &Parakeet{engine: e, encoder: &ort.Session{}}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	silero, releaseSilero, err := loadModel(e, e.sileros, "silero", func() (*Silero, error) {
+		return &Silero{engine: e, session: &ort.Session{}}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e, map[string]inferenceTestModel{
+		"Haas": {infer: func(ctx context.Context) error {
+			_, err := haas.Transcribe(ctx, []float32{0})
+			return err
+		}, release: releaseHaas},
+		"Parakeet": {infer: func(ctx context.Context) error {
+			_, err := parakeet.Transcribe(ctx, []float32{0})
+			return err
+		}, release: releaseParakeet},
+		"Silero": {infer: func(ctx context.Context) error {
+			_, err := silero.NewStream().Probability(ctx, make([]float32, 512))
+			return err
+		}, release: releaseSilero},
+	}
+}
+
+// Pause cancellation checking so inference needs no native resources or model files.
+type pausedInferenceContext struct {
+	context.Context
+	entered chan struct{}
+	resume  chan struct{}
+}
+
+func (c *pausedInferenceContext) Err() error {
+	close(c.entered)
+	<-c.resume
+	return context.Canceled
+}
+
+func pauseInference(t *testing.T, infer func(context.Context) error) func() {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	paused := &pausedInferenceContext{Context: ctx, entered: make(chan struct{}), resume: make(chan struct{})}
+	result := make(chan error, 1)
+	go func() { result <- infer(paused) }()
+	resume := sync.OnceFunc(func() {
+		close(paused.resume)
+		if err := <-result; !errors.Is(err, context.Canceled) {
+			t.Error("inference did not stop at cancellation", err)
+		}
+	})
+	t.Cleanup(resume)
+	select {
+	case <-paused.entered:
+	case <-time.After(time.Second):
+		t.Fatal("inference did not reach cancellation checking")
+	}
+	return resume
+}
 
 func TestModelCacheReleasesUnused(t *testing.T) {
 	for _, shared := range []bool{false, true} {
@@ -78,30 +160,75 @@ func TestModelCacheReleasesUnused(t *testing.T) {
 }
 
 func TestReleaseWaitsForInference(t *testing.T) {
-	e := &Engine{ort: &ort.Engine{}}
-	defer e.Close()
-	cache := make(map[string]*cachedModel[*cachedTestModel])
-	model, release, err := loadModel(e, cache, "model", func() (*cachedTestModel, error) { return &cachedTestModel{}, nil })
+	for _, name := range []string{"Haas", "Parakeet", "Silero"} {
+		t.Run(name, func(t *testing.T) {
+			_, models := testInferenceModels(t)
+			model := models[name]
+			resume := pauseInference(t, model.infer)
+			released := make(chan struct{})
+			go func() { model.release(); close(released) }()
+			select {
+			case <-released:
+				t.Fatal("released a model during inference")
+			case <-time.After(20 * time.Millisecond):
+			}
+			resume()
+			select {
+			case <-released:
+			case <-time.After(time.Second):
+				t.Fatal("release did not finish after inference")
+			}
+			if err := model.infer(t.Context()); err == nil {
+				t.Fatal("released model accepted inference")
+			}
+		})
+	}
+}
+
+func TestReleaseAllowsOtherModelInference(t *testing.T) {
+	e, models := testInferenceModels(t)
+	_, releaseShared, err := loadModel(e, e.parakeets, catalog.ParakeetFiles{}, func() (*Parakeet, error) {
+		t.Fatal("shared model was not cached")
+		return nil, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.mu.RLock()
-	released := make(chan struct{})
-	go func() { release(); close(released) }()
-	select {
-	case <-released:
-		e.mu.RUnlock()
-		t.Fatal("released a model during inference")
-	case <-time.After(20 * time.Millisecond):
+	resume := pauseInference(t, models["Parakeet"].infer)
+	var pending []<-chan struct{}
+	t.Cleanup(func() {
+		resume()
+		for _, done := range pending {
+			<-done
+		}
+	})
+	for _, tc := range []struct {
+		name    string
+		release func()
+	}{
+		{"last release of another model", models["Haas"].release},
+		{"shared release of the active model", releaseShared},
+	} {
+		done := make(chan struct{})
+		pending = append(pending, done)
+		go func() { tc.release(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error(tc.name + " waited for unrelated inference")
+		}
 	}
-	e.mu.RUnlock()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	result := make(chan error, 1)
+	go func() { result <- models["Silero"].infer(ctx) }()
 	select {
-	case <-released:
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
 	case <-time.After(time.Second):
-		t.Fatal("release did not finish after inference")
-	}
-	if model.closes != 1 {
-		t.Fatal("model did not close exactly once")
+		t.Error("release blocked inference on a third model")
 	}
 }
 

@@ -166,18 +166,22 @@ func loadModel[K comparable, T interface{ close() }](e *Engine, cache map[K]*cac
 	entry.users++
 	return entry.model, sync.OnceFunc(func() {
 		e.loads.Lock()
-		defer e.loads.Unlock()
-		e.mu.Lock()
-		defer e.mu.Unlock()
 		if cache[key] != entry {
+			e.loads.Unlock()
 			return
 		}
 		entry.users--
-		if entry.users == 0 {
-			entry.model.close()
-			delete(cache, key)
-			releaseNativeMemory()
+		if entry.users > 0 {
+			e.loads.Unlock()
+			return
 		}
+		// Keep ORT alive after detaching the model from the cache.
+		e.mu.RLock()
+		delete(cache, key)
+		e.loads.Unlock()
+		entry.model.close()
+		e.mu.RUnlock()
+		releaseNativeMemory()
 	}), nil
 }
 

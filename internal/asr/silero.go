@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"sync"
 
 	ort "github.com/getcharzp/onnxruntime_purego"
 )
@@ -17,6 +18,7 @@ import (
 // Silero shares one session across independent audio streams.
 // Its session lives until the last owner releases it or Engine.Close.
 type Silero struct {
+	mu      sync.RWMutex
 	engine  *Engine
 	session *ort.Session
 }
@@ -44,6 +46,8 @@ func (e *Engine) LoadSilero(path string) (*Silero, func(), error) {
 }
 
 func (s *Silero) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.session.Close()
 	s.session = nil
 }
@@ -75,6 +79,8 @@ func (s *SileroStream) Probability(ctx context.Context, audio []float32) (float3
 	e := s.model.engine
 	e.mu.RLock()
 	defer e.mu.RUnlock()
+	s.model.mu.RLock()
+	defer s.model.mu.RUnlock()
 	if err := e.checkAudio(ctx, audio); err != nil {
 		return 0, err
 	}
