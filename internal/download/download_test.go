@@ -337,23 +337,29 @@ func TestLicenseGateBeforeNetwork(t *testing.T) {
 	sentinel := errors.New("network reached")
 	m.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) { hits++; return nil, sentinel })
 	ctx := context.Background()
-	if err = m.Download(ctx, catalog.PLaMo, "linux", nil); !errors.Is(err, ErrLicenseRequired) || hits != 0 {
-		t.Fatalf("missing consent: %v, hits %d", err, hits)
+	for _, translator := range catalog.Translators() {
+		if err = m.Download(ctx, translator.Artifact, "linux", nil); !errors.Is(err, ErrLicenseRequired) || hits != 0 {
+			t.Fatalf("%s missing consent: %v, hits %d", translator.ID, err, hits)
+		}
 	}
 	s := config.Defaults()
 	s.LicensesAccepted["plamo-community-license@228a27cc0bb4f111219963848d50a3127c16ca73"] = "2026-11-09T00:00:00Z"
 	if err = config.Save(m.dataDir, s); err != nil {
 		t.Fatal(err)
 	}
-	if err = m.Download(ctx, catalog.PLaMo, "linux", nil); !errors.Is(err, ErrLicenseRequired) || hits != 0 {
-		t.Fatalf("stale consent: %v, hits %d", err, hits)
+	for _, translator := range catalog.Translators() {
+		if err = m.Download(ctx, translator.Artifact, "linux", nil); !errors.Is(err, ErrLicenseRequired) || hits != 0 {
+			t.Fatalf("%s stale consent: %v, hits %d", translator.ID, err, hits)
+		}
 	}
 	s.LicensesAccepted[catalog.PLaMoAcceptanceKey] = "2026-11-09T00:00:00Z"
 	if err = config.Save(m.dataDir, s); err != nil {
 		t.Fatal(err)
 	}
-	if err = m.Download(ctx, catalog.PLaMo, "linux", nil); !errors.Is(err, sentinel) || hits != 1 {
-		t.Fatalf("saved consent: %v, hits %d", err, hits)
+	for i, translator := range catalog.Translators() {
+		if err = m.Download(ctx, translator.Artifact, "linux", nil); !errors.Is(err, sentinel) || hits != i+1 {
+			t.Fatalf("%s saved consent: %v, hits %d", translator.ID, err, hits)
+		}
 	}
 	assertClean(t, m)
 }

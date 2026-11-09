@@ -54,9 +54,51 @@ func TestLanguages(t *testing.T) {
 			t.Fatalf("accepted requirements for %q", invalid)
 		}
 	}
-	model, _ := Lookup(PLaMo, "linux")
-	if !reflect.DeepEqual(model.Languages, languages.Targets) {
-		t.Fatal("model languages differ from targets")
+	for _, translator := range languages.Translators {
+		model, _ := Lookup(translator.Artifact, "linux")
+		if !reflect.DeepEqual(model.Languages, languages.Targets) {
+			t.Fatal("model languages differ from targets")
+		}
+	}
+}
+
+func TestTranslators(t *testing.T) {
+	choices := Translators()
+	if len(choices) != 2 || choices[0].ID != Translator2B || choices[1].ID != Translator08B {
+		t.Fatalf("translator order: %+v", choices)
+	}
+	defaults := 0
+	seen := make(map[string]bool)
+	for _, choice := range choices {
+		if seen[choice.ID] || choice.MemoryBytes <= 0 || choice.Speed <= 0 {
+			t.Fatalf("invalid or duplicate translator: %+v", choice)
+		}
+		seen[choice.ID] = true
+		if choice.Default {
+			defaults++
+			if choice.ID != Translator2B || choice.ID != DefaultTranslator() || choice.Speed != 1 {
+				t.Fatalf("default translator: %+v", choice)
+			}
+		}
+		got, ok := LookupTranslator(choice.ID)
+		if !ok || got != choice {
+			t.Fatalf("translator lookup: %+v, %v", got, ok)
+		}
+		if _, err := Lookup(choice.Artifact, "linux"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if defaults != 1 || choices[0].MemoryBytes <= choices[1].MemoryBytes || choices[1].Speed <= choices[0].Speed {
+		t.Fatalf("translator costs or defaults: %+v", choices)
+	}
+	for _, invalid := range []string{"", "unknown", PLaMo, PLaMo08B} {
+		if _, ok := LookupTranslator(invalid); ok {
+			t.Fatalf("accepted unknown translator %q", invalid)
+		}
+	}
+	choices[0].Artifact = "changed"
+	if !reflect.DeepEqual(Translators(), Languages().Translators) || Translators()[0].Artifact != PLaMo {
+		t.Fatal("caller mutated translators")
 	}
 }
 
@@ -98,6 +140,7 @@ func TestLanguageCopies(t *testing.T) {
 	changed.Targets[0] = "changed"
 	changed.Spoken[0].Recognizer = "changed"
 	changed.CommonArtifacts[0] = "changed"
+	changed.Translators[0].Artifact = "changed"
 	required, _ := Required("ja")
 	required[0] = "changed"
 	if !reflect.DeepEqual(before, Languages()) {
