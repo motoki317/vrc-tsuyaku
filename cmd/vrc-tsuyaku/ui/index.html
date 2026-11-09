@@ -73,6 +73,7 @@
   <section id="screen-settings" class="screen settings" hidden>
     <nav class="rail" data-i18n-aria-label="label.settingsSections">
       <button type="button" class="rail-item" data-sub="languages"><svg class="icon" aria-hidden="true"><use href="#i-languages"></use></svg><span data-i18n="label.languages"></span></button>
+      <button type="button" class="rail-item" data-sub="translator"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span data-i18n="label.translator"></span></button>
       <button type="button" class="rail-item" data-sub="microphone"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="label.microphone"></span></button>
       <button type="button" class="rail-item" data-sub="chatbox"><svg class="icon" aria-hidden="true"><use href="#i-message-square-text"></use></svg><span data-i18n="label.chatbox"></span></button>
       <button type="button" class="rail-item" data-sub="downloads"><svg class="icon" aria-hidden="true"><use href="#i-hard-drive-download"></use></svg><span data-i18n="label.downloads"></span></button>
@@ -82,6 +83,14 @@
     <div id="sub-languages" class="sub" hidden>
       <h2 class="sub-title" tabindex="-1" data-i18n="label.languages"></h2>
       <div class="plan-slot"></div>
+    </div>
+
+    <div id="sub-translator" class="sub" hidden>
+      <div class="sub-head"><h2 class="sub-title" id="translator-label" tabindex="-1" data-i18n="label.translator"></h2><span class="saved" id="translator-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
+      <div id="translators" class="options" role="radiogroup" aria-labelledby="translator-label" aria-describedby="translator-hint"></div>
+      <p id="translator-error" class="error-text" hidden></p>
+      <p id="translator-hint" class="hint" data-i18n="note.translatorHint"></p>
+      <ul id="translator-download" class="download-list" hidden></ul>
     </div>
 
     <div id="sub-microphone" class="sub" hidden>

@@ -26,6 +26,7 @@
   "label.target": "{flow}: translation language",
   "label.thirdPartyNotices": "Third-party notices",
   "label.translation": "Translation",
+  "label.translator": "Translator",
   "label.uiLanguage": "Display language",
   "label.uiLanguageName": "Display language: {name}",
   "label.usedBy": "Used by",
@@ -57,6 +58,7 @@
 
   "state.blockedBy": "{flow} cannot start",
   "state.checkingUpdates": "Checking for updates",
+  "state.default": "Default",
   "state.downloadAll": "Downloading {progress}, {percent}",
   "state.downloadAllLeft": "Downloading {progress}, {percent}, {left}",
   "state.downloading": "Downloading",
@@ -95,13 +97,16 @@
   "value.auto": "Detect",
   "value.description": "Speech translation for VRChat",
   "value.developmentBuild": "Development build",
+  "value.faster": "About {n}× faster",
   "value.gigabytes": "{n} GB",
   "value.jaEasy": "Easy Japanese",
   "value.languageBrowser": "Browser language",
   "value.languageEnglish": "English",
   "value.languageJapanese": "日本語",
   "value.megabytes": "{n} MB",
+  "value.memory": "RAM {size}",
   "value.minutesLeft": "{n} min left",
+  "value.moreAccurate": "More accurate",
   "value.page": "{n}/{total}",
   "value.pair": "{source} → {target}",
   "value.presetBoth": "Both, with codes",
@@ -140,5 +145,8 @@
   "error.notSaved": "Not saved. Try again.",
   "error.request": "VRC\u00a0Tsuyaku did not respond. Try again.",
   "error.staleToken": "This page is from an earlier run. Use the page that VRC\u00a0Tsuyaku opened last.",
-  "error.templateInvalid": "Fix the template. Use fields such as {{.Translation}}."
+  "error.templateInvalid": "Fix the template. Use fields such as {{.Translation}}.",
+
+  "//note.translatorHint": "A player whose PC struggles cannot tell from the cards when to switch.",
+  "note.translatorHint": "Try 0.8B if VRChat lags or translations fall behind."
 }

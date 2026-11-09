@@ -642,25 +642,28 @@ function renderList(list, cache, ids, place, head = null) {
 
 const plan = {rows: {}, cache: new Map()};
 
-function commitOnSettle(select, commit) {
+// A select, or a radio group whose value is its checked radio's.
+function commitOnSettle(field, commit, read = () => field.value) {
   let timer = 0;
   const settle = () => {
     clearTimeout(timer);
-    if (select.dataset.dirty !== 'changed') return;
-    select.dataset.dirty = 'saving';
-    commit(select.value).finally(() => {
-      if (select.dataset.dirty === 'saving') delete select.dataset.dirty;
+    if (field.dataset.dirty !== 'changed') return;
+    field.dataset.dirty = 'saving';
+    commit(read()).finally(() => {
+      if (field.dataset.dirty === 'saving') delete field.dataset.dirty;
       render();
     });
   };
-  // Keyboard steps through a closed select fire change. Committing each step would restart the flow each time.
-  select.addEventListener('change', () => {
-    select.dataset.dirty = 'changed';
+  // Keyboard steps through a closed select or a radio group fire change. Committing each step would restart the
+  // flows each time.
+  field.addEventListener('change', () => {
+    field.dataset.dirty = 'changed';
     clearTimeout(timer);
     timer = setTimeout(settle, 500);
   });
-  select.addEventListener('blur', settle);
-  select.settle = settle;
+  // Arrow keys move focus between a group's radios, so only focus that leaves the field commits.
+  field.addEventListener('focusout', event => { if (!field.contains(event.relatedTarget)) settle(); });
+  field.settle = settle;
 }
 
 function buildPlan() {
@@ -1051,6 +1054,69 @@ function logEvent(e) {
 
 function latestSelfPhrase() {
   return [...phrases.values()].reverse().find(phrase => phrase.flow === 'self' && phrase.translation !== null);
+}
+
+// Settings: Translator
+
+// The last failed save, until a save succeeds.
+let translatorRefusal = null;
+let translatorCards = [];
+const translatorRows = new Map();
+
+function translatorCard(translator) {
+  const headId = uid('translator'), detailId = uid('translator');
+  const card = {
+    input: h('input', {type: 'radio', name: 'translator', value: translator.id, 'aria-labelledby': headId, 'aria-describedby': detailId}),
+    name: h('span', {className: 'option-name'}),
+    tag: h('span', {className: 'tag', hidden: !translator.default}),
+    stateIcon: icon('check'),
+    stateText: h('span'),
+    memory: h('span', {className: 'value'}),
+    gain: h('span'),
+  };
+  card.state = h('span', {className: 'detail'}, card.stateIcon, card.stateText);
+  card.root = h('label', {className: 'option'}, card.input,
+    h('span', {className: 'option-body'},
+      h('span', {className: 'option-head', id: headId}, card.name, card.tag),
+      h('span', {className: 'option-detail', id: detailId}, card.state,
+        h('span', {className: 'detail'}, icon('memory-stick'), card.memory),
+        h('span', {className: 'detail'}, icon(translator.speed > 1 ? 'gauge' : 'target'), card.gain))));
+  return card;
+}
+
+function renderTranslator() {
+  const group = $('translators'), translators = state.languages.translators, saved = state.settings.Translator;
+  const signature = JSON.stringify(translators.map(translator => translator.id));
+  if (group.dataset.signature !== signature) {
+    translatorCards = translators.map(translatorCard);
+    group.replaceChildren(...translatorCards.map(card => card.root));
+    group.dataset.signature = signature;
+  }
+  for (const [i, translator] of translators.entries()) {
+    const card = translatorCards[i], artifact = state.artifacts[translator.artifact].artifact;
+    const installed = state.artifacts[translator.artifact].state === 'installed';
+    setText(card.name, artifact.Name);
+    setText(card.tag, t('state.default'));
+    card.state.classList.toggle('installed', installed);
+    setIcon(card.stateIcon, installed ? 'check' : 'download');
+    // The size alone does not say that the model is missing, so the download icon says it to screen readers.
+    if (installed) card.stateIcon.setAttribute('aria-hidden', 'true');
+    else card.stateIcon.removeAttribute('aria-hidden');
+    card.stateIcon.setAttribute('role', 'img');
+    card.stateIcon.setAttribute('aria-label', t('state.missing'));
+    setText(card.stateText, installed ? t('state.installed') : formatSize(artifactSize(artifact)));
+    setText(card.memory, t('value.memory', {size: formatSize(translator.memoryBytes)}));
+    // The catalog gives each model's speed relative to the most accurate one.
+    setText(card.gain, translator.speed > 1 ? t('value.faster', {n: Math.floor(translator.speed)}) : t('value.moreAccurate'));
+    if (!group.dataset.dirty) card.input.checked = translator.id === saved;
+  }
+  const error = $('translator-error'), refusal = translatorRefusal;
+  setError(error, refusal && (() => saveRefusal(refusal)));
+  group.setAttribute('aria-describedby', ['translator-hint', !error.hidden && error.id].filter(Boolean).join(' '));
+  // The selected model's download row shows only while the model is not installed.
+  const id = translatorOf(saved)?.artifact, missing = !!id && state.artifacts[id].state !== 'installed';
+  $('translator-download').hidden = !missing;
+  renderList($('translator-download'), translatorRows, missing ? [id] : [], 'plan');
 }
 
 // Settings: Microphone
@@ -1446,7 +1512,7 @@ async function replaceSettings() {
 // Screens and history
 
 function flushFields() {
-  for (const select of document.querySelectorAll('select')) select.settle?.();
+  for (const field of document.querySelectorAll('select, [role="radiogroup"]')) field.settle?.();
   if ($('address').dataset.dirty) saveAddress();
   if ($('template').dataset.dirty) saveTemplate();
 }
@@ -1505,7 +1571,7 @@ function renderFrame() {
   $('screen-setup').hidden = screen !== 'setup' || settingsError;
   $('screen-translation').hidden = screen !== 'translation' || settingsError;
   $('screen-settings').hidden = screen !== 'settings' || settingsError;
-  for (const name of ['languages', 'microphone', 'chatbox', 'downloads', 'about']) $('sub-' + name).hidden = sub !== name;
+  for (const name of ['languages', 'translator', 'microphone', 'chatbox', 'downloads', 'about']) $('sub-' + name).hidden = sub !== name;
   $('screen-settings-error').hidden = !settingsError;
   setText($('settings-error-text'), state.settingsError || '');
   $('switchbar').hidden = !(settingsError || screen === 'translation');
@@ -1517,6 +1583,7 @@ function render() {
   renderFrame();
   renderPlan();
   renderSwitchBar();
+  renderTranslator();
   renderMicrophone();
   renderChatbox();
   renderDownloads();
@@ -1763,6 +1830,9 @@ function bind() {
   commitOnSettle($('microphone'), value => saveSettings(s => { s.Flows.Self.Microphone = value; })
     .then(() => { microphoneRefusal = null; flashSaved('microphone'); })
     .catch(e => { microphoneRefusal = e; }));
+  commitOnSettle($('translators'), value => saveSettings(s => { s.Translator = value; })
+    .then(() => { translatorRefusal = null; flashSaved('translator'); })
+    .catch(e => { translatorRefusal = e; }), () => $('translators').querySelector(':checked')?.value);
   $('refresh-mics').addEventListener('click', listMicrophones);
   $('delete-confirm').addEventListener('click', confirmDelete);
   $('replace-settings').addEventListener('click', () => {
