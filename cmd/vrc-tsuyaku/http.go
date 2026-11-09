@@ -142,8 +142,18 @@ func (a *app) handler() http.Handler {
 			return
 		}
 		_, port, err := net.SplitHostPort(local.String())
-		if err != nil || (r.Host != local.String() && !strings.EqualFold(r.Host, "localhost:"+port)) {
+		if err != nil {
 			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		if r.Host != local.String() && !strings.EqualFold(r.Host, "localhost:"+port) {
+			http.Error(w, "forbidden host: open http://"+local.String()+"/", http.StatusForbidden)
+			return
+		}
+		// http.CrossOriginProtection allows GET, so wrapping it would split the Fetch Metadata rule.
+		switch r.Header.Get("Sec-Fetch-Site") {
+		case "cross-site", "same-site":
+			http.Error(w, "forbidden fetch site", http.StatusForbidden)
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
