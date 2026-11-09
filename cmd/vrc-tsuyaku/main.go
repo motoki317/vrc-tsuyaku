@@ -57,12 +57,16 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 	if err != nil {
 		return err
 	}
-	defer a.close()
+	server := &http.Server{Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	defer func() {
+		// Keep Exit available until model and download cleanup finishes.
+		_ = a.close()
+		err = errors.Join(err, server.Close())
+	}()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	a.checkUpdate(latestReleaseURL, &http.Client{})
@@ -79,9 +83,8 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 			return nil
 		}
 		return err
-	case <-ctx.Done():
-		// Interrupt event streams before the deferred a.close waits for model calls.
-		return server.Close()
+	case <-a.ctx.Done():
+		return nil
 	}
 }
 
