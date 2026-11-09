@@ -11,6 +11,7 @@ import (
 const repository = "https://github.com/motoki317/vrc-tsuyaku"
 
 type appInfo struct {
+	Launch     string `json:"launch"`
 	Repository string `json:"repository"`
 	Version    string `json:"version"`
 	Revision   string `json:"revision"`

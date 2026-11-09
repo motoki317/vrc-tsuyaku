@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"maps"
@@ -94,6 +95,7 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
 		source: flowSource, open: openFile,
 	}
+	a.info.Launch = rand.Text()
 	a.prepare = a.prepareModels
 	a.downloadArtifact = manager.Download
 	a.settingsFile = a.statSettings()
