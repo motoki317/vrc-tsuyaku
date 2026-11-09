@@ -114,7 +114,6 @@
   "value.sampleTranslation": "Hello, nice to meet you",
   "value.systemDefault": "既定のマイク",
   "value.underMinute": "残り1分未満",
-  "value.withSize": "{name} · {size}",
 
   "title.delete": "{name}を削除しますか？",
   "title.exited": "VRC\u00a0Tsuyakuを終了しました",

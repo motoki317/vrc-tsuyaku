@@ -114,7 +114,6 @@
   "value.sampleTranslation": "Hello, nice to meet you",
   "value.systemDefault": "System default",
   "value.underMinute": "Under a minute left",
-  "value.withSize": "{name} · {size}",
 
   "title.delete": "Delete {name}?",
   "title.exited": "VRC\u00a0Tsuyaku exited",
