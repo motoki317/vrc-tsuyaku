@@ -56,7 +56,7 @@ func TestHostCheck(t *testing.T) {
 		{"", http.StatusForbidden},
 	} {
 		for _, method := range []string{"GET", "HEAD"} {
-			t.Run(tc.host+method, func(t *testing.T) {
+			t.Run("host="+tc.host+"/"+method, func(t *testing.T) {
 				r := localRequest(method, "/api/state", "")
 				r.Host = tc.host
 				w := httptest.NewRecorder()
@@ -118,7 +118,7 @@ func TestOriginCheck(t *testing.T) {
 	}
 	for _, tc := range cases {
 		for _, method := range []string{"POST", "PUT", "DELETE", "PATCH", "OPTIONS"} {
-			t.Run(tc.name+method, func(t *testing.T) {
+			t.Run("origin="+tc.name+"/"+method, func(t *testing.T) {
 				r := localRequest(method, "/api/unknown", "")
 				if tc.host != "" {
 					r.Host = tc.host
@@ -164,7 +164,7 @@ func TestFetchSiteCheck(t *testing.T) {
 		{"same-site", http.StatusForbidden},
 	} {
 		for _, method := range []string{"GET", "POST"} {
-			t.Run(tc.site+method, func(t *testing.T) {
+			t.Run("fetch-site="+tc.site+"/"+method, func(t *testing.T) {
 				r := localRequest(method, "/api/unknown", "")
 				if tc.site != "" {
 					r.Header.Set("Sec-Fetch-Site", tc.site)
@@ -179,6 +179,9 @@ func TestFetchSiteCheck(t *testing.T) {
 					checkSecurityHeaders(t, w)
 					if w.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
 						t.Fatal("Fetch Metadata rejection did not return plain text")
+					}
+					if w.Body.String() != "forbidden fetch site: type http://127.0.0.1:54321/ into the address bar\n" {
+						t.Fatalf("Fetch Metadata rejection did not name the address-bar remedy: %q", w.Body.String())
 					}
 				}
 			})

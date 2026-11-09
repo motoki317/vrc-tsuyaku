@@ -150,10 +150,11 @@ func (a *app) handler() http.Handler {
 			http.Error(w, "forbidden host: open http://"+local.String()+"/", http.StatusForbidden)
 			return
 		}
-		// http.CrossOriginProtection allows GET, so wrapping it would split the Fetch Metadata rule.
+		// http.CrossOriginProtection checks only methods other than GET, HEAD and OPTIONS,
+		// so it cannot refuse a cross-site GET. This check covers every method.
 		switch r.Header.Get("Sec-Fetch-Site") {
 		case "cross-site", "same-site":
-			http.Error(w, "forbidden fetch site", http.StatusForbidden)
+			http.Error(w, "forbidden fetch site: type http://"+local.String()+"/ into the address bar", http.StatusForbidden)
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
