@@ -279,11 +279,13 @@ const totalSize = ids => ids.reduce((sum, id) => sum + artifactSize(state.artifa
 // A refused download request shows on its row while the download stays missing.
 const requestError = id => artifactKind(state.artifacts[id]) === 'missing' ? downloadErrors.get(id) : undefined;
 
-// Every-flow artifacts download first, smallest first. My voice's recognizer comes next, so My voice is ready
-// and Next unlocks before Others' voices' recognizer finishes.
+const translatorOf = id => state.languages.translators.find(translator => translator.id === id);
+
+// Every-flow artifacts, the selected translator among them, download first, smallest first. My voice's recognizer
+// comes next, so My voice is ready and Next unlocks before Others' voices' recognizer finishes.
 function downloadOrder(ids) {
-  const common = state.languages.commonArtifacts;
-  const rank = id => common.includes(id) ? 0 : required('self').includes(id) ? 1 : 2;
+  const everyFlow = [...state.languages.commonArtifacts, translatorOf(state.settings.Translator)?.artifact];
+  const rank = id => everyFlow.includes(id) ? 0 : required('self').includes(id) ? 1 : 2;
   return [...new Set(ids)].sort((a, b) => rank(a) - rank(b) || artifactSize(state.artifacts[a].artifact) - artifactSize(state.artifacts[b].artifact));
 }
 
