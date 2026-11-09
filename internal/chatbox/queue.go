@@ -94,7 +94,7 @@ func (q *Queue) SendPages(ctx context.Context, original, translation string, sen
 	if err := q.check(ctx); err != nil {
 		return err
 	}
-	for i, page := range pages(original, translation) {
+	for i, page := range pages(original + "\n" + translation) {
 		if delay := time.Until(q.next); delay > 0 {
 			timer := time.NewTimer(delay)
 			select {

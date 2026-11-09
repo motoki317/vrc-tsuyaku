@@ -53,7 +53,8 @@ func (f Flows) Languages(name string) (spoken, target string) {
 }
 
 type Chatbox struct {
-	Address string `yaml:"address"`
+	Address  string `yaml:"address"`
+	Template string `yaml:"template"`
 }
 
 // Defaults leaves both flows stopped and uses the local VRChat address.
@@ -63,7 +64,7 @@ func Defaults() Settings {
 			Self:  SelfFlow{Spoken: catalog.Japanese, Target: catalog.English},
 			World: WorldFlow{Spoken: catalog.English, Target: catalog.Japanese},
 		},
-		Chatbox:          Chatbox{Address: "127.0.0.1:9000"},
+		Chatbox:          Chatbox{Address: "127.0.0.1:9000", Template: chatbox.DefaultTemplate},
 		LicensesAccepted: make(map[string]string),
 	}
 }
@@ -82,6 +83,9 @@ func (s Settings) Validate() error {
 	}
 	if _, err := chatbox.ParseAddress(s.Chatbox.Address); err != nil {
 		return err
+	}
+	if err := chatbox.ValidateTemplate(s.Chatbox.Template); err != nil {
+		return fmt.Errorf("chatbox.template: %w", err)
 	}
 	for key, value := range s.LicensesAccepted {
 		if key == "" {

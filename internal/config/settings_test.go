@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 )
 
 func TestLoadDefaultsAndPartial(t *testing.T) {
@@ -38,9 +39,52 @@ func TestLoadDefaultsAndPartial(t *testing.T) {
 		if got.Flows.Self.Spoken != "ja" || got.Flows.Self.Target != "en" || got.Flows.World.Spoken != "en" || got.Flows.World.Target != "ja" {
 			t.Fatalf("missing language defaults: %+v", got.Flows)
 		}
+		if got.Chatbox.Template != chatbox.DefaultTemplate {
+			t.Fatalf("missing template default: %q", got.Chatbox.Template)
+		}
 		if body != "" && (got.Flows.Self.Microphone != "endpoint" || !got.Flows.World.Enabled) {
 			t.Fatalf("fields missing: %+v", got)
 		}
+	}
+}
+
+func TestChatboxTemplateSettings(t *testing.T) {
+	dir := t.TempDir()
+	s := Defaults()
+	for _, format := range []string{"{{.Translation}}", "", "[{{.SourceLang}}] {{.Original}}\n{{.Translation}}", `{{if .Original}}{{index .Original 3}}{{end}}`} {
+		s.Chatbox.Template = format
+		if err := Save(dir, s); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Load(dir)
+		if err != nil || !reflect.DeepEqual(got, s) {
+			t.Fatal(got, err)
+		}
+	}
+	before, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, format := range []string{"{{", "[{{.SourceLang}}] {{.Orignal}}"} {
+		s.Chatbox.Template = format
+		if err := Save(dir, s); !errors.Is(err, ErrInvalidSettings) || !errors.Is(err, chatbox.ErrTemplate) || !strings.Contains(err.Error(), "chatbox.template") {
+			t.Fatalf("accepted invalid template %q: %v", format, err)
+		}
+		after, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))
+		if err != nil || string(after) != string(before) {
+			t.Fatal("invalid template replaced settings", err)
+		}
+	}
+}
+
+func TestLoadRejectsTemplateFieldTypo(t *testing.T) {
+	dir := t.TempDir()
+	body := "chatbox: {template: '[{{.SourceLang}}] {{.Orignal}}'}\n"
+	if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); !errors.Is(err, chatbox.ErrTemplate) || !strings.Contains(err.Error(), "chatbox.template") || !strings.Contains(err.Error(), "Orignal") {
+		t.Fatalf("accepted template field typo at load: %v", err)
 	}
 }
 
@@ -120,6 +164,7 @@ func TestInvalidSettings(t *testing.T) {
 		{"flows: {self: {enabled: true, enabled: false}}", "already defined"},
 		{"flows: {self: {spoken: auto}}", "flows.self.spoken"},
 		{"flows: {world: {target: invalid}}", "flows.world.target"},
+		{"chatbox: {template: '{{'}", "chatbox.template"},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			dir := t.TempDir()

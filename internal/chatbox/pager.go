@@ -1,4 +1,4 @@
-// The join in pages reimplements the defaults from VRCT (MIT):
+// The default template follows the defaults from VRCT (MIT):
 // SEND_MESSAGE_FORMAT_PARTS.translation_first: False (original before translation)
 // and its top-level separator: "\n". Paging and sentence breaking are not from VRCT.
 // No upstream source code is copied.
@@ -14,13 +14,15 @@ import (
 )
 
 const (
+	DefaultTemplate = "[{{.SourceLang}}] {{.Original}}\n[{{.TargetLang}}] {{.Translation}}"
+
 	maxRunes = 144
 	maxLines = 9
 )
 
-func pages(original, translation string) []string {
-	text := []rune(strings.TrimSpace(original + "\n" + translation))
-	var result []string
+func pages(rendered string) []string {
+	text := []rune(strings.TrimSpace(rendered))
+	result := []string{}
 	for len(text) > 0 {
 		end := min(len(text), maxRunes)
 		lines := 1

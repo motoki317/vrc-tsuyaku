@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 )
 
@@ -27,6 +28,24 @@ func (a *app) handler() http.Handler {
 			return
 		}
 		writeJSON(w, devices)
+	})
+	mux.HandleFunc("POST /api/chatbox/preview", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Template string `json:"template"`
+			chatbox.Message
+		}
+		if err := readJSON(w, r, &body); err != nil {
+			apiError(w, err, http.StatusBadRequest)
+			return
+		}
+		pages, err := chatbox.Render(body.Template, body.Message)
+		if err != nil {
+			apiError(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, struct {
+			Pages []string `json:"pages"`
+		}{pages})
 	})
 	mux.HandleFunc("PUT /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		var s config.Settings
