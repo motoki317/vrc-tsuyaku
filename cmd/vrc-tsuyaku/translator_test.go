@@ -197,6 +197,71 @@ func TestMissingTranslatorWaitsForExplicitDownload(t *testing.T) {
 	}
 }
 
+func TestLanguageChangeResumesWaitingFlow(t *testing.T) {
+	for _, flow := range []string{"self", "world"} {
+		t.Run(flow, func(t *testing.T) {
+			a, starts := pendingDownloadApp(t, catalog.ParakeetV3)
+			a.translator = testTranslator(t)
+			a.settings.Flows.World.Spoken = catalog.Japanese
+			if err := a.writeSettings(a.settings); err != nil {
+				t.Fatal(err)
+			}
+			a.prepare = func(_ context.Context, name string, s config.Settings) (pipeline.Stages, error) {
+				spoken, _ := s.Flows.Languages(name)
+				if name != flow || spoken != catalog.Japanese {
+					t.Errorf("prepared %s with language %s, want %s with Japanese", name, spoken, flow)
+				}
+				starts.Add(1)
+				return pipeline.Stages{
+					Source:      recordingSource(func(ctx context.Context, _ func([]float32) error) error { <-ctx.Done(); return ctx.Err() }),
+					Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
+					Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
+					Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+				}, nil
+			}
+			if err := a.changeFlow(flow, "start"); err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, func() bool {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				return a.flows[flow].status.State == "running"
+			})
+			s := cloneSettings(a.settings)
+			for _, spoken := range []string{"fr", catalog.Japanese} {
+				if flow == "self" {
+					s.Flows.Self.Spoken = spoken
+				} else {
+					s.Flows.World.Spoken = spoken
+				}
+				if err := a.saveSettings(s); err != nil {
+					t.Fatal(err)
+				}
+				if spoken == "fr" {
+					a.mu.Lock()
+					status := a.flows[flow].status
+					a.mu.Unlock()
+					if status.State != "error" || status.Code != errcode.MissingDownloads || starts.Load() != 1 {
+						t.Fatal("flow did not wait for the missing recognizer", status, starts.Load())
+					}
+				}
+			}
+			waitFor(t, func() bool {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				return a.flows[flow].status == (flowState{State: "running"})
+			})
+			if starts.Load() != 2 {
+				t.Fatal("returning to Japanese did not start the flow once", starts.Load())
+			}
+			saved, err := config.Load(a.dir)
+			if err != nil || !reflect.DeepEqual(saved, s) {
+				t.Fatal("language changes did not preserve the enabled settings", saved, err)
+			}
+		})
+	}
+}
+
 func TestTranslatorStateAndDeletion(t *testing.T) {
 	for _, choice := range catalog.Translators() {
 		for _, flow := range []string{"self", "world"} {

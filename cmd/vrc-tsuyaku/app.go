@@ -337,12 +337,13 @@ func (a *app) applySettings(s config.Settings, event string) {
 		newSpoken, _ := s.Flows.Languages(name)
 		oldLanguage, _ := catalog.Spoken(oldSpoken)
 		newLanguage, _ := catalog.Spoken(newSpoken)
-		changed := translatorChanged || oldLanguage.Recognizer != newLanguage.Recognizer
+		requirementsChanged := translatorChanged || oldLanguage.Recognizer != newLanguage.Recognizer
+		changed := requirementsChanged
 		if name == "self" {
 			changed = changed || old.Flows.Self.Microphone != s.Flows.Self.Microphone || old.Chatbox.Address != s.Chatbox.Address
 		}
 		status := a.flows[name].status
-		waiting := translatorChanged && enabled && status.Code == errcode.MissingDownloads
+		waiting := requirementsChanged && enabled && status.Code == errcode.MissingDownloads
 		if changed && (status.active() || waiting) {
 			restart = append(restart, name)
 		}
