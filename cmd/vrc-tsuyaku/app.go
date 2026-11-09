@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -54,6 +55,7 @@ type app struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	dir, token    string
+	info          appInfo
 	downloads     *download.Manager
 	mu            sync.Mutex
 	settings      config.Settings
@@ -84,7 +86,9 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
+	build, _ := debug.ReadBuildInfo()
 	a := &app{ctx: ctx, cancel: cancel, dir: dir, token: rand.Text(), downloads: manager,
+		info:      appBuildInfo(build),
 		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
 		source: flowSource, open: openFile,
 	}
@@ -156,6 +160,7 @@ func (a *app) snapshot() any {
 		requirements[name], _ = catalog.Required(spoken)
 	}
 	return struct {
+		App             appInfo                  `json:"app"`
 		Settings        config.Settings          `json:"settings"`
 		SettingsError   string                   `json:"settingsError,omitempty"`
 		Artifacts       map[string]artifactState `json:"artifacts"`
@@ -163,7 +168,7 @@ func (a *app) snapshot() any {
 		Required        map[string][]string      `json:"required"`
 		Languages       catalog.LanguageCatalog  `json:"languages"`
 		DefaultTemplate string                   `json:"defaultTemplate"`
-	}{cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
+	}{a.info, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
 }
 
 func (a *app) startEnabled() {

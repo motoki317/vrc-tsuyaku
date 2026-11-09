@@ -8,6 +8,7 @@ require (
 	github.com/jfreymuth/pulse v0.1.1
 	github.com/moutend/go-wca v0.3.0
 	go.yaml.in/yaml/v3 v3.0.6
+	golang.org/x/mod v0.42.0
 	golang.org/x/sys v0.49.0
 )
 

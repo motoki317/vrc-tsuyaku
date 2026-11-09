@@ -157,6 +157,12 @@ Source: [golang.org/x/sys](https://go.googlesource.com/sys), version v0.49.0. Li
 
 `internal/translate` calls the Windows process and job-object APIs, and `internal/audio/application_windows.go` calls process and COM activation APIs through this Go module, which is compiled into the Windows executable.
 
+## golang.org/x/mod
+
+Source: [golang.org/x/mod](https://go.googlesource.com/mod), version v0.42.0. License: BSD-3-Clause.
+
+`cmd/vrc-tsuyaku` validates and compares version strings through this Go module, which is compiled into the Windows and Linux executables.
+
 ## PLaMo 3 Translate
 
 Model: [pfnet/plamo-3-translate-2b-GGUF](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF), Q4_K_M. License: [PLaMo Community License](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/blob/228a27cc0bb4f111219963848d50a3127c16ca73/LICENSE/en).
