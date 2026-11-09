@@ -39,6 +39,10 @@ func (s *Supervisor) Translate(ctx context.Context, source, target, phrase strin
 	if err := run.child.exitError(); err != nil {
 		return "", err
 	}
+	address := run.child.log.URL()
+	if address == "" {
+		return "", errors.New("llama-server has not reported its listening address: call Start before translating")
+	}
 	languages := map[string]string{"target_lang": target}
 	if source != "" {
 		languages["source_lang"] = source
@@ -53,7 +57,7 @@ func (s *Supervisor) Translate(ctx context.Context, source, target, phrase strin
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, run.url+"/v1/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
