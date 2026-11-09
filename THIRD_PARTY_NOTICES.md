@@ -43,6 +43,8 @@ vrc-tsuyaku takes its idea from VRCT. Both apps translate the user's speech into
 
 The default chatbox template in `internal/chatbox/pager.go` follows VRCT's defaults: the original comes before the translation, with a newline between them.
 
+[License text](cmd/vrc-tsuyaku/notices/other/VRCT@9427520c0ae39406a17ba0f280b1ad2735395d51/LICENSE).
+
 ## traPtitech/NeoShowcase
 
 Source: [traPtitech/NeoShowcase](https://github.com/traPtitech/NeoShowcase/tree/06fa2e6c52e74f760f09a84ac36cab12b3f4e947), commit `06fa2e6c52e74f760f09a84ac36cab12b3f4e947`. License: MIT.
@@ -88,6 +90,8 @@ The app downloads the Haas bundle from [motoki317/Haas-ja-v1.0-onnx](https://hug
 Neither the pinned Haas-ASR checkout nor the Haas-ja-v1.0 model repository contains a NOTICE file.
 [The Apache-2.0 license text](tools/haas-export/licenses/Apache-2.0.txt) is Haas-ASR's LICENSE file. The export steps in `tools/haas-export/README.md` copy it into the Haas ONNX bundle as `LICENSE`.
 
+[Haas-ASR license text](cmd/vrc-tsuyaku/notices/other/Haas-ASR@acc614f68769dcbfae9dba96b48439c4a66295af/LICENSE).
+
 ## NVIDIA NeMo
 
 Source: [NVIDIA/NeMo](https://github.com/NVIDIA/NeMo), nemo-toolkit 2.7.3. License: Apache-2.0.
@@ -99,6 +103,8 @@ Source: [NVIDIA/NeMo](https://github.com/NVIDIA/NeMo), nemo-toolkit 2.7.3. Licen
 `tools/haas-export/haas_full_onnx.py` and `internal/asr/haas.go` reimplement `TranscriptionTensorDataset._pad_audio` from `nemo/collections/asr/parts/mixins/transcription.py`.
 They zero-pad clips under one second to one second, splitting padding across both sides with any extra sample on the right.
 No NeMo source code is copied.
+
+[License text](cmd/vrc-tsuyaku/notices/other/NeMo@2.7.3/LICENSE).
 
 ## flash-linear-attention
 
@@ -117,6 +123,8 @@ The app downloads the CPU build of ONNX Runtime.
 `internal/asr` calls the runtime through the Go binding [getcharzp/onnxruntime_purego](https://github.com/getcharzp/onnxruntime_purego), version v1.28.0 (MIT).
 The binding depends on [ebitengine/purego](https://github.com/ebitengine/purego), version v0.9.0 (Apache-2.0). Both Go modules are compiled into the executable.
 
+Go module license texts: [onnxruntime_purego](cmd/vrc-tsuyaku/notices/modules/github.com/getcharzp/onnxruntime_purego@v1.28.0/LICENSE) and [purego](cmd/vrc-tsuyaku/notices/modules/github.com/ebitengine/purego@v0.9.0/LICENSE).
+
 ## onnx-asr
 
 Source: [istupakov/onnx-asr](https://github.com/istupakov/onnx-asr), version 0.12.0. License: MIT.
@@ -130,6 +138,8 @@ For v3, it uses the feature extractor published with the pinned ONNX conversion.
 It joins vocabulary pieces and replaces `▁` with spaces.
 It removes the first leading whitespace character and whitespace not followed by a Unicode word character.
 No onnx-asr source code is copied.
+
+[License text](cmd/vrc-tsuyaku/notices/other/onnx-asr@0.12.0/LICENSE).
 
 ## NVIDIA Parakeet
 
@@ -149,6 +159,8 @@ Source: [google/sentencepiece](https://github.com/google/sentencepiece), version
 `internal/asr/vocab.go` reimplements SentencePiece decoding.
 No SentencePiece source code is copied.
 
+[License text](cmd/vrc-tsuyaku/notices/other/SentencePiece@0.2.3/LICENSE).
+
 ## Silero VAD
 
 Source and model: [snakers4/silero-vad](https://github.com/snakers4/silero-vad/tree/5cd7945676eb32225748052e2e6a0580e4686a08), v6.2.3 at commit `5cd7945676eb32225748052e2e6a0580e4686a08`. License: MIT.
@@ -159,6 +171,8 @@ The app sets 300 ms pre-roll, 500 ms end silence, a 250 ms minimum and a 15 s cu
 Neither file copies upstream source code.
 `internal/asr/silero.go` runs `silero_vad.onnx`, which the app downloads from silero-vad at the commit linked above.
 
+[License text](cmd/vrc-tsuyaku/notices/other/silero-vad@6.2.3/LICENSE).
+
 ## llama.cpp
 
 Source: [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp/tree/b12201), build b12201. License: MIT.
@@ -168,6 +182,12 @@ The app downloads the Windows and Linux x64 CPU builds from the [b12201 release]
 The Windows build includes the OpenMP runtime `libomp.dll` under [Apache-2.0 WITH LLVM-exception](https://github.com/llvm/llvm-project/blob/baf637dcde8ccc24fd6ffbc82d8321ba18ec857f/openmp/LICENSE.TXT).
 That revision's `openmp/LICENSE.TXT` matches the bundled `LICENSE-LLVM-OpenMP` byte for byte.
 
+## Go
+
+Source: [Go](https://go.dev/). License: [BSD-3-Clause](cmd/vrc-tsuyaku/notices/go/LICENSE).
+
+The Go standard library and runtime are compiled into the executable.
+
 ## jfreymuth/pulse
 
 Source: [jfreymuth/pulse](https://github.com/jfreymuth/pulse/tree/v0.1.1), version v0.1.1. License: MIT.
@@ -175,11 +195,15 @@ Source: [jfreymuth/pulse](https://github.com/jfreymuth/pulse/tree/v0.1.1), versi
 `internal/audio/microphone_linux.go` calls the module's `proto` package. The file's `connectPulse` function reimplements Unix socket setup from `proto/connect.go`; upstream also accepts TCP servers.
 `microphone_linux.go` copies no upstream source code. This Go module is compiled into the Linux executable.
 
+[License text](cmd/vrc-tsuyaku/notices/modules/github.com/jfreymuth/pulse@v0.1.1/LICENSE).
+
 ## go-wca and go-ole
 
 Sources: [moutend/go-wca](https://github.com/moutend/go-wca/tree/v0.3.0), version v0.3.0, and [go-ole/go-ole](https://github.com/go-ole/go-ole/tree/v1.2.6), version v1.2.6. Both are MIT-licensed.
 
 `internal/audio/microphone_windows.go` calls WASAPI and COM through these Go modules, which are compiled into the Windows executable.
+
+License texts: [go-wca](cmd/vrc-tsuyaku/notices/modules/github.com/moutend/go-wca@v0.3.0/LICENSE) and [go-ole](cmd/vrc-tsuyaku/notices/modules/github.com/go-ole/go-ole@v1.2.6/LICENSE).
 
 ## golang.org/x/sys
 
@@ -187,11 +211,15 @@ Source: [golang.org/x/sys](https://go.googlesource.com/sys), version v0.49.0. Li
 
 `internal/translate` calls the Windows process and job-object APIs, and `internal/audio/application_windows.go` calls process and COM activation APIs through this Go module, which is compiled into the Windows executable.
 
+[License text](cmd/vrc-tsuyaku/notices/modules/golang.org/x/sys@v0.49.0/LICENSE).
+
 ## golang.org/x/mod
 
 Source: [golang.org/x/mod](https://go.googlesource.com/mod), version v0.42.0. License: BSD-3-Clause.
 
 `cmd/vrc-tsuyaku` validates and compares version strings through this Go module, which is compiled into the Windows and Linux executables.
+
+[License text](cmd/vrc-tsuyaku/notices/modules/golang.org/x/mod@v0.42.0/LICENSE).
 
 ## PLaMo 3 Translate
 
@@ -214,23 +242,7 @@ The app shows "Built with PLaMo" in its UI and documentation.
 Source: [yaml/go-yaml](https://github.com/yaml/go-yaml/tree/v3.0.6), version v3.0.6. Licenses: MIT and Apache-2.0.
 
 `internal/config` reads and writes YAML through this Go module, which is compiled into the executable.
-The module's `NOTICE` follows verbatim:
-
-```text
-Copyright 2011-2016 Canonical Ltd.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
+License texts: [LICENSE](cmd/vrc-tsuyaku/notices/modules/go.yaml.in/yaml/v3@v3.0.6/LICENSE) and [NOTICE](cmd/vrc-tsuyaku/notices/modules/go.yaml.in/yaml/v3@v3.0.6/NOTICE).
 
 ## whispering-ui
 
@@ -238,78 +250,10 @@ Source: [Sharrnah/whispering-ui](https://github.com/Sharrnah/whispering-ui/tree/
 
 `internal/audio/application_windows.go` adapts the process-loopback activation code in `Utilities/ProcessCapture_windows.go`: the activation parameters and the COM completion handler with a shared callback table.
 
-```text
-MIT License
-
-Copyright (c) 2022 Sharrnah
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+[License text](cmd/vrc-tsuyaku/notices/other/whispering-ui@00b7533b148d0feec959e8ddf8c7b72b6ca9c329/LICENSE).
 
 ## Lucide
 
 Source: [lucide-static 1.60.0](https://www.npmjs.com/package/lucide-static/v/1.60.0) on npm. License: ISC, and MIT for the icons that Lucide derives from Feather.
 
-`cmd/vrc-tsuyaku/ui/icons.svg` copies Lucide icons as SVG symbols, and some of them derive from Feather. The upstream notice follows:
-
-```text
-ISC License
-
-Copyright (c) 2026 Lucide Icons and Contributors
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
----
-
-The following Lucide icons are derived from the Feather project:
-
-airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
-
-The MIT License (MIT) (for the icons listed above)
-
-Copyright (c) 2013-present Cole Bemis
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+`cmd/vrc-tsuyaku/ui/icons.svg` copies Lucide icons as SVG symbols, and some of them derive from Feather. [The upstream license text](cmd/vrc-tsuyaku/notices/other/lucide-static@1.60.0/LICENSE) includes both licenses.

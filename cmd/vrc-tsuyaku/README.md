@@ -28,6 +28,10 @@ The check compares the release tag with the module version that Go stamped into 
 `version` is that module version when it comes from a tag, such as `v0.1.0`, and is empty for a pseudo-version or a build without version information.
 `revision`, `time` and `modified` come from the `vcs.*` settings that `go build` records only in a git checkout.
 
+`GET /notices.txt`, which Settings → About links to, returns the license texts in `notices/` as plain text: those of Go, of each Go module in `go.mod`, and of the other code that the executable contains or reimplements.
+After you change `go.mod`, run `just notices`, which copies each module's license texts from the module cache. `TestModuleNoticesMatchGoMod` fails until `notices/modules/` matches `go.mod`.
+The texts in `notices/other/` are copied by hand, and each one's `SOURCE` file names where it came from.
+
 ## API
 
 The server returns 403 for a request whose `Host` is neither its own address, such as `127.0.0.1:54321`, nor `localhost` with its port, which stops DNS rebinding.
