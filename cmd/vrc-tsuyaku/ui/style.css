@@ -513,20 +513,24 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   .rail { flex-direction: row; overflow-x: auto; gap: 4px; margin: 0 -16px 16px; padding: 4px 16px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
   .rail .rail-item { min-height: 40px; padding: 6px 12px; }
   .rail-foot { margin-top: 24px; border-radius: 16px; }
-}
-
-@media (max-width: 519px) {
-  /* The name hides as .visually-hidden does, so the page keeps its h1 for screen readers.
-     The tabs, the UI-language menu and Exit need the whole bar at 390 px, so the mark gives way while the tabs show. */
-  .product, .topbar-inner:has(#tabs:not([hidden])) .brand {
-    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-  }
+  /* The whole top bar stops fitting at about 710 px in English with the update dot. The tabs keep their labels,
+     so the UI-language menu and Exit shrink to their icons, and each button's accessible name keeps its label. */
   .topbar-inner { gap: 8px; padding: 0 8px; }
   .tab { gap: 4px; padding: 6px 8px; }
   .tabs { gap: 2px; }
   .bar-button { padding: 6px 8px; }
-  /* The tabs keep their labels, so the language name and Exit give way. Each button's accessible name keeps its label. */
-  .bar-label { display: none; }
+  .bar-label, .bar-button .icon.small { display: none; }
+}
+
+@media (max-width: 519px) {
+  /* The name hides as .visually-hidden does, so the page keeps its h1 for screen readers.
+     The tabs, the UI-language menu and Exit need the whole bar at 360 px, so the mark gives way while the tabs show,
+     and the bar tightens its spacing. */
+  .product, .topbar-inner:has(#tabs:not([hidden])) .brand {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .topbar-inner { gap: 4px; }
+  .tab { padding: 6px; }
   .segmented { display: flex; flex-direction: column; border-radius: 12px; }
   .segment { border-left: 0; border-top: 1px solid var(--outline); text-align: left; }
   .segment:first-child { border-top: 0; }
