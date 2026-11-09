@@ -13,7 +13,7 @@
   "label.message": "Message",
   "label.microphone": "Microphone",
   "label.preview": "Preview",
-  "label.product": "vrc-tsuyaku",
+  "label.product": "VRC\u00a0Tsuyaku",
   "label.releases": "Releases",
   "label.screens": "Screens",
   "label.self": "My voice",
@@ -91,7 +91,7 @@
 
   "value.announce": "{flow}: {text}",
   "value.auto": "Detect",
-  "value.description": "Speech translation for VRChat that runs on your PC",
+  "value.description": "Speech translation for VRChat",
   "value.developmentBuild": "Development build",
   "value.gigabytes": "{n} GB",
   "value.jaEasy": "Easy Japanese",
@@ -134,9 +134,9 @@
   "error.inUse": "This download is in use. Turn off the switches that use it, then try again.",
   "error.leftover": "Old files remain. Open the data folder to delete them.",
   "error.microphones": "Could not list the microphones. Press {refresh} to try again.",
-  "error.notAnswering": "vrc\u2011tsuyaku is not responding. Start it, or use the page that it opened last.",
+  "error.notAnswering": "VRC\u00a0Tsuyaku is not responding. Start it, or use the page that it opened last.",
   "error.notSaved": "Not saved. Try again.",
-  "error.request": "vrc\u2011tsuyaku did not respond. Try again.",
-  "error.staleToken": "This page is from an earlier run. Use the page that vrc\u2011tsuyaku opened last.",
+  "error.request": "VRC\u00a0Tsuyaku did not respond. Try again.",
+  "error.staleToken": "This page is from an earlier run. Use the page that VRC\u00a0Tsuyaku opened last.",
   "error.templateInvalid": "Fix the template. Use fields such as {{.Translation}}."
 }
