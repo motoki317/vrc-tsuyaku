@@ -2,7 +2,7 @@
 
 These projects supply code, algorithms, file formats, ideas, icons, models, ONNX graphs or programs that vrc-tsuyaku uses.
 Neither the repository nor the executable includes the models, ONNX graphs or programs listed here.
-The app downloads the Haas and Parakeet conversions, the onnx-asr feature extractor, Silero VAD, PLaMo, ONNX Runtime and llama.cpp.
+The app downloads the Haas and Parakeet conversions, the onnx-asr feature extractor for Parakeet v2, Silero VAD, PLaMo, ONNX Runtime and llama.cpp.
 The Go module entries say which modules ship in each OS's executable.
 
 ## VRCT
@@ -11,7 +11,7 @@ Source: [misyaguziya/VRCT](https://github.com/misyaguziya/VRCT/tree/9427520c0ae3
 
 vrc-tsuyaku takes its idea from VRCT. Both apps translate the user's speech into the VRChat chatbox and translate the voices that the user hears in VRChat. vrc-tsuyaku copies no VRCT code.
 
-`internal/chatbox/pager.go` reimplements VRCT's original-before-translation join with a newline separator.
+The default chatbox template in `internal/chatbox/pager.go` follows VRCT's defaults: the original comes before the translation, with a newline between them.
 
 ## traPtitech/NeoShowcase
 
@@ -142,7 +142,7 @@ That revision's `openmp/LICENSE.TXT` matches the bundled `LICENSE-LLVM-OpenMP` b
 
 Source: [jfreymuth/pulse](https://github.com/jfreymuth/pulse/tree/v0.1.1), version v0.1.1. License: MIT.
 
-`internal/audio/microphone_linux.go` calls the module's `proto` package. Its `connectPulse` function reimplements Unix socket setup from `proto/connect.go`; upstream also accepts TCP servers.
+`internal/audio/microphone_linux.go` calls the module's `proto` package. The file's `connectPulse` function reimplements Unix socket setup from `proto/connect.go`; upstream also accepts TCP servers.
 `microphone_linux.go` copies no upstream source code. This Go module is compiled into the Linux executable.
 
 ## go-wca and go-ole
