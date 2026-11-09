@@ -13,31 +13,21 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 )
 
-// Direction selects the self flow's Japanese-to-English translation or the
-// world flow's English-to-Japanese translation.
-type Direction uint8
-
-const (
-	JapaneseToEnglish Direction = iota
-	EnglishToJapanese
-)
-
 // Translate sends one phrase as the only user turn and returns trimmed text.
 // It rejects empty or whitespace-only phrases. Calls can run concurrently after
 // Start succeeds. Translate reports a server exit as an error without relaunching
 // it. Call Start to relaunch.
 // A response that reaches the token limit returns an error instead of partial text.
-func (s *Supervisor) Translate(ctx context.Context, direction Direction, phrase string) (string, error) {
+// An empty source omits source_lang so that PLaMo detects the input language.
+func (s *Supervisor) Translate(ctx context.Context, source, target, phrase string) (string, error) {
 	if strings.TrimSpace(phrase) == "" {
 		return "", errors.New("translation phrase is empty")
 	}
-	source, target := catalog.Japanese, catalog.English
-	switch direction {
-	case JapaneseToEnglish:
-	case EnglishToJapanese:
-		source, target = target, source
-	default:
-		return "", fmt.Errorf("unsupported translation direction %d", direction)
+	if source != "" && !catalog.IsTarget(source) {
+		return "", fmt.Errorf("unsupported translation source %q", source)
+	}
+	if !catalog.IsTarget(target) {
+		return "", fmt.Errorf("unsupported translation target %q", target)
 	}
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -49,10 +39,14 @@ func (s *Supervisor) Translate(ctx context.Context, direction Direction, phrase 
 	if err := run.child.exitError(); err != nil {
 		return "", err
 	}
+	languages := map[string]string{"target_lang": target}
+	if source != "" {
+		languages["source_lang"] = source
+	}
 	body, err := json.Marshal(map[string]any{
 		"model":                catalog.TranslationAlias,
 		"messages":             []map[string]string{{"role": "user", "content": phrase}},
-		"chat_template_kwargs": map[string]string{"source_lang": source, "target_lang": target},
+		"chat_template_kwargs": languages,
 		"temperature":          0, "max_tokens": 512, "stream": false,
 		"stop": []string{"<|plamo:tag|>", "<|plamo:bos|>"},
 	})

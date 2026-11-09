@@ -16,10 +16,12 @@ import (
 // page and sent events for one phrase.
 // Original accompanies a translation. A sent event means Send returned nil.
 type Event struct {
-	PhraseID uint64 `json:"phraseId,omitempty"`
-	Kind     string `json:"kind"`
-	Text     string `json:"text"`
-	Original string `json:"original,omitempty"`
+	PhraseID   uint64 `json:"phraseId,omitempty"`
+	Kind       string `json:"kind"`
+	Text       string `json:"text"`
+	Original   string `json:"original,omitempty"`
+	SourceLang string `json:"sourceLang,omitempty"`
+	TargetLang string `json:"targetLang,omitempty"`
 }
 
 var nextPhraseID atomic.Uint64
@@ -32,7 +34,8 @@ type Stages struct {
 	Source      audio.Source
 	Probability func(context.Context, []float32) (float32, error)
 	Recognize   func(context.Context, []float32) (string, error)
-	Translate   func(context.Context, string) (string, error)
+	Languages   func() (source, target string)
+	Translate   func(ctx context.Context, source, target, phrase string) (string, error)
 	Send        func(ctx context.Context, original, translation string, pageSent func(string)) error
 	Emit        func(Event)
 }
@@ -43,8 +46,8 @@ type Stages struct {
 // segmenter's pending phrase. A finite test source can return nil to end input.
 // Run then pads the partial VAD window with zeros and flushes the final phrase.
 func Run(ctx context.Context, s Stages) error {
-	if s.Source == nil || s.Probability == nil || s.Recognize == nil || s.Translate == nil {
-		return errors.New("pipeline requires a source, VAD, recognizer and translator")
+	if s.Source == nil || s.Probability == nil || s.Recognize == nil || s.Languages == nil || s.Translate == nil {
+		return errors.New("pipeline requires a source, VAD, recognizer, languages and translator")
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -52,6 +55,7 @@ func Run(ctx context.Context, s Stages) error {
 	type result struct {
 		id                    uint64
 		original, translation string
+		source, target        string
 	}
 	texts := make(chan result)
 	translations := make(chan result)
@@ -129,6 +133,7 @@ func Run(ctx context.Context, s Stages) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+			source, target := s.Languages()
 			text, err := s.Recognize(ctx, phrase)
 			if err != nil {
 				return err
@@ -137,9 +142,9 @@ func Run(ctx context.Context, s Stages) error {
 				continue
 			}
 			id := nextPhraseID.Add(1)
-			emit(Event{PhraseID: id, Kind: "recognized", Text: text})
+			emit(Event{PhraseID: id, Kind: "recognized", Text: text, SourceLang: source, TargetLang: target})
 			select {
-			case texts <- result{id: id, original: text}:
+			case texts <- result{id: id, original: text, source: source, target: target}:
 			case <-ctx.Done():
 				return context.Cause(ctx)
 			}
@@ -149,12 +154,12 @@ func Run(ctx context.Context, s Stages) error {
 	start(func() error {
 		defer close(translations)
 		for r := range texts {
-			translated, err := s.Translate(ctx, r.original)
+			translated, err := s.Translate(ctx, r.source, r.target, r.original)
 			if err != nil {
 				return err
 			}
 			r.translation = translated
-			emit(Event{PhraseID: r.id, Kind: "translated", Original: r.original, Text: translated})
+			emit(Event{PhraseID: r.id, Kind: "translated", Original: r.original, Text: translated, SourceLang: r.source, TargetLang: r.target})
 			select {
 			case translations <- r:
 			case <-ctx.Done():
@@ -166,10 +171,12 @@ func Run(ctx context.Context, s Stages) error {
 	start(func() error {
 		for r := range translations {
 			if s.Send != nil {
-				if err := s.Send(ctx, r.original, r.translation, func(page string) { emit(Event{PhraseID: r.id, Kind: "page", Text: page}) }); err != nil {
+				if err := s.Send(ctx, r.original, r.translation, func(page string) {
+					emit(Event{PhraseID: r.id, Kind: "page", Text: page, SourceLang: r.source, TargetLang: r.target})
+				}); err != nil {
 					return err
 				}
-				emit(Event{PhraseID: r.id, Kind: "sent"})
+				emit(Event{PhraseID: r.id, Kind: "sent", SourceLang: r.source, TargetLang: r.target})
 			}
 		}
 		return nil

@@ -35,7 +35,8 @@ func fakeStages() Stages {
 		}),
 		Probability: func(_ context.Context, x []float32) (float32, error) { return x[0], nil },
 		Recognize:   func(_ context.Context, _ []float32) (string, error) { return "text", nil },
-		Translate:   func(_ context.Context, s string) (string, error) { return "translated " + s, nil },
+		Languages:   func() (string, string) { return "ja", "en" },
+		Translate:   func(_ context.Context, _, _, s string) (string, error) { return "translated " + s, nil },
 	}
 }
 
@@ -90,6 +91,9 @@ func TestPhraseIdentityAcrossRuns(t *testing.T) {
 		}
 		phrases := make(map[uint64][]string)
 		for _, e := range events {
+			if e.SourceLang != "ja" || e.TargetLang != "en" {
+				t.Fatalf("missing phrase languages: %+v", e)
+			}
 			if e.PhraseID == 0 {
 				t.Fatalf("missing phrase ID: %+v", e)
 			}
@@ -116,6 +120,62 @@ func TestPhraseIdentityAcrossRuns(t *testing.T) {
 				t.Fatalf("phrase %d: %v, want %v", id, kinds, want)
 			}
 		}
+	}
+}
+
+func TestLanguageChangesApplyToNextPhrase(t *testing.T) {
+	s := fakeStages()
+	var target atomic.Value
+	target.Store("en")
+	s.Languages = func() (string, string) { return "ja", target.Load().(string) }
+	first := true
+	s.Recognize = func(context.Context, []float32) (string, error) {
+		if first {
+			first = false
+			target.Store("ja-easy")
+		}
+		return "text", nil
+	}
+	var translatedTargets []string
+	s.Translate = func(_ context.Context, source, target, phrase string) (string, error) {
+		if source != "ja" || phrase != "text" {
+			t.Errorf("unexpected request: %s, %s", source, phrase)
+		}
+		translatedTargets = append(translatedTargets, target)
+		return "translation", nil
+	}
+	s.Send = func(_ context.Context, _, _ string, sent func(string)) error { sent("page"); return nil }
+	var mu sync.Mutex
+	phrases := make(map[uint64][]Event)
+	s.Emit = func(e Event) { mu.Lock(); defer mu.Unlock(); phrases[e.PhraseID] = append(phrases[e.PhraseID], e) }
+	if err := Run(t.Context(), s); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(translatedTargets, []string{"en", "ja-easy", "ja-easy"}) {
+		t.Fatal("language change lost its phrase boundary", translatedTargets)
+	}
+	old, updated := 0, 0
+	for _, events := range phrases {
+		if len(events) != 4 {
+			t.Fatal(events)
+		}
+		want := events[0].TargetLang
+		switch want {
+		case "en":
+			old++
+		case "ja-easy":
+			updated++
+		default:
+			t.Fatal(events)
+		}
+		for _, e := range events {
+			if e.SourceLang != "ja" || e.TargetLang != want {
+				t.Fatalf("phrase languages changed mid-flight: %+v", events)
+			}
+		}
+	}
+	if old != 1 || updated != 2 {
+		t.Fatal(old, updated)
 	}
 }
 
@@ -166,7 +226,7 @@ func TestFailureCancelsCapture(t *testing.T) {
 			case "recognize":
 				s.Recognize = func(context.Context, []float32) (string, error) { return "", want }
 			case "translate":
-				s.Translate = func(context.Context, string) (string, error) { return "", want }
+				s.Translate = func(context.Context, string, string, string) (string, error) { return "", want }
 			case "send":
 				s.Send = func(context.Context, string, string, func(string)) error { return want }
 			}

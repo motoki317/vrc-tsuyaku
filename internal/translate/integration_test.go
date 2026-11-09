@@ -29,14 +29,17 @@ func TestPLaMoTranslation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		direction Direction
-		phrase    string
-		japanese  bool
+		source, target string
+		phrase         string
+		japanese       bool
 	}{
-		{JapaneseToEnglish, "こんにちは、元気ですか？", false},
-		{EnglishToJapanese, "How are you today?", true},
+		{"ja", "en", "こんにちは、元気ですか？", false},
+		{"en", "ja", "How are you today?", true},
+		{"ja", "ja-easy", "本日の会議は延期されました。詳細については追ってご連絡いたします。", true},
+		{"en", "ja-easy", "The meeting has been postponed until further notice.", true},
+		{"", "ja", "La reunión se ha pospuesto hasta nuevo aviso.", true},
 	} {
-		text, err := s.Translate(ctx, tc.direction, tc.phrase)
+		text, err := s.Translate(ctx, tc.source, tc.target, tc.phrase)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -52,6 +55,6 @@ func TestPLaMoTranslation(t *testing.T) {
 		if tc.japanese && japanese == 0 || !tc.japanese && (latin == 0 || japanese != 0) {
 			t.Fatalf("wrong output script: %q", text)
 		}
-		t.Logf("%s -> %s", tc.phrase, text)
+		t.Logf("%s -> %s: %s -> %s", tc.source, tc.target, tc.phrase, text)
 	}
 }

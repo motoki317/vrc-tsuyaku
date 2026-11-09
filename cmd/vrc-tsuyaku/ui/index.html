@@ -53,7 +53,7 @@
   <div class="flows">
     <article id="flow-self" class="flow" aria-labelledby="self-title">
       <div class="flow-head"><h3 id="self-title">Self flow</h3><span id="self-tag" class="tag"></span></div>
-      <p>Hears Japanese from your microphone and shows it with its English translation in your VRChat chatbox.</p>
+      <p id="self-languages"></p>
       <p class="hint">Turn on OSC in VRChat's Action Menu: OSC → Enabled.</p>
       <div class="field">
         <label for="microphone">Microphone</label>
@@ -79,7 +79,7 @@
     </article>
     <article id="flow-world" class="flow" aria-labelledby="world-title">
       <div class="flow-head"><h3 id="world-title">World flow</h3><span id="world-tag" class="tag"></span></div>
-      <p>Hears English in VRChat and shows the Japanese translation in step 3.</p>
+      <p id="world-languages"></p>
       <p class="hint">Start VRChat first. This flow hears only VRChat's audio.</p>
       <div class="actions">
         <button type="button" id="world-start" data-flow="world" data-action="start" class="primary" aria-describedby="world-message"></button>

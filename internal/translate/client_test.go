@@ -49,21 +49,25 @@ func TestTranslationRequests(t *testing.T) {
 	s, dir := fixture(t, true, false)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	if _, err := s.Translate(ctx, JapaneseToEnglish, "hello"); err == nil {
+	if _, err := s.Translate(ctx, "ja", "en", "hello"); err == nil {
 		t.Fatal("translated before Start")
 	}
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 	for i, tc := range []struct {
-		direction              Direction
 		phrase, source, target string
 	}{
-		{JapaneseToEnglish, "こんにちは、元気ですか？", "ja", "en"},
-		{EnglishToJapanese, "Good morning.", "en", "ja"},
-		{JapaneseToEnglish, "次の文章です。", "ja", "en"},
+		{"こんにちは、元気ですか？", "ja", "en"},
+		{"Good morning.", "en", "ja"},
+		{"次の文章です。", "ja", "en"},
+		{"The meeting was postponed.", "en", "ja-easy"},
+		{"本日の会議は延期されました。", "ja", "ja-easy"},
+		{"Hola, buenos días.", "", "ja"},
+		{"今日の会議はありません。", "ja-easy", "en"},
+		{"Hello.", "en", "zh-hans"},
 	} {
-		got, err := s.Translate(ctx, tc.direction, tc.phrase)
+		got, err := s.Translate(ctx, tc.source, tc.target, tc.phrase)
 		if err != nil || got != "translated text" {
 			t.Fatalf("Translate = %q, %v", got, err)
 		}
@@ -75,10 +79,14 @@ func TestTranslationRequests(t *testing.T) {
 		if err := json.Unmarshal(record.Body, &body); err != nil {
 			t.Fatal(err)
 		}
+		languages := map[string]any{"target_lang": tc.target}
+		if tc.source != "" {
+			languages["source_lang"] = tc.source
+		}
 		want := map[string]any{
 			"model":                "plamo-3-translate",
 			"messages":             []any{map[string]any{"role": "user", "content": tc.phrase}},
-			"chat_template_kwargs": map[string]any{"source_lang": tc.source, "target_lang": tc.target},
+			"chat_template_kwargs": languages,
 			"temperature":          float64(0), "max_tokens": float64(512), "stream": false,
 			"stop": []any{"<|plamo:tag|>", "<|plamo:bos|>"},
 		}
@@ -86,18 +94,23 @@ func TestTranslationRequests(t *testing.T) {
 			t.Fatalf("request body = %s", record.Body)
 		}
 	}
-	if _, err := s.Translate(ctx, JapaneseToEnglish, " \n"); err == nil {
+	if _, err := s.Translate(ctx, "ja", "en", " \n"); err == nil {
 		t.Fatal("accepted empty phrase")
 	}
-	if _, err := s.Translate(ctx, Direction(99), "text"); err == nil {
-		t.Fatal("accepted invalid direction")
+	if _, err := s.Translate(ctx, "unknown", "en", "text"); err == nil {
+		t.Fatal("accepted invalid source")
+	}
+	for _, target := range []string{"", "auto", "invalid"} {
+		if _, err := s.Translate(ctx, "ja", target, "text"); err == nil {
+			t.Fatalf("accepted invalid target %q", target)
+		}
 	}
 	old := s.run
 	if err := old.child.kill(); err != nil {
 		t.Fatal(err)
 	}
 	<-old.child.done
-	if _, err := s.Translate(ctx, JapaneseToEnglish, "text"); err == nil || !strings.Contains(err.Error(), "llama-server exited") {
+	if _, err := s.Translate(ctx, "ja", "en", "text"); err == nil || !strings.Contains(err.Error(), "llama-server exited") {
 		t.Fatalf("request after exit: %v", err)
 	}
 	if s.run != old {
@@ -106,7 +119,7 @@ func TestTranslationRequests(t *testing.T) {
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Translate(ctx, EnglishToJapanese, "Another phrase."); err != nil {
+	if _, err := s.Translate(ctx, "en", "ja", "Another phrase."); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -123,8 +136,8 @@ func TestConcurrentTranslation(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 2)
-	for _, direction := range []Direction{JapaneseToEnglish, EnglishToJapanese} {
-		go func() { _, err := s.Translate(ctx, direction, "phrase"); done <- err }()
+	for _, source := range []string{"ja", "en"} {
+		go func() { _, err := s.Translate(ctx, source, "ja", "phrase"); done <- err }()
 	}
 	for range 2 {
 		if err := <-done; err != nil {
@@ -155,7 +168,7 @@ func TestTranslationFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setReply(t, dir, tc.reply)
-			if text, err := s.Translate(ctx, JapaneseToEnglish, "phrase"); err == nil || !strings.Contains(err.Error(), tc.want) || text != "" {
+			if text, err := s.Translate(ctx, "ja", "en", "phrase"); err == nil || !strings.Contains(err.Error(), tc.want) || text != "" {
 				t.Fatalf("text = %q, error = %v", text, err)
 			}
 		})
@@ -172,7 +185,7 @@ func TestTranslationCancellation(t *testing.T) {
 	setReply(t, dir, fakeReply{Block: true})
 	reqCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
-	go func() { _, err := s.Translate(reqCtx, JapaneseToEnglish, "phrase"); done <- err }()
+	go func() { _, err := s.Translate(reqCtx, "ja", "en", "phrase"); done <- err }()
 	requests(t, dir, 1)
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
@@ -182,7 +195,7 @@ func TestTranslationCancellation(t *testing.T) {
 		t.Fatalf("request cancellation stopped shared server: %v", err)
 	}
 	setReply(t, dir, fakeReply{Status: 200, Body: `{"choices":[{"message":{"content":"OK"}}]}`})
-	if _, err := s.Translate(ctx, EnglishToJapanese, "phrase"); err != nil {
+	if _, err := s.Translate(ctx, "en", "ja", "phrase"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -198,7 +211,7 @@ func TestTranslationRejectsRedirect(t *testing.T) {
 		t.Fatal(err)
 	}
 	setReply(t, dir, fakeReply{Status: http.StatusTemporaryRedirect, Location: other.URL})
-	if _, err := s.Translate(ctx, JapaneseToEnglish, "private phrase"); err == nil || !strings.Contains(err.Error(), "HTTP 307") {
+	if _, err := s.Translate(ctx, "ja", "en", "private phrase"); err == nil || !strings.Contains(err.Error(), "HTTP 307") {
 		t.Fatalf("redirect error: %v", err)
 	}
 	if forwarded.Load() != 0 {

@@ -75,7 +75,8 @@ func request(a *app, method, path, body, token string) *httptest.ResponseRecorde
 func TestRequiredArtifactsInState(t *testing.T) {
 	a := testApp(t)
 	var state struct {
-		Required map[string][]string `json:"required"`
+		Required  map[string][]string     `json:"required"`
+		Languages catalog.LanguageCatalog `json:"languages"`
 	}
 	w := request(a, "GET", "/api/state", "", a.token)
 	if w.Code != http.StatusOK {
@@ -85,10 +86,38 @@ func TestRequiredArtifactsInState(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, flow := range []string{"self", "world"} {
-		if !reflect.DeepEqual(state.Required[flow], required(flow)) {
-			t.Fatalf("%s: %v, want %v", flow, state.Required[flow], required(flow))
+		spoken, _ := a.settings.Flows.Languages(flow)
+		want, _ := catalog.Required(spoken)
+		if !reflect.DeepEqual(state.Required[flow], want) {
+			t.Fatalf("%s: %v, want %v", flow, state.Required[flow], want)
 		}
 	}
+	if !reflect.DeepEqual(state.Languages, catalog.Languages()) {
+		t.Fatal("language choices missing from state", state.Languages)
+	}
+	s := cloneSettings(a.settings)
+	s.Flows.Self.Spoken, s.Flows.World.Spoken = "en", "ja"
+	s.Flows.Self.Target, s.Flows.World.Target = "ko", "ja-easy"
+	body, _ := json.Marshal(s)
+	w = request(a, "PUT", "/api/settings", string(body), a.token)
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(state.Required["self"], wantRequirements(t, "en")) || !reflect.DeepEqual(state.Required["world"], wantRequirements(t, "ja")) {
+		t.Fatal("requirements did not follow spoken language", state.Required)
+	}
+}
+
+func wantRequirements(t *testing.T, spoken string) []string {
+	t.Helper()
+	required, err := catalog.Required(spoken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return required
 }
 
 func TestMissingDownloadsLeaveFlowStopped(t *testing.T) {
@@ -297,7 +326,7 @@ func TestStopRacesNormalCompletion(t *testing.T) {
 				}),
 				Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
 				Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
-				Translate:   func(context.Context, string) (string, error) { return "", nil },
+				Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
 			}, nil
 		}
 		if err := a.changeFlow("world", "start"); err != nil {
@@ -458,7 +487,7 @@ func TestSettingsValidationAndWriteStatus(t *testing.T) {
 func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 	for _, flow := range []string{"self", "world"} {
 		for _, phase := range []string{"stopped", "error", "starting", "running"} {
-			for _, change := range []string{"enabled", "microphone", "address"} {
+			for _, change := range []string{"enabled", "microphone", "address", "spoken", "target"} {
 				t.Run(flow+"/"+phase+"/"+change, func(t *testing.T) {
 					a := testApp(t)
 					for id, artifact := range a.artifacts {
@@ -500,12 +529,24 @@ func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 						s.Flows.Self.Microphone = "other"
 					case "address":
 						s.Chatbox.Address = "127.0.0.1:47123"
+					case "spoken":
+						if flow == "self" {
+							s.Flows.Self.Spoken = "en"
+						} else {
+							s.Flows.World.Spoken = "ja"
+						}
+					case "target":
+						if flow == "self" {
+							s.Flows.Self.Target = "ja-easy"
+						} else {
+							s.Flows.World.Target = "zh-hant"
+						}
 					}
 					body, _ := json.Marshal(s)
 					if response := request(a, "PUT", "/api/settings", string(body), a.token); response.Code != http.StatusOK {
 						t.Fatal(response.Code, response.Body.String())
 					}
-					restart := flow == "self" && active && change != "enabled"
+					restart := active && (change == "spoken" || (flow == "self" && (change == "microphone" || change == "address")))
 					if restart {
 						waitFor(t, func() bool { return starts.Load() == 2 })
 					}

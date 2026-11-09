@@ -5,8 +5,6 @@ const $ = id => document.getElementById(id);
 const FLOWS = ['self', 'world'];
 const TITLE = {self: 'Self flow', world: 'World flow'};
 const SETTINGS_KEY = {self: 'Self', world: 'World'};
-const HEARS = {self: 'ja', world: 'en'};
-const SAYS = {self: 'en', world: 'ja'};
 const NEXT_STEP = {
   self: 'Check the microphone and the chatbox address, then press Try again.',
   world: 'Start VRChat if it is closed, then press Try again.',
@@ -166,7 +164,11 @@ function render() {
   for (const control of [$('microphone'), $('refresh-mics'), $('address')]) control.disabled = !!state.settingsError;
   $('address-current').textContent = state.settings.Chatbox.Address;
   renderDownloads();
-  for (const flow of FLOWS) renderFlow(flow);
+  for (const flow of FLOWS) {
+    const settings = state.settings.Flows[SETTINGS_KEY[flow]];
+    $(flow + '-languages').textContent = `${settings.Spoken} → ${settings.Target}`;
+    renderFlow(flow);
+  }
 }
 
 function setMessage(node, tone, ...content) {
@@ -556,9 +558,9 @@ function logLine(event, className, ...content) {
 }
 
 function addEntry(event, original) {
-  const entry = {id: event.phraseId, flow: event.flow, translation: null, done: false};
+  const entry = {id: event.phraseId, flow: event.flow, targetLang: event.targetLang, translation: null, done: false};
   entry.node = logLine(event, 'entry',
-    h('p', {className: 'original', lang: HEARS[event.flow]}, original),
+    h('p', {className: 'original', lang: event.sourceLang}, original),
     h('p', {className: 'translation', 'data-pending': 'true'}, 'Translating…'),
     event.flow === 'self' && h('p', {className: 'delivery'}));
   entry.node.dataset.phraseId = event.phraseId;
@@ -570,7 +572,7 @@ function translateEntry(entry, text) {
   entry.translation = text;
   const node = entry.node.querySelector('.translation');
   node.textContent = text;
-  node.lang = SAYS[entry.flow];
+  node.lang = entry.targetLang;
   node.removeAttribute('data-pending');
   if (entry.flow === 'self') {
     entry.node.querySelector('.delivery').textContent = 'Sending to the VRChat chatbox…';

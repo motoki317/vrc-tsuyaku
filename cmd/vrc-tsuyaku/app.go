@@ -134,7 +134,8 @@ func (a *app) snapshot() any {
 	requirements := make(map[string][]string)
 	for name, run := range a.flows {
 		flows[name] = run.status
-		requirements[name] = required(name)
+		spoken, _ := a.settings.Flows.Languages(name)
+		requirements[name], _ = catalog.Required(spoken)
 	}
 	return struct {
 		Settings      config.Settings          `json:"settings"`
@@ -142,7 +143,8 @@ func (a *app) snapshot() any {
 		Artifacts     map[string]artifactState `json:"artifacts"`
 		Flows         map[string]flowState     `json:"flows"`
 		Required      map[string][]string      `json:"required"`
-	}{cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements}
+		Languages     catalog.LanguageCatalog  `json:"languages"`
+	}{cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages()}
 }
 
 func (a *app) startEnabled() {
@@ -163,14 +165,6 @@ func (a *app) startEnabled() {
 	}
 }
 
-func required(name string) []string {
-	model := catalog.Haas
-	if name == "world" {
-		model = catalog.Parakeet
-	}
-	return []string{catalog.ONNXRuntime, catalog.Silero, model, catalog.LlamaCPP, catalog.PLaMo}
-}
-
 // Model initialization runs outside operations so stop can cancel a pending start.
 func (a *app) start(name string, s config.Settings) error {
 	a.mu.Lock()
@@ -178,7 +172,7 @@ func (a *app) start(name string, s config.Settings) error {
 		a.mu.Unlock()
 		return nil
 	}
-	if err := a.checkStart(name); err != nil {
+	if err := a.checkStart(name, s); err != nil {
 		a.mu.Unlock()
 		a.refuseStart(name, err)
 		return err
@@ -193,6 +187,11 @@ func (a *app) start(name string, s config.Settings) error {
 		defer cancel()
 		stages, err := a.prepare(ctx, name, s)
 		if err == nil && ctx.Err() == nil {
+			stages.Languages = func() (string, string) {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				return a.settings.Flows.Languages(name)
+			}
 			a.mu.Lock()
 			run.status = flowState{State: "running"}
 			a.mu.Unlock()
@@ -219,12 +218,17 @@ func (a *app) start(name string, s config.Settings) error {
 }
 
 // The caller holds mu while checking artifact state.
-func (a *app) checkStart(name string) error {
+func (a *app) checkStart(name string, s config.Settings) error {
 	if err := a.ctx.Err(); err != nil {
 		return err
 	}
 	var missing []string
-	for _, id := range required(name) {
+	spoken, _ := s.Flows.Languages(name)
+	required, err := catalog.Required(spoken)
+	if err != nil {
+		return err
+	}
+	for _, id := range required {
 		if a.artifacts[id].State != "installed" {
 			missing = append(missing, a.artifacts[id].Artifact.Name)
 		}
@@ -271,13 +275,35 @@ func (a *app) saveSettings(s config.Settings) error {
 		return err
 	}
 	a.mu.Lock()
+	var restart []string
+	for _, name := range []string{"self", "world"} {
+		oldSpoken, _ := old.Flows.Languages(name)
+		newSpoken, _ := s.Flows.Languages(name)
+		oldLanguage, _ := catalog.Spoken(oldSpoken)
+		newLanguage, _ := catalog.Spoken(newSpoken)
+		changed := oldLanguage.Recognizer != newLanguage.Recognizer
+		if name == "self" {
+			changed = changed || old.Flows.Self.Microphone != s.Flows.Self.Microphone || old.Chatbox.Address != s.Chatbox.Address
+		}
+		if changed && a.flows[name].status.active() {
+			restart = append(restart, name)
+		}
+	}
+	a.mu.Unlock()
+	// Finish old recognition before publishing a language that needs another model.
+	for _, name := range restart {
+		a.stop(name)
+	}
+	a.mu.Lock()
 	a.settings = cloneSettings(s)
 	a.settingsError = ""
-	restartSelf := a.flows["self"].status.active()
 	a.mu.Unlock()
-	if restartSelf && (old.Flows.Self.Microphone != s.Flows.Self.Microphone || old.Chatbox.Address != s.Chatbox.Address) {
-		a.stop("self")
-		_ = a.start("self", s)
+	for _, name := range restart {
+		if err := a.start(name, s); err != nil {
+			a.mu.Lock()
+			a.flows[name].status = flowState{State: "error", Error: err.Error()}
+			a.mu.Unlock()
+		}
 	}
 	a.emit("", "settings", "saved")
 	return nil
@@ -291,7 +317,7 @@ func (a *app) changeFlow(name, action string) error {
 	settingsError := a.settingsError
 	var startErr error
 	if action == "start" {
-		startErr = a.checkStart(name)
+		startErr = a.checkStart(name, s)
 	}
 	a.mu.Unlock()
 	if settingsError != "" {
@@ -419,12 +445,18 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 		return pipeline.Stages{}, err
 	}
 	var recognizer asr.Recognizer
-	direction := translate.JapaneseToEnglish
-	if name == "self" {
+	spoken, _ := s.Flows.Languages(name)
+	language, ok := catalog.Spoken(spoken)
+	if !ok {
+		return pipeline.Stages{}, fmt.Errorf("unsupported spoken language %q", spoken)
+	}
+	switch language.Recognizer {
+	case catalog.Haas:
 		recognizer, err = a.engine.LoadHaas(catalog.HaasBundle(a.artifactDir(catalog.Haas), true))
-	} else {
+	case catalog.Parakeet:
 		recognizer, err = a.engine.LoadParakeet(catalog.ParakeetBundle(a.artifactDir(catalog.Parakeet)))
-		direction = translate.EnglishToJapanese
+	default:
+		return pipeline.Stages{}, fmt.Errorf("unsupported recognizer %q", language.Recognizer)
 	}
 	if err != nil {
 		return pipeline.Stages{}, err
@@ -439,9 +471,7 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 		return pipeline.Stages{}, err
 	}
 	stages := pipeline.Stages{Source: a.source(name, s.Flows.Self.Microphone), Probability: silero.NewStream().Probability, Recognize: recognizer.Transcribe,
-		Translate: func(ctx context.Context, text string) (string, error) {
-			return a.translator.Translate(ctx, direction, text)
-		}}
+		Translate: a.translator.Translate}
 	if name == "self" {
 		if a.queue == nil || a.queueAddress != s.Chatbox.Address {
 			if a.queue != nil {
