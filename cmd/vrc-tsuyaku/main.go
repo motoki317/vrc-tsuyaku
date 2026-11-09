@@ -75,7 +75,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	a.checkUpdate(latestReleaseURL, &http.Client{})
-	url := "http://" + listener.Addr().String() + "/#" + a.token
+	url := "http://" + listener.Addr().String() + "/"
 	fmt.Fprintln(out, url)
 	if err := openBrowser(url); err != nil {
 		fmt.Fprintf(errout, "Open the printed URL in a browser: %v\n", err)

@@ -196,7 +196,7 @@ func TestSettingsSaveRejectsUnobservedExternalChange(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if w := request(a, "PUT", "/api/settings", string(body), a.token); w.Code != http.StatusOK {
+			if w := request(a, "PUT", "/api/settings", string(body)); w.Code != http.StatusOK {
 				t.Fatal(w.Code, w.Body.String())
 			}
 			if saved, err := config.Load(a.dir); err != nil || !reflect.DeepEqual(saved, initial) {
@@ -216,7 +216,7 @@ func TestSettingsSaveRejectsUnobservedExternalChange(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			w := request(a, "PUT", "/api/settings", string(body), a.token)
+			w := request(a, "PUT", "/api/settings", string(body))
 			if w.Code != http.StatusConflict {
 				t.Fatalf("stale save returned %d, want 409", w.Code)
 			}
@@ -229,7 +229,7 @@ func TestSettingsSaveRejectsUnobservedExternalChange(t *testing.T) {
 			if data, err := os.ReadFile(path); err != nil || string(data) != tc.external {
 				t.Fatal("stale save overwrote the external edit", string(data), err)
 			}
-			w = request(a, "GET", "/api/state", "", a.token)
+			w = request(a, "GET", "/api/state", "")
 			type settingsSnapshot struct {
 				Settings      config.Settings `json:"settings"`
 				SettingsError string          `json:"settingsError"`
@@ -265,7 +265,7 @@ func TestSettingsSaveRejectsUnobservedExternalChange(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			w = request(a, "PUT", "/api/settings", string(body), a.token)
+			w = request(a, "PUT", "/api/settings", string(body))
 			if w.Code != http.StatusOK {
 				t.Fatal("retry failed", w.Code, w.Body.String())
 			}
@@ -310,7 +310,7 @@ func TestStopWithInvalidExternalSettings(t *testing.T) {
 					pollSettings(a)
 				}
 				for range 2 {
-					if w := request(a, "POST", "/api/flows/"+flow+"/stop", "", a.token); w.Code != http.StatusOK {
+					if w := request(a, "POST", "/api/flows/"+flow+"/stop", ""); w.Code != http.StatusOK {
 						t.Fatal(w.Code, w.Body.String())
 					}
 				}
@@ -323,7 +323,7 @@ func TestStopWithInvalidExternalSettings(t *testing.T) {
 				if body, err := os.ReadFile(path); err != nil || string(body) != invalid {
 					t.Fatal("stop overwrote invalid settings", string(body), err)
 				}
-				if w := request(a, "POST", "/api/flows/"+flow+"/start", "", a.token); w.Code != http.StatusConflict {
+				if w := request(a, "POST", "/api/flows/"+flow+"/start", ""); w.Code != http.StatusConflict {
 					t.Fatal(w.Code, w.Body.String())
 				}
 			})

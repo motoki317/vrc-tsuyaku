@@ -73,18 +73,19 @@ func TestRunExit(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("run did not report startup")
 			}
-			token := address.Fragment
-			address.Fragment = ""
+			if address.Scheme != "http" || !strings.HasPrefix(address.Host, "127.0.0.1:") || address.Path != "/" || address.RawQuery != "" || address.Fragment != "" {
+				t.Fatal("startup did not report a plain loopback URL")
+			}
 			address.Path = "/api/exit"
 			client := &http.Client{Timeout: 5 * time.Second}
-			post := func(authorized bool, want int) {
+			post := func(origin string, want int) {
 				t.Helper()
 				req, err := http.NewRequestWithContext(t.Context(), "POST", address.String(), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if authorized {
-					req.Header.Set("Authorization", "Bearer "+token)
+				if origin != "" {
+					req.Header.Set("Origin", origin)
 				}
 				resp, err := client.Do(req)
 				if err != nil {
@@ -102,14 +103,14 @@ func TestRunExit(t *testing.T) {
 					t.Fatal("Exit did not return a complete empty response")
 				}
 			}
-			post(false, http.StatusUnauthorized)
+			post("http://evil.example", http.StatusForbidden)
 			select {
 			case <-updating:
 			case <-time.After(5 * time.Second):
 				t.Fatal("update request did not start")
 			}
 			if trigger == "exit" {
-				post(true, http.StatusAccepted)
+				post("http://"+address.Host, http.StatusAccepted)
 			} else {
 				cancel()
 			}
@@ -123,7 +124,7 @@ func TestRunExit(t *testing.T) {
 				t.Fatal("run returned before cleanup finished")
 			default:
 			}
-			post(true, http.StatusAccepted)
+			post("", http.StatusAccepted)
 			release()
 			select {
 			case <-done:

@@ -144,7 +144,6 @@
   "error.notAnswering": "VRC\u00a0Tsuyakuが応答しません。起動するか、VRC\u00a0Tsuyakuが最後に開いた画面を使ってください。",
   "error.notSaved": "保存できませんでした。再試行してください。",
   "error.request": "VRC\u00a0Tsuyakuが応答しません。再試行してください。",
-  "error.staleToken": "この画面は以前の起動時のものです。VRC\u00a0Tsuyakuが最後に開いた画面を使ってください。",
   "error.templateInvalid": "テンプレートを修正してください。{{.Translation}}のような項目を使います。",
 
   "//note.translatorHint": "A player whose PC struggles cannot tell from the cards when to switch.",

@@ -144,7 +144,6 @@
   "error.notAnswering": "VRC\u00a0Tsuyaku is not responding. Start it, or use the page that it opened last.",
   "error.notSaved": "Not saved. Try again.",
   "error.request": "VRC\u00a0Tsuyaku did not respond. Try again.",
-  "error.staleToken": "This page is from an earlier run. Use the page that VRC\u00a0Tsuyaku opened last.",
   "error.templateInvalid": "Fix the template. Use fields such as {{.Translation}}.",
 
   "//note.translatorHint": "A player whose PC struggles cannot tell from the cards when to switch.",

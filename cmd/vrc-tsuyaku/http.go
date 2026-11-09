@@ -1,14 +1,15 @@
 package main
 
 import (
-	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
@@ -135,9 +136,30 @@ func (a *app) handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-		if len(r.URL.Path) >= 5 && r.URL.Path[:5] == "/api/" {
-			if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+a.token)) != 1 {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+		local, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+		if !ok {
+			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		_, port, err := net.SplitHostPort(local.String())
+		if err != nil {
+			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		if r.Host != local.String() && !strings.EqualFold(r.Host, "localhost:"+port) {
+			http.Error(w, "forbidden host: open http://"+local.String()+"/", http.StatusForbidden)
+			return
+		}
+		// http.CrossOriginProtection checks only methods other than GET, HEAD and OPTIONS,
+		// so it cannot refuse a cross-site GET. This check covers every method.
+		switch r.Header.Get("Sec-Fetch-Site") {
+		case "cross-site", "same-site":
+			http.Error(w, "forbidden fetch site: type http://"+local.String()+"/ into the address bar", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if origins := r.Header.Values("Origin"); len(origins) > 0 && (len(origins) != 1 || origins[0] != "http://"+r.Host) {
+				http.Error(w, "forbidden origin", http.StatusForbidden)
 				return
 			}
 		}

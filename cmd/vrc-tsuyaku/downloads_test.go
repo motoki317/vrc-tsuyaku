@@ -98,7 +98,7 @@ func TestDownloadAcceptancePreservesExternalSettings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			w := request(a, "POST", "/api/downloads/"+catalog.PLaMo, `{"acceptLicense":true}`, a.token)
+			w := request(a, "POST", "/api/downloads/"+catalog.PLaMo, `{"acceptLicense":true}`)
 			a.downloadsWG.Wait()
 			if tc.invalid {
 				if w.Code != http.StatusConflict || fetches.Load() != 0 {
@@ -211,7 +211,7 @@ func TestDownloadCompletionWaitsForAllRequirements(t *testing.T) {
 		a.downloadsWG.Wait()
 		if failure != nil {
 			var state struct{ Artifacts map[string]artifactState }
-			w := request(a, "GET", "/api/state", "", a.token)
+			w := request(a, "GET", "/api/state", "")
 			if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
 				t.Fatal(err)
 			}
@@ -334,7 +334,7 @@ func TestShutdownDuringDownloadCompletion(t *testing.T) {
 	if starts.Load() != 0 {
 		t.Fatal("shutdown started a waiting flow")
 	}
-	if w := request(a, "POST", "/api/downloads/"+catalog.Silero, "{}", a.token); w.Code != http.StatusConflict {
+	if w := request(a, "POST", "/api/downloads/"+catalog.Silero, "{}"); w.Code != http.StatusConflict {
 		t.Fatal("download started after shutdown", w.Code)
 	}
 }

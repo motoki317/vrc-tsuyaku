@@ -29,7 +29,7 @@ func TestChatboxPreview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		w := request(a, "POST", "/api/chatbox/preview", string(data), a.token)
+		w := request(a, "POST", "/api/chatbox/preview", string(data))
 		if w.Code != http.StatusOK {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -47,11 +47,6 @@ func TestChatboxPreview(t *testing.T) {
 			t.Fatal("preview changed settings")
 		}
 	}
-	for _, token := range []string{"", "wrong"} {
-		if w := request(a, "POST", "/api/chatbox/preview", `{}`, token); w.Code != http.StatusUnauthorized {
-			t.Fatal(w.Code)
-		}
-	}
 }
 
 func TestChatboxPreviewErrors(t *testing.T) {
@@ -66,7 +61,7 @@ func TestChatboxPreviewErrors(t *testing.T) {
 		{`{`, "EOF"},
 		{`{"template":"` + strings.Repeat("a", 64<<10) + `"}`, "too large"},
 	} {
-		w := request(a, "POST", "/api/chatbox/preview", tc.body, a.token)
+		w := request(a, "POST", "/api/chatbox/preview", tc.body)
 		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), tc.want) {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -79,7 +74,7 @@ func TestTemplateSettingsAPI(t *testing.T) {
 	s.Chatbox.Template = "{{.Translation}}"
 	body, _ := json.Marshal(s)
 	for range 2 {
-		w := request(a, "PUT", "/api/settings", string(body), a.token)
+		w := request(a, "PUT", "/api/settings", string(body))
 		if w.Code != http.StatusOK {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -91,7 +86,7 @@ func TestTemplateSettingsAPI(t *testing.T) {
 	for _, format := range []string{"{{", "[{{.SourceLang}}] {{.Orignal}}"} {
 		s.Chatbox.Template = format
 		body, _ = json.Marshal(s)
-		w := request(a, "PUT", "/api/settings", string(body), a.token)
+		w := request(a, "PUT", "/api/settings", string(body))
 		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "chatbox.template") {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -199,7 +194,7 @@ func TestTemplateEditsAndErrorsKeepFlowRunning(t *testing.T) {
 	}
 	s.Chatbox.Template = "{{.Translation}}!"
 	body, _ := json.Marshal(s)
-	if w := request(a, "PUT", "/api/settings", string(body), a.token); w.Code != http.StatusOK {
+	if w := request(a, "PUT", "/api/settings", string(body)); w.Code != http.StatusOK {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	close(release)

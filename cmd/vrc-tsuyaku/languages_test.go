@@ -93,7 +93,7 @@ func TestLanguageChangesReachRunningPipeline(t *testing.T) {
 					s.Flows.World.Spoken, s.Flows.World.Target = source, target
 				}
 				body, _ := json.Marshal(s)
-				if w := request(a, "PUT", "/api/settings", string(body), a.token); w.Code != http.StatusOK {
+				if w := request(a, "PUT", "/api/settings", string(body)); w.Code != http.StatusOK {
 					t.Fatal(w.Code, w.Body.String())
 				}
 				input <- struct{}{}
@@ -179,7 +179,7 @@ func TestSpokenChangeStopsBeforePublishingAndNeedsDownload(t *testing.T) {
 				s.Flows.World.Spoken = tc.spoken
 			}
 			body, _ := json.Marshal(s)
-			w := request(a, "PUT", "/api/settings", string(body), a.token)
+			w := request(a, "PUT", "/api/settings", string(body))
 			if w.Code != http.StatusOK {
 				t.Fatal(w.Code, w.Body.String())
 			}
@@ -189,7 +189,7 @@ func TestSpokenChangeStopsBeforePublishingAndNeedsDownload(t *testing.T) {
 			if status.State != "error" || !strings.Contains(status.Error, a.artifacts[tc.missing].Artifact.Name) {
 				t.Fatal(status)
 			}
-			if w := request(a, "POST", "/api/flows/"+tc.flow+"/start", "", a.token); w.Code != http.StatusConflict {
+			if w := request(a, "POST", "/api/flows/"+tc.flow+"/start", ""); w.Code != http.StatusConflict {
 				t.Fatal(w.Code, w.Body.String())
 			}
 			saved, err := config.Load(a.dir)

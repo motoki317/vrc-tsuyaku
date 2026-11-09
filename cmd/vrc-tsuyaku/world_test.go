@@ -49,7 +49,6 @@ func TestWorldCapture(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		r.Header.Set("Authorization", "Bearer "+a.token)
 		response, err := server.Client().Do(r)
 		if err != nil {
 			t.Fatal(err)
