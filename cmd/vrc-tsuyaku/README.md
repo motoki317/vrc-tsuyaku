@@ -6,7 +6,7 @@ The [README](../../README.md) covers using the app.
 The page is embedded in the executable, so rebuild after you change `ui/`.
 Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits.
 
-Pressing **Start** saves the flow as enabled, and `main` starts every enabled flow at launch. **Stop** saves it as disabled.
+Turning a flow's switch on saves the flow as enabled, and `main` starts every enabled flow at launch. Turning the switch off saves the flow as disabled.
 The web page saves each field change at once through `PUT /api/settings`.
 `llama-server` keeps running while flows are stopped.
 The world flow captures `VRChat.exe`. [The audio guide](../../internal/audio/README.md#application-capture) describes how capture finds VRChat and when it fails.
@@ -91,6 +91,6 @@ The native Windows checks play audible audio, so a person runs them, never an au
 2. Start two test playback programs with different executable names and different audio.
 3. Run `vrc-tsuyaku record -app <program>.exe -seconds 3 isolated.wav` with one program's name.
 4. Check that the WAV holds only that program's audio.
-5. Start VRChat, then press **Start** on the world flow. Join a world where people speak English, or play an English video in a world's video player.
-6. Check that English sentences and their Japanese translations appear under "Watch the translations".
+5. Start VRChat, then turn on the **Others' voices** switch. Join a world where people speak English, or play an English video in a world's video player.
+6. Check that English sentences and their Japanese translations appear on the Translation screen.
 7. Exit VRChat and check that the world flow shows an error. Restart VRChat, then press **Try again**.

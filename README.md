@@ -55,13 +55,13 @@ PLaMo 3 Translate is under the [PLaMo Community License](https://huggingface.co/
    ```
 
 4. The page opens in your browser. If it does not, open the complete URL that the terminal prints, including the part after `#`.
-5. Follow the page's three steps: get the downloads, start a flow, watch the translations.
+5. Get the downloads on the page's Setup screen. Then, on the Translation screen, turn on a flow's switch: **My voice** runs the self flow, and **Others' voices** runs the world flow. Translations appear below the switches.
 
 Keep the terminal open while you use the app. Ctrl+C quits it.
 Stopping a flow keeps its models in memory. Quit the app to free that memory.
 
 Start VRChat before you start the world flow.
-A started flow also starts each time the app opens, until you press Stop. If you leave the world flow started, start VRChat before you open the app.
+A started flow also starts each time the app opens, until you turn its switch off. If you leave the world flow started, start VRChat before you open the app.
 On Windows, the world flow needs Windows 11, or Windows 10 version 2004 or later. Windows 10 is untested.
 On Linux, the app connects to PulseAudio, or to PipeWire through `pipewire-pulse`. The world flow with VRChat under Proton is untested.
 
