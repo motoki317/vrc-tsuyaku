@@ -1,6 +1,4 @@
 'use strict';
-// The app puts the API token in the URL fragment, which the browser never sends to a server.
-const token = location.hash.slice(1);
 const $ = id => document.getElementById(id);
 const SVG = 'http://www.w3.org/2000/svg';
 // Lists put My voice first, because translating the player's own voice is the app's main feature.
@@ -197,14 +195,10 @@ class RequestError extends Error {
 async function api(path, options = {}) {
   let response;
   try {
-    response = await fetch('/api/' + path, {...options, headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}});
+    response = await fetch('/api/' + path, {...options, headers: {'Content-Type': 'application/json'}});
   } catch {
     if (connection === 'ok') setConnection('reconnecting');
     throw new RequestError(0, t('error.request'));
-  }
-  if (response.status === 401) {
-    setConnection('stale');
-    throw new RequestError(401, t('error.staleToken'));
   }
   if (connection === 'reconnecting') setConnection('ok');
   if (!response.ok) {
@@ -1689,7 +1683,7 @@ function showConnection() {
   const bar = $('connection');
   bar.hidden = connection === 'ok';
   bar.dataset.kind = connection;
-  setText($('connection-text'), {reconnecting: t('state.reconnecting'), down: t('error.notAnswering'), stale: t('error.staleToken'), token: t('error.staleToken')}[connection] || '');
+  setText($('connection-text'), {reconnecting: t('state.reconnecting'), down: t('error.notAnswering')}[connection] || '');
   $('connection-text').setAttribute('role', connection === 'reconnecting' ? 'status' : 'alert');
 }
 
@@ -1734,7 +1728,6 @@ async function stream() {
       }
     } catch (e) {
       if (exitState === 'exited') return;
-      if (e.status === 401) return setConnection('stale');
       failures++;
       setConnection(failures > 2 ? 'down' : 'reconnecting');
       await sleep(2000);
@@ -1747,10 +1740,10 @@ async function stream() {
 // '' until the player presses Exit, then 'waiting' until the server stops, then 'exited'.
 let exitState = '';
 
-// An error in the connection bar disables the controls below it, and a pending exit disables every control but Exit.
-// Exit needs the server that opened this page, so the bar's errors disable it too.
+// While the server does not answer, the connection bar's error disables the controls below it, and Exit too.
+// A pending exit disables every control but Exit.
 function lockControls() {
-  const blocked = !['ok', 'reconnecting'].includes(connection), waiting = exitState === 'waiting';
+  const blocked = connection === 'down', waiting = exitState === 'waiting';
   $('main').inert = blocked || waiting;
   $('tabs').inert = waiting;
   document.querySelector('.menu').inert = waiting;
@@ -1854,17 +1847,7 @@ async function start() {
   document.body.prepend(document.importNode(icons, true));
   bind();
   setLanguage(browserLanguage());
-  if (!token) {
-    connection = 'token';
-    showConnection();
-    $('main').hidden = true;
-    return;
-  }
   stream();
 }
-
-window.addEventListener('hashchange', () => {
-  if (location.hash.slice(1) !== token) location.reload();
-});
 
 start();
