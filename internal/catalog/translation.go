@@ -14,16 +14,15 @@ const (
 )
 
 type Translator struct {
-	ID          string  `json:"id"`
-	Artifact    string  `json:"artifact"`
-	Default     bool    `json:"default"`
-	MemoryBytes int64   `json:"memoryBytes"`
-	Speed       float64 `json:"speed"`
+	ID       string  `json:"id"`
+	Artifact string  `json:"artifact"`
+	Default  bool    `json:"default"`
+	Speed    float64 `json:"speed"`
 }
 
 var translators = []Translator{
-	{ID: Translator2B, Artifact: PLaMo, Default: true, MemoryBytes: 3230453760, Speed: 1},
-	{ID: Translator08B, Artifact: PLaMo08B, MemoryBytes: 1021890560, Speed: 562588500.0 / 158268955},
+	{ID: Translator2B, Artifact: PLaMo, Default: true, Speed: 1},
+	{ID: Translator08B, Artifact: PLaMo08B, Speed: 562588500.0 / 158268955},
 }
 
 func Translators() []Translator { return slices.Clone(translators) }

@@ -1099,7 +1099,7 @@ function renderTranslator() {
     card.stateIcon.setAttribute('role', 'img');
     card.stateIcon.setAttribute('aria-label', t('state.missing'));
     setText(card.stateText, installed ? t('state.installed') : formatSize(artifactSize(artifact)));
-    setText(card.memory, t('value.memory', {size: formatSize(translator.memoryBytes)}));
+    setText(card.memory, t('value.memory', {size: formatSize(artifact.MemoryBytes)}));
     // The catalog gives each model's speed relative to the most accurate one.
     setText(card.gain, translator.speed > 1 ? t('value.faster', {n: Math.floor(translator.speed)}) : t('value.moreAccurate'));
     if (!group.dataset.dirty) card.input.checked = translator.id === saved;
