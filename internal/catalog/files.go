@@ -43,7 +43,7 @@ func ParakeetBundle(id, dir string) ParakeetFiles {
 func SileroModel(dir string) string { return modelPath(Silero, dir, "model") }
 
 // PLaMoModel names the local translation weights.
-func PLaMoModel(dir string) string { return modelPath(PLaMo, dir, "model") }
+func PLaMoModel(id, dir string) string { return modelPath(id, dir, "model") }
 
 // LlamaServer names the server executable for the current OS.
 func LlamaServer(dir string) string { return modelPath(LlamaCPP, dir, "server") }

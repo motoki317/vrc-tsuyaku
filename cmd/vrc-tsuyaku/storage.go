@@ -32,7 +32,7 @@ func (a *app) deleteDownload(id string) error {
 		if run.status.active() {
 			active = true
 			spoken, _ := a.settings.Flows.Languages(name)
-			required, _ := catalog.Required(spoken)
+			required, _ := catalog.Required(spoken, a.settings.Translator)
 			inUse = inUse || slices.Contains(required, id)
 		}
 	}

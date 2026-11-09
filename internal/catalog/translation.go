@@ -8,6 +8,44 @@ import (
 // TranslationAlias is the model name shared by llama-server and translation requests.
 const TranslationAlias = "plamo-3-translate"
 
+const (
+	Translator2B  = "plamo-3-translate-2b"
+	Translator08B = "plamo-3-translate-0.8b"
+)
+
+type Translator struct {
+	ID          string  `json:"id"`
+	Artifact    string  `json:"artifact"`
+	Default     bool    `json:"default"`
+	MemoryBytes int64   `json:"memoryBytes"`
+	Speed       float64 `json:"speed"`
+}
+
+var translators = []Translator{
+	{ID: Translator2B, Artifact: PLaMo, Default: true, MemoryBytes: 3230453760, Speed: 1},
+	{ID: Translator08B, Artifact: PLaMo08B, MemoryBytes: 1021890560, Speed: 562588500.0 / 158268955},
+}
+
+func Translators() []Translator { return slices.Clone(translators) }
+
+func LookupTranslator(id string) (Translator, bool) {
+	for _, translator := range translators {
+		if translator.ID == id {
+			return translator, true
+		}
+	}
+	return Translator{}, false
+}
+
+func DefaultTranslator() string {
+	for _, translator := range translators {
+		if translator.Default {
+			return translator.ID
+		}
+	}
+	panic("catalog has no default translator")
+}
+
 // Japanese and English are the default spoken languages.
 const (
 	Japanese = "ja"
@@ -53,17 +91,18 @@ var spokenLanguages = []SpokenLanguage{
 	{Code: "auto", Recognizer: ParakeetV3, Auto: true},
 }
 
-var commonArtifacts = []string{ONNXRuntime, Silero, LlamaCPP, PLaMo}
+var commonArtifacts = []string{ONNXRuntime, Silero, LlamaCPP}
 
 // LanguageCatalog supplies the downloads for a language choice before it is saved.
 type LanguageCatalog struct {
 	Targets         []string         `json:"targets"`
 	Spoken          []SpokenLanguage `json:"spoken"`
 	CommonArtifacts []string         `json:"commonArtifacts"`
+	Translators     []Translator     `json:"translators"`
 }
 
 func Languages() LanguageCatalog {
-	return LanguageCatalog{slices.Clone(targetCodes), slices.Clone(spokenLanguages), slices.Clone(commonArtifacts)}
+	return LanguageCatalog{slices.Clone(targetCodes), slices.Clone(spokenLanguages), slices.Clone(commonArtifacts), Translators()}
 }
 
 func IsTarget(code string) bool {
@@ -89,12 +128,16 @@ func TranslatorSource(code string) string {
 	return code
 }
 
-func Required(spoken string) ([]string, error) {
+func Required(spoken, translator string) ([]string, error) {
 	language, ok := Spoken(spoken)
 	if !ok {
 		return nil, fmt.Errorf("unsupported spoken language %q", spoken)
 	}
-	return append(slices.Clone(commonArtifacts), language.Recognizer), nil
+	choice, ok := LookupTranslator(translator)
+	if !ok {
+		return nil, fmt.Errorf("unsupported translator %q", translator)
+	}
+	return append(slices.Clone(commonArtifacts), choice.Artifact, language.Recognizer), nil
 }
 
 func recognizerLanguages(id string) []string {

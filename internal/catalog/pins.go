@@ -8,7 +8,15 @@ const (
 	parakeetBase   = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/0bbb45a3365852604aef28b538a8f066f4ccaa85/"
 	parakeetV3Base = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/"
 	plamoBase      = "https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/resolve/" + plamoRevision + "/"
+	plamo08Base    = "https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/1cf96ae02133958a20074bfdfab76517bb737d00/"
 )
+
+func plamoArtifact(name, base, file string, size int64, hash string) entry {
+	return entry{Artifact: Artifact{Name: name, Languages: targetCodes, AcceptanceKey: PLaMoAcceptanceKey,
+		Licenses: []License{{Name: "PLaMo Community License", URL: base + "LICENSE/en", Covers: "PLaMo model", Text: plamoLicense, Credit: "Built with PLaMo"}},
+		Sources:  []Source{plain(base, file, "model", size, hash)},
+	}}
+}
 
 var artifacts = map[string]entry{
 	Haas: {referenceEncoder: "encoder.onnx", Artifact: Artifact{Name: "Haas Japanese int8", Languages: recognizerLanguages(Haas),
@@ -42,10 +50,8 @@ var artifacts = map[string]entry{
 	Silero: {Artifact: Artifact{Name: "Silero VAD v6.2.3", Licenses: []License{{Name: "MIT", URL: "https://github.com/snakers4/silero-vad/blob/5cd7945676eb32225748052e2e6a0580e4686a08/LICENSE", Covers: "Silero graph"}}, Sources: []Source{
 		plain("https://raw.githubusercontent.com/snakers4/silero-vad/5cd7945676eb32225748052e2e6a0580e4686a08/src/silero_vad/data/", "silero_vad.onnx", "model", 2327524, "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"),
 	}}},
-	PLaMo: {Artifact: Artifact{Name: "PLaMo 3 Translate 2B Q4_K_M", Languages: targetCodes, AcceptanceKey: PLaMoAcceptanceKey,
-		Licenses: []License{{Name: "PLaMo Community License", URL: plamoBase + "LICENSE/en", Covers: "PLaMo model", Text: plamoLicense, Credit: "Built with PLaMo"}}, Sources: []Source{
-			plain(plamoBase, "plamo-3-translate-2b-Q4_K_M.gguf", "model", 1807203040, "1ffd9073afcc70e35ccc942428aa2b73d7aa2b9ea779bf504b775369e0276c13"),
-		}}},
+	PLaMo:    plamoArtifact("PLaMo 3 Translate 2B Q4_K_M", plamoBase, "plamo-3-translate-2b-Q4_K_M.gguf", 1807203040, "1ffd9073afcc70e35ccc942428aa2b73d7aa2b9ea779bf504b775369e0276c13"),
+	PLaMo08B: plamoArtifact("PLaMo 3 Translate 0.8B Q4_K_M", plamo08Base, "plamo-3-translate-0.8b-Q4_K_M.gguf", 573126848, "70891ec70dc7ab4205745a38307867c2881b99239f20327927633abfe4bc9ec6"),
 	LlamaCPP: {Artifact: Artifact{Name: "llama.cpp b12201 CPU", Licenses: []License{{Name: "MIT", URL: "https://github.com/ggml-org/llama.cpp/blob/b12201/LICENSE", Covers: "llama.cpp runtime"}}}, platforms: map[string]platform{
 		"linux": {Sources: []Source{{URL: "https://github.com/ggml-org/llama.cpp/releases/download/b12201/llama-b12201-bin-ubuntu-x64.tar.gz", Format: "tar.gz", Size: 23067593, SHA256: "3fb1afbee5711414f00e59068c10602b1d34919aaea7d4253260387e0e6e4ccf", Files: []File{
 			{Path: "libggml-cpu-cannonlake.so", Member: "llama-b12201/libggml-cpu-cannonlake.so", Size: 1583456, SHA256: "c4e143051063c954dd2ed293d3d42037b30373c3fb1466a93a969bbbbe9a1476"},

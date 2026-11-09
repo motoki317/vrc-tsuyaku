@@ -443,6 +443,26 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 }
 .page p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .page-count { float: right; margin-left: 8px; font-size: 0.8em; color: #c9ced6; font-variant-numeric: tabular-nums; }
+/* Translator: a radio group of cards. The whole card selects, so the card shows the focus ring. */
+.options { display: flex; flex-direction: column; gap: 8px; }
+.option {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+}
+.option:hover { background: var(--surface-2); }
+.option:has(:checked) { border-color: var(--fg); }
+.option:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.option input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--fg); cursor: pointer; }
+.option input:focus-visible { outline: none; }
+.option-body { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.option-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.option-name { overflow-wrap: anywhere; }
+.tag { margin-left: auto; padding: 1px 8px; border-radius: 10px; background: var(--surface-2); color: var(--muted); font-size: 0.85em; white-space: nowrap; }
+.option-detail { display: flex; flex-wrap: wrap; gap: 4px 20px; color: var(--muted); font-size: 0.9em; }
+.detail { display: inline-flex; align-items: center; gap: 6px; }
+.detail .icon { width: 16px; height: 16px; }
+.detail.installed { color: var(--fg); }
+.hint { margin: 12px 0 16px; color: var(--muted); }
 .installed-total { margin: 0 0 8px; font-weight: 700; }
 .installed-total .value { color: var(--muted); font-weight: 600; margin-left: 6px; }
 .about-title { margin-bottom: 2px; }

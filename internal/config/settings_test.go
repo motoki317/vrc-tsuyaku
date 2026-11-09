@@ -47,8 +47,45 @@ func TestLoadDefaultsAndPartial(t *testing.T) {
 		if got.UI.Language != "" {
 			t.Fatal("missing UI language must follow the browser", got.UI)
 		}
+		if got.Translator != "plamo-3-translate-2b" {
+			t.Fatal("missing translator must default to 2B", got.Translator)
+		}
 		if body != "" && (got.Flows.Self.Microphone != "endpoint" || !got.Flows.World.Enabled) {
 			t.Fatalf("fields missing: %+v", got)
+		}
+	}
+}
+
+func TestTranslatorSettings(t *testing.T) {
+	dir := t.TempDir()
+	for _, translator := range catalog.Translators() {
+		s := Defaults()
+		s.Translator = translator.ID
+		if err := Save(dir, s); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Load(dir)
+		if err != nil || !reflect.DeepEqual(got, s) {
+			t.Fatal(got, err)
+		}
+		body, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))
+		if err != nil || !strings.Contains(string(body), "translator: "+translator.ID+"\n") {
+			t.Fatal("translator YAML key differs", err)
+		}
+	}
+	for _, translator := range []string{"", "unknown", catalog.PLaMo, catalog.PLaMo08B} {
+		s := Defaults()
+		s.Translator = translator
+		if err := Save(dir, s); !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "translator") {
+			t.Fatalf("accepted unsupported translator %q: %v", translator, err)
+		}
+	}
+	for _, body := range []string{"translator: unknown\n", "translator: ''\n"} {
+		if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "translator") {
+			t.Fatalf("loaded unsupported translator: %v", err)
 		}
 	}
 }

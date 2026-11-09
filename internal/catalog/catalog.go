@@ -15,6 +15,7 @@ const (
 	ParakeetV3    = "parakeet-tdt-0.6b-v3-int8"
 	Silero        = "silero-vad-v6.2.3"
 	PLaMo         = "plamo-3-translate-2b-q4_k_m"
+	PLaMo08B      = "plamo-3-translate-0.8b-q4_k_m"
 	LlamaCPP      = "llama.cpp-b12201-cpu"
 	ONNXRuntime   = "onnxruntime-1.31.1-cpu"
 	plamoRevision = "4f672106b847200bfdc0f6af6c321cd94eba1aed"

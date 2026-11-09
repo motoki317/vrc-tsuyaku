@@ -14,7 +14,7 @@ import (
 func TestPins(t *testing.T) {
 	for _, goos := range []string{"linux", "windows"} {
 		list, err := List(goos)
-		if err != nil || len(list) != 7 {
+		if err != nil || len(list) != 8 {
 			t.Fatalf("catalog: %v, %v", list, err)
 		}
 		for _, a := range list {
@@ -27,7 +27,7 @@ func TestPins(t *testing.T) {
 					if l.Name == "" || l.Covers == "" {
 						t.Fatal("incomplete license")
 					}
-					if a.ID != PLaMo && l.Credit != "" {
+					if a.ID != PLaMo && a.ID != PLaMo08B && l.Credit != "" {
 						t.Fatalf("unexpected required credit %q", l.Credit)
 					}
 					checkHTTPS(t, l.URL)
@@ -111,7 +111,8 @@ func TestCopiesAndPaths(t *testing.T) {
 		{Haas, "features", h.Features}, {Haas, "encoder", h.Encoder}, {Haas, "decoder", h.Decoder}, {Haas, "joint", h.Joint}, {Haas, "vocabulary", h.Vocabulary},
 		{Parakeet, "features", p.Features}, {Parakeet, "encoder", p.Encoder}, {Parakeet, "decoder_joint", p.DecoderJoint}, {Parakeet, "vocabulary", p.Vocabulary},
 		{ParakeetV3, "features", v3.Features}, {ParakeetV3, "encoder", v3.Encoder}, {ParakeetV3, "decoder_joint", v3.DecoderJoint}, {ParakeetV3, "vocabulary", v3.Vocabulary},
-		{Silero, "model", SileroModel(dir)}, {PLaMo, "model", PLaMoModel(dir)},
+		{Silero, "model", SileroModel(dir)}, {PLaMo, "model", PLaMoModel(PLaMo, dir)},
+		{PLaMo08B, "model", PLaMoModel(PLaMo08B, dir)},
 	} {
 		a, _ := Lookup(tc.id, "linux")
 		want, err := a.Path(dir, tc.role)
@@ -133,40 +134,51 @@ func TestCopiesAndPaths(t *testing.T) {
 }
 
 func TestPLaMoLicenseAvailableOffline(t *testing.T) {
-	a, _ := Lookup(PLaMo, "linux")
-	if a.AcceptanceKey != "plamo-community-license@2026-11-09" {
-		t.Fatalf("license acceptance key = %q", a.AcceptanceKey)
-	}
-	if len(a.Licenses) != 1 || !strings.Contains(a.Licenses[0].Text, "legal guardian") {
-		t.Fatal("full license unavailable before network")
-	}
-	if a.Licenses[0].Credit != "Built with PLaMo" {
-		t.Fatalf("required credit = %q, want Built with PLaMo", a.Licenses[0].Credit)
-	}
-	sum := sha256.Sum256([]byte(a.Licenses[0].Text))
-	if hex.EncodeToString(sum[:]) != "ca0c5e90f6de6799fc2d2d4f2b2647cc088444c19f286f689e525d4ad28f9ed6" {
-		t.Fatal("embedded license differs from pinned bytes")
+	for _, translator := range Translators() {
+		t.Run(translator.ID, func(t *testing.T) {
+			a, _ := Lookup(translator.Artifact, "linux")
+			if a.AcceptanceKey != "plamo-community-license@2026-11-09" {
+				t.Fatalf("license acceptance key = %q", a.AcceptanceKey)
+			}
+			if len(a.Licenses) != 1 || !strings.Contains(a.Licenses[0].Text, "legal guardian") {
+				t.Fatal("full license unavailable before network")
+			}
+			if a.Licenses[0].Credit != "Built with PLaMo" {
+				t.Fatalf("required credit = %q, want Built with PLaMo", a.Licenses[0].Credit)
+			}
+			sum := sha256.Sum256([]byte(a.Licenses[0].Text))
+			if hex.EncodeToString(sum[:]) != "ca0c5e90f6de6799fc2d2d4f2b2647cc088444c19f286f689e525d4ad28f9ed6" {
+				t.Fatal("embedded license differs from pinned bytes")
+			}
+		})
 	}
 }
 
 func TestPLaMoPin(t *testing.T) {
-	const base = "https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/resolve/4f672106b847200bfdc0f6af6c321cd94eba1aed/"
-	for _, goos := range []string{"linux", "windows"} {
-		t.Run(goos, func(t *testing.T) {
-			a, err := Lookup(PLaMo, goos)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(a.Licenses) != 1 || a.Licenses[0].URL != base+"LICENSE/en" {
-				t.Fatalf("license URL differs from pinned revision: %+v", a.Licenses)
-			}
-			if len(a.Sources) != 1 {
-				t.Fatalf("model sources = %d, want 1", len(a.Sources))
-			}
-			s := a.Sources[0]
-			if s.URL != base+"plamo-3-translate-2b-Q4_K_M.gguf" || s.Size != 1807203040 || s.SHA256 != "1ffd9073afcc70e35ccc942428aa2b73d7aa2b9ea779bf504b775369e0276c13" {
-				t.Fatalf("model pin differs: %+v", s)
-			}
-		})
+	for _, tc := range []struct {
+		id, base, file, hash string
+		size                 int64
+	}{
+		{PLaMo, "https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/resolve/4f672106b847200bfdc0f6af6c321cd94eba1aed/", "plamo-3-translate-2b-Q4_K_M.gguf", "1ffd9073afcc70e35ccc942428aa2b73d7aa2b9ea779bf504b775369e0276c13", 1807203040},
+		{PLaMo08B, "https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/1cf96ae02133958a20074bfdfab76517bb737d00/", "plamo-3-translate-0.8b-Q4_K_M.gguf", "70891ec70dc7ab4205745a38307867c2881b99239f20327927633abfe4bc9ec6", 573126848},
+	} {
+		for _, goos := range []string{"linux", "windows"} {
+			t.Run(tc.id+"/"+goos, func(t *testing.T) {
+				a, err := Lookup(tc.id, goos)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(a.Licenses) != 1 || a.Licenses[0].URL != tc.base+"LICENSE/en" {
+					t.Fatalf("license URL differs from pinned revision: %+v", a.Licenses)
+				}
+				if len(a.Sources) != 1 {
+					t.Fatalf("model sources = %d, want 1", len(a.Sources))
+				}
+				s := a.Sources[0]
+				if s.URL != tc.base+tc.file || s.Size != tc.size || s.SHA256 != tc.hash {
+					t.Fatalf("model pin differs: %+v", s)
+				}
+			})
+		}
 	}
 }

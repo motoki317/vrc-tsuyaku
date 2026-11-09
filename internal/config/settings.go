@@ -24,6 +24,7 @@ var ErrInvalidSettings = errors.New("invalid settings")
 // Settings is the complete settings.yaml document. Saving rewrites it and removes comments.
 type Settings struct {
 	UI               UI                `yaml:"ui"`
+	Translator       string            `yaml:"translator"`
 	Flows            Flows             `yaml:"flows"`
 	Chatbox          Chatbox           `yaml:"chatbox"`
 	LicensesAccepted map[string]string `yaml:"licenses_accepted"`
@@ -66,6 +67,7 @@ type Chatbox struct {
 // Defaults leaves both flows stopped and uses the local VRChat address.
 func Defaults() Settings {
 	return Settings{
+		Translator: catalog.DefaultTranslator(),
 		Flows: Flows{
 			Self:  SelfFlow{Spoken: catalog.Japanese, Target: catalog.English},
 			World: WorldFlow{Spoken: catalog.English, Target: catalog.Japanese},
@@ -77,6 +79,9 @@ func Defaults() Settings {
 
 // Validate rejects unsupported languages, invalid destinations and invalid acceptance timestamps.
 func (s Settings) Validate() error {
+	if _, ok := catalog.LookupTranslator(s.Translator); !ok {
+		return fmt.Errorf("translator: unsupported translator %q", s.Translator)
+	}
 	if s.UI.Language != "" && s.UI.Language != "en" && s.UI.Language != "ja" {
 		return fmt.Errorf("ui.language: unsupported language %q", s.UI.Language)
 	}
