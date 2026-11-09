@@ -22,9 +22,14 @@ var ErrInvalidSettings = errors.New("invalid settings")
 
 // Settings is the complete settings.yaml document. Saving rewrites it and removes comments.
 type Settings struct {
+	UI               UI                `yaml:"ui"`
 	Flows            Flows             `yaml:"flows"`
 	Chatbox          Chatbox           `yaml:"chatbox"`
 	LicensesAccepted map[string]string `yaml:"licenses_accepted"`
+}
+
+type UI struct {
+	Language string `yaml:"language"`
 }
 
 type Flows struct {
@@ -71,6 +76,9 @@ func Defaults() Settings {
 
 // Validate rejects unsupported languages, invalid destinations and invalid acceptance timestamps.
 func (s Settings) Validate() error {
+	if s.UI.Language != "" && s.UI.Language != "en" && s.UI.Language != "ja" {
+		return fmt.Errorf("ui.language: unsupported language %q", s.UI.Language)
+	}
 	for _, name := range []string{"self", "world"} {
 		spoken, target := s.Flows.Languages(name)
 		language, ok := catalog.Spoken(spoken)

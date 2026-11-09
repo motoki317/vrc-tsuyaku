@@ -65,6 +65,7 @@ type app struct {
 	queueAddress string
 	source       func(flowName, microphoneID string) audio.Source
 	prepare      func(ctx context.Context, flowName string, settings config.Settings) (pipeline.Stages, error)
+	open         func(string) error
 }
 
 func newApp(ctx context.Context, dir string) (*app, error) {
@@ -75,7 +76,7 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	a := &app{ctx: ctx, cancel: cancel, dir: dir, token: rand.Text(), downloads: manager,
 		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
-		source: flowSource,
+		source: flowSource, open: openFile,
 	}
 	a.prepare = a.prepareModels
 	settings, loadErr := config.Load(dir)

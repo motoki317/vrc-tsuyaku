@@ -90,6 +90,18 @@ func (a *app) handler() http.Handler {
 		w.WriteHeader(http.StatusAccepted)
 	})
 	mux.HandleFunc("GET /api/events", a.streamEvents)
+	mux.HandleFunc("POST /api/open/{target}", func(w http.ResponseWriter, r *http.Request) {
+		target := r.PathValue("target")
+		if target != "data" && target != "settings" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := a.openTarget(target); err != nil {
+			apiError(w, err, http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	files, _ := fs.Sub(ui, "ui")
 	mux.Handle("/", http.FileServerFS(files))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

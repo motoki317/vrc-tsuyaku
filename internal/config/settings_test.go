@@ -42,9 +42,38 @@ func TestLoadDefaultsAndPartial(t *testing.T) {
 		if got.Chatbox.Template != chatbox.DefaultTemplate {
 			t.Fatalf("missing template default: %q", got.Chatbox.Template)
 		}
+		if got.UI.Language != "" {
+			t.Fatal("missing UI language must follow the browser", got.UI)
+		}
 		if body != "" && (got.Flows.Self.Microphone != "endpoint" || !got.Flows.World.Enabled) {
 			t.Fatalf("fields missing: %+v", got)
 		}
+	}
+}
+
+func TestUILanguage(t *testing.T) {
+	dir := t.TempDir()
+	for _, language := range []string{"", "en", "ja"} {
+		s := Defaults()
+		s.UI.Language = language
+		if err := Save(dir, s); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Load(dir)
+		if err != nil || !reflect.DeepEqual(got, s) {
+			t.Fatal(got, err)
+		}
+	}
+	s := Defaults()
+	s.UI.Language = "fr"
+	if err := Save(dir, s); !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "ui.language") {
+		t.Fatalf("accepted unsupported UI language: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte("ui: {language: JA}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "ui.language") {
+		t.Fatalf("loaded unsupported UI language: %v", err)
 	}
 }
 
