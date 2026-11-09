@@ -1713,8 +1713,8 @@ async function exitApp() {
     return;
   }
   // The server answers before it shuts down, and has stopped once a request gets no answer.
-  const deadline = Date.now() + 10000;
-  while (Date.now() < deadline) {
+  // Cleanup can outlast any fixed limit, such as a model that is still loading, so the page waits for the server.
+  for (;;) {
     try {
       await fetch('/', {method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(1000)});
     } catch {
