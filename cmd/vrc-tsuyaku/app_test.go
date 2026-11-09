@@ -91,7 +91,7 @@ func TestRequiredArtifactsInState(t *testing.T) {
 	}
 	for _, flow := range []string{"self", "world"} {
 		spoken, _ := a.settings.Flows.Languages(flow)
-		want, _ := catalog.Required(spoken)
+		want, _ := catalog.Required(spoken, a.settings.Translator)
 		if !reflect.DeepEqual(state.Required[flow], want) {
 			t.Fatalf("%s: %v, want %v", flow, state.Required[flow], want)
 		}
@@ -120,7 +120,7 @@ func TestRequiredArtifactsInState(t *testing.T) {
 
 func wantRequirements(t *testing.T, spoken string) []string {
 	t.Helper()
-	required, err := catalog.Required(spoken)
+	required, err := catalog.Required(spoken, catalog.DefaultTranslator())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -91,7 +91,7 @@ var spokenLanguages = []SpokenLanguage{
 	{Code: "auto", Recognizer: ParakeetV3, Auto: true},
 }
 
-var commonArtifacts = []string{ONNXRuntime, Silero, LlamaCPP, PLaMo}
+var commonArtifacts = []string{ONNXRuntime, Silero, LlamaCPP}
 
 // LanguageCatalog supplies the downloads for a language choice before it is saved.
 type LanguageCatalog struct {
@@ -128,12 +128,16 @@ func TranslatorSource(code string) string {
 	return code
 }
 
-func Required(spoken string) ([]string, error) {
+func Required(spoken, translator string) ([]string, error) {
 	language, ok := Spoken(spoken)
 	if !ok {
 		return nil, fmt.Errorf("unsupported spoken language %q", spoken)
 	}
-	return append(slices.Clone(commonArtifacts), language.Recognizer), nil
+	choice, ok := LookupTranslator(translator)
+	if !ok {
+		return nil, fmt.Errorf("unsupported translator %q", translator)
+	}
+	return append(slices.Clone(commonArtifacts), choice.Artifact, language.Recognizer), nil
 }
 
 func recognizerLanguages(id string) []string {

@@ -160,7 +160,7 @@ func (a *app) snapshot() any {
 	for name, run := range a.flows {
 		flows[name] = run.status
 		spoken, _ := a.settings.Flows.Languages(name)
-		requirements[name], _ = catalog.Required(spoken)
+		requirements[name], _ = catalog.Required(spoken, a.settings.Translator)
 	}
 	return struct {
 		App             appInfo                  `json:"app"`
@@ -253,7 +253,7 @@ func (a *app) checkStart(name string, s config.Settings) error {
 	}
 	var missing []string
 	spoken, _ := s.Flows.Languages(name)
-	required, err := catalog.Required(spoken)
+	required, err := catalog.Required(spoken, s.Translator)
 	if err != nil {
 		return err
 	}
@@ -323,24 +323,37 @@ func (a *app) preserveControls(s config.Settings) config.Settings {
 func (a *app) applySettings(s config.Settings, event string) {
 	a.mu.Lock()
 	old := a.settings
+	translatorChanged := old.Translator != s.Translator
 	var restart []string
 	for _, name := range []string{"self", "world"} {
+		enabled := s.Flows.Self.Enabled
+		if name == "world" {
+			enabled = s.Flows.World.Enabled
+		}
 		oldSpoken, _ := old.Flows.Languages(name)
 		newSpoken, _ := s.Flows.Languages(name)
 		oldLanguage, _ := catalog.Spoken(oldSpoken)
 		newLanguage, _ := catalog.Spoken(newSpoken)
-		changed := oldLanguage.Recognizer != newLanguage.Recognizer
+		changed := translatorChanged || oldLanguage.Recognizer != newLanguage.Recognizer
 		if name == "self" {
 			changed = changed || old.Flows.Self.Microphone != s.Flows.Self.Microphone || old.Chatbox.Address != s.Chatbox.Address
 		}
-		if changed && a.flows[name].status.active() {
+		status := a.flows[name].status
+		waiting := translatorChanged && enabled && status.Code == errcode.MissingDownloads
+		if changed && (status.active() || waiting) {
 			restart = append(restart, name)
 		}
 	}
 	a.mu.Unlock()
-	// Finish old recognition before publishing a language that needs another model.
+	// Finish old phrases before publishing settings that need another model.
 	for _, name := range restart {
 		a.stop(name)
+	}
+	if translatorChanged && a.translator != nil {
+		if err := a.translator.Close(); err != nil {
+			a.emitError("", err)
+		}
+		a.translator = nil
 	}
 	a.mu.Lock()
 	a.settings = cloneSettings(s)
@@ -543,7 +556,11 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 		return pipeline.Stages{}, err
 	}
 	if a.translator == nil {
-		a.translator, err = translate.New(catalog.LlamaServer(a.artifactDir(catalog.LlamaCPP)), catalog.PLaMoModel(a.artifactDir(catalog.PLaMo)))
+		translator, ok := catalog.LookupTranslator(s.Translator)
+		if !ok {
+			return pipeline.Stages{}, fmt.Errorf("unsupported translator %q", s.Translator)
+		}
+		a.translator, err = translate.New(catalog.LlamaServer(a.artifactDir(catalog.LlamaCPP)), catalog.PLaMoModel(translator.Artifact, a.artifactDir(translator.Artifact)))
 		if err != nil {
 			return pipeline.Stages{}, err
 		}

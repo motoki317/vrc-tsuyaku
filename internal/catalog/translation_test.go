@@ -35,13 +35,15 @@ func TestLanguages(t *testing.T) {
 			if err != nil || (!language.Auto && !slices.Contains(a.Languages, language.Code)) || slices.Contains(a.Languages, "auto") {
 				t.Fatalf("recognizer %s: %+v, %v", language.Code, a, err)
 			}
-			required, err := Required(language.Code)
-			if err != nil || !reflect.DeepEqual(required, append(slices.Clone(languages.CommonArtifacts), language.Recognizer)) {
-				t.Fatalf("required %s: %v, %v", language.Code, required, err)
-			}
-			for _, id := range required {
-				if _, err := Lookup(id, goos); err != nil {
-					t.Fatal(err)
+			for _, translator := range languages.Translators {
+				required, err := Required(language.Code, translator.ID)
+				if err != nil || !reflect.DeepEqual(required, append(slices.Clone(languages.CommonArtifacts), translator.Artifact, language.Recognizer)) {
+					t.Fatalf("required %s/%s: %v, %v", language.Code, translator.ID, required, err)
+				}
+				for _, id := range required {
+					if _, err := Lookup(id, goos); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
 		}
@@ -50,7 +52,7 @@ func TestLanguages(t *testing.T) {
 		if _, ok := Spoken(invalid); ok {
 			t.Fatalf("accepted spoken %q", invalid)
 		}
-		if _, err := Required(invalid); err == nil {
+		if _, err := Required(invalid, DefaultTranslator()); err == nil {
 			t.Fatalf("accepted requirements for %q", invalid)
 		}
 	}
@@ -66,6 +68,9 @@ func TestTranslators(t *testing.T) {
 	choices := Translators()
 	if len(choices) != 2 || choices[0].ID != Translator2B || choices[1].ID != Translator08B {
 		t.Fatalf("translator order: %+v", choices)
+	}
+	if slices.Contains(Languages().CommonArtifacts, PLaMo) || slices.Contains(Languages().CommonArtifacts, PLaMo08B) {
+		t.Fatal("translator in common artifacts")
 	}
 	defaults := 0
 	seen := make(map[string]bool)
@@ -92,6 +97,9 @@ func TestTranslators(t *testing.T) {
 		t.Fatalf("translator costs or defaults: %+v", choices)
 	}
 	for _, invalid := range []string{"", "unknown", PLaMo, PLaMo08B} {
+		if _, err := Required("ja", invalid); err == nil {
+			t.Fatalf("accepted requirements for translator %q", invalid)
+		}
 		if _, ok := LookupTranslator(invalid); ok {
 			t.Fatalf("accepted unknown translator %q", invalid)
 		}
@@ -141,7 +149,7 @@ func TestLanguageCopies(t *testing.T) {
 	changed.Spoken[0].Recognizer = "changed"
 	changed.CommonArtifacts[0] = "changed"
 	changed.Translators[0].Artifact = "changed"
-	required, _ := Required("ja")
+	required, _ := Required("ja", DefaultTranslator())
 	required[0] = "changed"
 	if !reflect.DeepEqual(before, Languages()) {
 		t.Fatal("caller mutated language catalog")

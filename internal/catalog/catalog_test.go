@@ -111,7 +111,8 @@ func TestCopiesAndPaths(t *testing.T) {
 		{Haas, "features", h.Features}, {Haas, "encoder", h.Encoder}, {Haas, "decoder", h.Decoder}, {Haas, "joint", h.Joint}, {Haas, "vocabulary", h.Vocabulary},
 		{Parakeet, "features", p.Features}, {Parakeet, "encoder", p.Encoder}, {Parakeet, "decoder_joint", p.DecoderJoint}, {Parakeet, "vocabulary", p.Vocabulary},
 		{ParakeetV3, "features", v3.Features}, {ParakeetV3, "encoder", v3.Encoder}, {ParakeetV3, "decoder_joint", v3.DecoderJoint}, {ParakeetV3, "vocabulary", v3.Vocabulary},
-		{Silero, "model", SileroModel(dir)}, {PLaMo, "model", PLaMoModel(dir)},
+		{Silero, "model", SileroModel(dir)}, {PLaMo, "model", PLaMoModel(PLaMo, dir)},
+		{PLaMo08B, "model", PLaMoModel(PLaMo08B, dir)},
 	} {
 		a, _ := Lookup(tc.id, "linux")
 		want, err := a.Path(dir, tc.role)
