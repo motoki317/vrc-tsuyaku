@@ -30,12 +30,13 @@ The check compares the release tag with the module version that Go stamped into 
 
 ## API
 
-The API needs no token. The server returns 403 for a request whose `Host` is neither its own address, such as `127.0.0.1:54321`, nor `localhost` with its port, which stops DNS rebinding.
-It also returns 403 for a POST, PUT or DELETE whose `Origin` header names another origin, `null` included, so another web page in the browser cannot change anything. A request without `Origin`, such as one from `curl`, passes.
+The server returns 403 for a request whose `Host` is neither its own address, such as `127.0.0.1:54321`, nor `localhost` with its port, which stops DNS rebinding.
+It also returns 403 for a request whose `Sec-Fetch-Site` header is `cross-site` or `same-site`, so another web page in the browser can neither open the app's page nor call the API. The same goes for a request other than GET or HEAD whose `Origin` header is not the server's own origin, `null` included, which covers browsers that send no `Sec-Fetch-Site`.
+A request without these headers, such as one from `curl`, passes, so every program and user on the PC can use the API.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/state` | `app` (build information), `update` (the update check: `state`, `version` and `url`), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators) and `defaultTemplate` |
+| `GET /api/state` | `app` (build information, and `launch`, which differs between launches), `update` (the update check: `state`, `version` and `url`), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators) and `defaultTemplate` |
 | `PUT /api/settings` | Save a complete `config.Settings` JSON object. Invalid input returns 400. A failed write returns 500. If another program changed `settings.yaml` after the app last read it, the app reads the file again, writes nothing and returns 409 with code `settings_changed`. The page then fetches the state and repeats the player's change once |
 | `GET /api/microphones` | Microphone IDs and names |
 | `POST /api/chatbox/preview` | Render a template with a sample message, such as `{"template": "{{.Translation}}", "original": "こんにちは", "translation": "Hello", "sourceLang": "ja", "targetLang": "en"}`. Returns `{"pages": [...]}`, the chatbox pages that VRChat receives, or 400 for an invalid template |
