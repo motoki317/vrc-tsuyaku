@@ -15,9 +15,23 @@ import (
 	"path/filepath"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
-var errIntegrity = errors.New("size or SHA-256 mismatch")
+var errIntegrity = errcode.With(errcode.DownloadIntegrity, errors.New("size or SHA-256 mismatch"))
+
+type codedReader struct {
+	io.Reader
+	code errcode.Code
+}
+
+func (r codedReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		err = errcode.With(r.code, err)
+	}
+	return n, err
+}
 
 type contextReader struct {
 	ctx context.Context
@@ -111,11 +125,11 @@ func (m *Manager) fetch(ctx context.Context, root *os.Root, name string, s catal
 	}
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return err
+		return errcode.With(errcode.DownloadHTTP, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %s", resp.Status)
+		return errcode.With(errcode.DownloadHTTP, fmt.Errorf("HTTP %s", resp.Status))
 	}
 	if resp.ContentLength >= 0 && resp.ContentLength != s.Size {
 		return errIntegrity
@@ -124,7 +138,7 @@ func (m *Manager) fetch(ctx context.Context, root *os.Root, name string, s catal
 	if err != nil {
 		return err
 	}
-	r := &progressReader{r: resp.Body, p: p, notify: notify, last: p.Downloaded}
+	r := &progressReader{r: codedReader{resp.Body, errcode.DownloadHTTP}, p: p, notify: notify, last: p.Downloaded}
 	copyErr := verifyCopy(ctx, f, r, s.Size, s.SHA256)
 	if copyErr == nil {
 		copyErr = f.Sync()
@@ -151,29 +165,29 @@ func extract(ctx context.Context, work, files *os.Root, name string, s catalog.S
 	case "zip":
 		z, err := zip.NewReader(f, s.Size)
 		if err != nil {
-			return err
+			return errcode.With(errcode.DownloadIntegrity, err)
 		}
 		for _, wanted := range s.Files {
 			var match *zip.File
 			for _, member := range z.File {
 				if member.Name == wanted.Member {
 					if match != nil {
-						return fmt.Errorf("duplicate member %s", wanted.Member)
+						return errcode.With(errcode.DownloadIntegrity, fmt.Errorf("duplicate member %s", wanted.Member))
 					}
 					match = member
 				}
 			}
 			if match == nil {
-				return fmt.Errorf("missing member %s", wanted.Member)
+				return errcode.With(errcode.DownloadIntegrity, fmt.Errorf("missing member %s", wanted.Member))
 			}
 			if !match.Mode().IsRegular() || match.UncompressedSize64 != uint64(wanted.Size) {
-				return fmt.Errorf("invalid member %s", wanted.Member)
+				return errcode.With(errcode.DownloadIntegrity, fmt.Errorf("invalid member %s", wanted.Member))
 			}
 			r, err := match.Open()
 			if err != nil {
-				return err
+				return errcode.With(errcode.DownloadIntegrity, err)
 			}
-			err = writeMember(ctx, files, wanted, r)
+			err = writeMember(ctx, files, wanted, codedReader{r, errcode.DownloadIntegrity})
 			err = errors.Join(err, r.Close())
 			if err != nil {
 				return err
@@ -183,7 +197,7 @@ func extract(ctx context.Context, work, files *os.Root, name string, s catalog.S
 	case "tar.gz":
 		gz, err := gzip.NewReader(contextReader{ctx, f})
 		if err != nil {
-			return err
+			return errcode.With(errcode.DownloadIntegrity, err)
 		}
 		defer gz.Close()
 		tr := tar.NewReader(gz)
@@ -194,18 +208,18 @@ func extract(ctx context.Context, work, files *os.Root, name string, s catalog.S
 				break
 			}
 			if err != nil {
-				return err
+				return errcode.With(errcode.DownloadIntegrity, err)
 			}
 			for _, wanted := range s.Files {
 				if h.Name == wanted.Member {
 					if seen[h.Name] {
-						return fmt.Errorf("duplicate member %s", h.Name)
+						return errcode.With(errcode.DownloadIntegrity, fmt.Errorf("duplicate member %s", h.Name))
 					}
 					seen[h.Name] = true
 					if h.Typeflag != tar.TypeReg || h.Size != wanted.Size {
-						return fmt.Errorf("invalid member %s", h.Name)
+						return errcode.With(errcode.DownloadIntegrity, fmt.Errorf("invalid member %s", h.Name))
 					}
-					if err = writeMember(ctx, files, wanted, tr); err != nil {
+					if err = writeMember(ctx, files, wanted, codedReader{tr, errcode.DownloadIntegrity}); err != nil {
 						return err
 					}
 				}
@@ -213,7 +227,7 @@ func extract(ctx context.Context, work, files *os.Root, name string, s catalog.S
 		}
 		for _, wanted := range s.Files {
 			if !seen[wanted.Member] {
-				return fmt.Errorf("missing member %s", wanted.Member)
+				return errcode.With(errcode.DownloadIntegrity, fmt.Errorf("missing member %s", wanted.Member))
 			}
 		}
 		return nil

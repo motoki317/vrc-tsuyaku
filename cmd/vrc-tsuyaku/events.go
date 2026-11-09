@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 )
 
@@ -28,6 +29,9 @@ func (b *events) publish(flow string, e pipeline.Event) {
 }
 
 func (b *events) publishEvent(e event) {
+	if e.Kind == "error" && e.Code == "" {
+		e.Code = errcode.Unknown
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.next++

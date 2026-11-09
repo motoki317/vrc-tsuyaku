@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 )
@@ -246,7 +248,7 @@ func TestSaveRenameFailureCleansTemp(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "settings.yaml"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(dir, Defaults()); err == nil || errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), dir) {
+	if err := Save(dir, Defaults()); errcode.Of(err) != errcode.DiskWrite || errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), dir) {
 		t.Fatalf("got %v", err)
 	}
 	entries, err := os.ReadDir(dir)

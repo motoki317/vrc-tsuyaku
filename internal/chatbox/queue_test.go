@@ -12,6 +12,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 type recordedWrite struct {
@@ -226,7 +228,7 @@ func TestQueueWriteErrors(t *testing.T) {
 			if short {
 				socket.err, socket.short, wantErr = nil, true, io.ErrShortWrite
 			}
-			if err := send(q, t.Context(), strings.Repeat("x", 300), ""); !errors.Is(err, wantErr) {
+			if err := send(q, t.Context(), strings.Repeat("x", 300), ""); !errors.Is(err, wantErr) || errcode.Of(err) != errcode.ChatboxSend {
 				t.Fatalf("write error = %v, want %v", err, wantErr)
 			}
 			if writes, _ := socket.recorded(); len(writes) != 2 {
@@ -275,7 +277,7 @@ func TestQueueTemplateFailureSendsNothing(t *testing.T) {
 	for _, format := range []string{"{{", `partial {{index .Translation 100}}`, `partial {{printf "%c" 0}}`} {
 		if err := q.Send(t.Context(), format, Message{Translation: "short"}, func(string) {
 			t.Error("page callback after a template failure")
-		}); !errors.Is(err, ErrTemplate) {
+		}); !errors.Is(err, ErrTemplate) || errcode.Of(err) != errcode.Template {
 			t.Fatalf("template error = %v", err)
 		}
 	}

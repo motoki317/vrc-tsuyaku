@@ -10,6 +10,8 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 const pageInterval = 1500 * time.Millisecond
@@ -36,7 +38,7 @@ func New(address string) (*Queue, error) {
 	}
 	conn, err := net.DialUDP("udp", nil, net.UDPAddrFromAddrPort(addr))
 	if err != nil {
-		return nil, fmt.Errorf("open chatbox socket: %w", err)
+		return nil, errcode.With(errcode.ChatboxSend, fmt.Errorf("open chatbox socket: %w", err))
 	}
 	return newQueue(conn), nil
 }
@@ -69,7 +71,12 @@ func newQueue(conn io.WriteCloser) *Queue {
 // previous attempt finishes, including attempts from earlier Send calls.
 // Cancellation stops pending pages, including while waiting behind another Send.
 // Cancellation cannot interrupt an active UDP write, but Close can. Errors are not retried.
-func (q *Queue) Send(ctx context.Context, format string, message Message, sent func(string)) error {
+func (q *Queue) Send(ctx context.Context, format string, message Message, sent func(string)) (err error) {
+	defer func() {
+		if err != nil && !errors.Is(err, ErrTemplate) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			err = errcode.With(errcode.ChatboxSend, err)
+		}
+	}()
 	messagePages, err := Render(format, message)
 	if err != nil {
 		return err

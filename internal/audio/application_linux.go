@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jfreymuth/pulse/proto"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 func (a application) Capture(ctx context.Context, consume func([]float32) error) error {
@@ -34,11 +35,14 @@ func (a application) Capture(ctx context.Context, consume func([]float32) error)
 	if err := p.Request(&proto.GetSinkInfo{SinkIndex: input.SinkIndex}, &sink); err != nil {
 		return fmt.Errorf("find application playback device: %w", err)
 	}
-	return recordPulse(ctx, p, packets, sink.MonitorSourceIndex, input.SinkInputIndex, consume)
+	if err := startPulseCapture(p.Request, sink.MonitorSourceIndex, input.SinkInputIndex); err != nil {
+		return err
+	}
+	return packets.consume(ctx, consume)
 }
 
 func applicationStreamEnded(executable string) error {
-	return fmt.Errorf("%s playback stream ended or moved to another output", executable)
+	return errcode.With(errcode.ApplicationEnded, fmt.Errorf("%s playback stream ended or moved to another output", executable))
 }
 
 func selectApplication(inputs proto.GetSinkInputInfoListReply, executable string, names ...string) (*proto.GetSinkInputInfoReply, error) {
@@ -58,12 +62,12 @@ func selectApplication(inputs proto.GetSinkInputInfoListReply, executable string
 			continue
 		}
 		if selected != nil {
-			return nil, fmt.Errorf("multiple playback streams for %s are available", executable)
+			return nil, errcode.With(errcode.MultipleApplications, fmt.Errorf("multiple playback streams for %s are available", executable))
 		}
 		selected = input
 	}
 	if selected == nil {
-		return nil, fmt.Errorf("%s is not running or has no PulseAudio playback stream", executable)
+		return nil, errcode.With(errcode.ApplicationNotRunning, fmt.Errorf("%s is not running or has no PulseAudio playback stream", executable))
 	}
 	return selected, nil
 }

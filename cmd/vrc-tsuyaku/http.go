@@ -15,6 +15,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 //go:embed ui/*
@@ -157,7 +158,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 func apiError(w http.ResponseWriter, err error, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": withDataDirHint(err).Error()})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": withDataDirHint(err).Error(), "code": string(errcode.Of(err))})
 }
 
 func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {

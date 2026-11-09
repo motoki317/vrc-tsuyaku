@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jfreymuth/pulse/proto"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 func TestSelectApplication(t *testing.T) {
@@ -17,11 +18,11 @@ func TestSelectApplication(t *testing.T) {
 		if err != nil || got != match {
 			t.Fatalf("match %+v: %v, %v", match, got, err)
 		}
-		if _, err = selectApplication(proto.GetSinkInputInfoListReply{match, match}, "Player.exe", "Player Product"); err == nil {
+		if _, err = selectApplication(proto.GetSinkInputInfoListReply{match, match}, "Player.exe", "Player Product"); errcode.Of(err) != errcode.MultipleApplications {
 			t.Fatal("accepted ambiguous streams")
 		}
 	}
-	if _, err := selectApplication(proto.GetSinkInputInfoListReply{unrelated, input(3, "Player Product", "wine64-preloader")}, "Player.exe"); err == nil {
+	if _, err := selectApplication(proto.GetSinkInputInfoListReply{unrelated, input(3, "Player Product", "wine64-preloader")}, "Player.exe"); errcode.Of(err) != errcode.ApplicationNotRunning {
 		t.Fatal("selected unrelated stream")
 	}
 }
@@ -29,7 +30,7 @@ func TestSelectApplication(t *testing.T) {
 func TestApplicationStreamEnded(t *testing.T) {
 	p := newPulsePackets(applicationStreamEnded("Player.exe"))
 	p.receive(&proto.RecordStreamKilled{})
-	if err := p.consume(context.Background(), func([]float32) error { t.Fatal("unexpected audio"); return nil }); err == nil || err.Error() != "Player.exe playback stream ended or moved to another output" {
+	if err := p.consume(context.Background(), func([]float32) error { t.Fatal("unexpected audio"); return nil }); errcode.Of(err) != errcode.ApplicationEnded || err.Error() != "Player.exe playback stream ended or moved to another output" {
 		t.Fatalf("stream end: %v", err)
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/jfreymuth/pulse/proto"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 // Microphones lists input devices, excluding playback monitors.
@@ -45,23 +46,30 @@ func (m microphone) Capture(ctx context.Context, consume func([]float32) error) 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	packets := newPulsePackets(errors.New("PulseAudio capture stream was removed"))
+	packets := newPulsePackets(errcode.With(errcode.MicrophoneUnavailable, errors.New("PulseAudio capture stream was removed")))
 	p, closeConnection, err := connectPulse(ctx, packets.receive)
 	if err != nil {
-		return err
+		return errcode.With(errcode.MicrophoneUnavailable, err)
 	}
 	defer closeConnection()
-	var source proto.GetSourceInfoReply
-	if err := p.Request(&proto.GetSourceInfo{SourceIndex: proto.Undefined, SourceName: m.id}, &source); err != nil {
-		return fmt.Errorf("find microphone: %w", err)
-	}
-	if source.MonitorSourceIndex != proto.Undefined {
-		return errors.New("selected source is a playback monitor, not a microphone")
-	}
-	return recordPulse(ctx, p, packets, source.SourceIndex, proto.Undefined, consume)
+	return m.capturePulse(ctx, p.Request, packets, consume)
 }
 
-func recordPulse(ctx context.Context, p *proto.Client, packets *pulsePackets, sourceIndex, inputIndex uint32, consume func([]float32) error) error {
+func (m microphone) capturePulse(ctx context.Context, request func(proto.RequestArgs, proto.Reply) error, packets *pulsePackets, consume func([]float32) error) error {
+	var source proto.GetSourceInfoReply
+	if err := request(&proto.GetSourceInfo{SourceIndex: proto.Undefined, SourceName: m.id}, &source); err != nil {
+		return errcode.With(errcode.MicrophoneUnavailable, fmt.Errorf("find microphone: %w", err))
+	}
+	if source.MonitorSourceIndex != proto.Undefined {
+		return errcode.With(errcode.MicrophoneUnavailable, errors.New("selected source is a playback monitor, not a microphone"))
+	}
+	if err := startPulseCapture(request, source.SourceIndex, proto.Undefined); err != nil {
+		return errcode.With(errcode.MicrophoneUnavailable, err)
+	}
+	return packets.consume(ctx, consume)
+}
+
+func startPulseCapture(request func(proto.RequestArgs, proto.Reply) error, sourceIndex, inputIndex uint32) error {
 	// Use proto directly because pulse.RecordStream hides start errors and
 	// stream-killed events. FixFormat/Rate/Channels stay false so the server
 	// converts to the requested sample spec.
@@ -69,7 +77,7 @@ func recordPulse(ctx context.Context, p *proto.Client, packets *pulsePackets, so
 	const fragmentBytes = SampleRate * 4 / 50 // 20 ms of mono float32.
 	// Fragment size alone leaves an otherwise idle source at its highest latency.
 	// https://www.freedesktop.org/wiki/Software/PulseAudio/Documentation/Developer/Clients/LatencyControl/
-	request := proto.CreateRecordStream{
+	args := proto.CreateRecordStream{
 		SampleSpec: proto.SampleSpec{Format: proto.FormatFloat32LE, Channels: 1, Rate: SampleRate},
 		ChannelMap: proto.ChannelMap{proto.ChannelMono}, SourceIndex: sourceIndex,
 		BufferMaxLength: SampleRate * 4, BufferFragSize: fragmentBytes,
@@ -78,16 +86,16 @@ func recordPulse(ctx context.Context, p *proto.Client, packets *pulsePackets, so
 		Properties:     proto.PropList{"media.name": proto.PropListString("vrc-tsuyaku capture")},
 	}
 	var reply proto.CreateRecordStreamReply
-	if err := p.Request(&request, &reply); err != nil {
+	if err := request(&args, &reply); err != nil {
 		return fmt.Errorf("open audio capture: %w", err)
 	}
-	if reply.SampleSpec != request.SampleSpec {
+	if reply.SampleSpec != args.SampleSpec {
 		return fmt.Errorf("PulseAudio returned an unexpected capture format: %+v", reply.SampleSpec)
 	}
-	if err := p.Request(&proto.CorkRecordStream{StreamIndex: reply.StreamIndex, Corked: false}, nil); err != nil {
+	if err := request(&proto.CorkRecordStream{StreamIndex: reply.StreamIndex, Corked: false}, nil); err != nil {
 		return fmt.Errorf("start audio capture: %w", err)
 	}
-	return packets.consume(ctx, consume)
+	return nil
 }
 
 type pulsePackets struct {

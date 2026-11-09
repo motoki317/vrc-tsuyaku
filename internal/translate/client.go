@@ -66,7 +66,7 @@ func (s *Supervisor) Translate(ctx context.Context, source, target, phrase strin
 	const maxResponse = 1 << 20
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
 	if err != nil {
-		return "", fmt.Errorf("read translation: %w", err)
+		return "", fmt.Errorf("read translation: %w", errors.Join(err, run.child.exitError()))
 	}
 	if len(data) > maxResponse {
 		return "", errors.New("translation response exceeds 1 MiB")

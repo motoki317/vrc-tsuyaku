@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 )
@@ -154,8 +156,16 @@ func TestTransferFailuresPreserveInstalled(t *testing.T) {
 					return resp, err
 				})
 			}
-			if err := m.install(ctx, a, nil); err == nil || strings.Contains(err.Error(), "-data-dir") {
+			err := m.install(ctx, a, nil)
+			if err == nil || strings.Contains(err.Error(), "-data-dir") {
 				t.Fatal("failure accepted")
+			}
+			want := errcode.DownloadIntegrity
+			if mode == "status" {
+				want = errcode.DownloadHTTP
+			}
+			if mode != "cancel" && errcode.Of(err) != want {
+				t.Fatalf("transfer error: %v (%s), want %s", err, errcode.Of(err), want)
 			}
 			if !bytes.Equal(installedBytes(t, m), good) {
 				t.Fatal("old installation changed")
@@ -464,7 +474,7 @@ func TestNetworkErrorHasNoDirectoryHint(t *testing.T) {
 	a := fixture([]byte("bytes"))
 	a.Sources[0].URL = "https://example.invalid/model"
 	err = m.install(context.Background(), a, nil)
-	if err == nil || strings.Contains(err.Error(), "-data-dir") {
+	if errcode.Of(err) != errcode.DownloadHTTP || strings.Contains(err.Error(), "-data-dir") {
 		t.Fatalf("network error: %v", err)
 	}
 	assertClean(t, m)

@@ -17,6 +17,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/download"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
@@ -26,11 +27,17 @@ type artifactState struct {
 	State    string            `json:"state"`
 	Progress download.Progress `json:"progress"`
 	Error    string            `json:"error,omitempty"`
+	Code     errcode.Code      `json:"code,omitempty"`
 }
 
 type flowState struct {
-	State string `json:"state"`
-	Error string `json:"error,omitempty"`
+	State string       `json:"state"`
+	Error string       `json:"error,omitempty"`
+	Code  errcode.Code `json:"code,omitempty"`
+}
+
+func flowError(err error) flowState {
+	return flowState{State: "error", Error: withDataDirHint(err).Error(), Code: errcode.Of(err)}
 }
 
 func (s flowState) active() bool {
@@ -102,7 +109,8 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		}
 		if err != nil {
 			state.Error = withDataDirHint(err).Error()
-			a.emit("", "error", state.Error)
+			state.Code = errcode.Of(err)
+			a.emitError("", err)
 		}
 		a.artifacts[artifact.ID] = state
 	}
@@ -121,6 +129,10 @@ func flowSource(name, microphoneID string) audio.Source {
 
 func (a *app) emit(flow, kind, text string) {
 	a.events.publish(flow, pipeline.Event{Kind: kind, Text: text})
+}
+
+func (a *app) emitError(flow string, err error) {
+	a.events.publish(flow, pipeline.Event{Kind: "error", Code: errcode.Of(err), Text: withDataDirHint(err).Error()})
 }
 
 func cloneSettings(s config.Settings) config.Settings {
@@ -207,12 +219,12 @@ func (a *app) start(name string, s config.Settings) error {
 		a.mu.Lock()
 		run.status = flowState{State: "stopped"}
 		if err != nil && ctx.Err() == nil {
-			run.status = flowState{State: "error", Error: withDataDirHint(err).Error()}
+			run.status = flowError(err)
 		}
 		state := run.status
 		if ctx.Err() == nil {
 			if state.Error != "" {
-				a.emit(name, "error", state.Error)
+				a.events.publish(name, pipeline.Event{Kind: "error", Code: state.Code, Text: state.Error})
 			} else {
 				a.emit(name, "state", state.State)
 			}
@@ -239,13 +251,13 @@ func (a *app) checkStart(name string, s config.Settings) error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("missing downloads: %s", strings.Join(missing, ", "))
+		return errcode.With(errcode.MissingDownloads, fmt.Errorf("missing downloads: %s", strings.Join(missing, ", ")))
 	}
 	return nil
 }
 
 func (a *app) refuseStart(name string, err error) {
-	a.events.publishEvent(event{Flow: name, Operation: "start", Event: pipeline.Event{Kind: "error", Text: err.Error()}})
+	a.events.publishEvent(event{Flow: name, Operation: "start", Event: pipeline.Event{Kind: "error", Code: errcode.Of(err), Text: err.Error()}})
 }
 
 func (a *app) stop(name string) {
@@ -316,7 +328,7 @@ func (a *app) applySettings(s config.Settings, event string) {
 	for _, name := range restart {
 		if err := a.start(name, s); err != nil {
 			a.mu.Lock()
-			a.flows[name].status = flowState{State: "error", Error: err.Error()}
+			a.flows[name].status = flowError(err)
 			a.mu.Unlock()
 		}
 	}
@@ -403,6 +415,7 @@ func (a *app) startDownload(id string, accept bool) error {
 	}
 	state.State = "downloading"
 	state.Error = ""
+	state.Code = ""
 	state.Progress = download.Progress{}
 	a.mu.Lock()
 	a.artifacts[id] = state
@@ -422,6 +435,7 @@ func (a *app) startDownload(id string, accept bool) error {
 		state.State = "installed"
 		if err != nil {
 			state.Error = withDataDirHint(err).Error()
+			state.Code = errcode.Of(err)
 			if !errors.Is(err, download.ErrCleanup) {
 				state.State = "missing"
 			}
@@ -430,7 +444,7 @@ func (a *app) startDownload(id string, accept bool) error {
 		a.artifacts[id] = state
 		a.mu.Unlock()
 		if err != nil {
-			a.emit("", "error", state.Error)
+			a.emitError("", err)
 		}
 		a.emit("", "download", id)
 	})

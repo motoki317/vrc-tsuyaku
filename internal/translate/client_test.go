@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,7 +15,32 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
+
+type exitResponse struct{ child *child }
+
+func (r exitResponse) Read([]byte) (int, error) {
+	close(r.child.done)
+	return 0, io.ErrUnexpectedEOF
+}
+func (exitResponse) Close() error { return nil }
+
+type responseTransport struct{ body io.ReadCloser }
+
+func (r responseTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusOK, Body: r.body, Header: make(http.Header)}, nil
+}
+
+func TestTranslatorExitWhileReadingResponse(t *testing.T) {
+	process := &child{done: make(chan struct{})}
+	s := &Supervisor{run: &serverRun{child: process, url: "http://127.0.0.1", client: &http.Client{Transport: responseTransport{exitResponse{process}}}}}
+	_, err := s.Translate(t.Context(), "en", "ja", "synthetic phrase")
+	if errcode.Of(err) != errcode.TranslatorExited || !errors.Is(err, io.ErrUnexpectedEOF) || !strings.Contains(err.Error(), "llama-server exited") {
+		t.Fatalf("response failure lost exit cause: %v (%s)", err, errcode.Of(err))
+	}
+}
 
 func requests(t *testing.T, dir string, count int) []recordedRequest {
 	t.Helper()

@@ -12,6 +12,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/asr"
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/download"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 var errArtifactInUse = errors.New("artifact is in use")
@@ -58,12 +59,14 @@ func (a *app) deleteDownload(id string) error {
 	err := a.downloads.Remove(id, runtime.GOOS)
 	state.Progress = download.Progress{}
 	state.Error = ""
+	state.Code = ""
 	if err == nil {
 		state.State = "missing"
 	} else {
 		// RemoveAll can delete some files before an OS error. Do not reuse the remainder.
 		state.State = "missing"
 		state.Error = withDataDirHint(err).Error()
+		state.Code = errcode.Of(err)
 	}
 	a.mu.Lock()
 	a.artifacts[id] = state

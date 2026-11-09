@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/go-ole/go-ole"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/moutend/go-wca/pkg/wca"
 )
 
@@ -103,7 +104,12 @@ func captureQueued(ctx context.Context, consume func([]float32) error, produce f
 }
 
 // Keep COM and WASAPI on one thread, independent of consumer scheduling.
-func (m microphone) captureWASAPI(ctx context.Context, enqueue func([]float32) error) error {
+func (m microphone) captureWASAPI(ctx context.Context, enqueue func([]float32) error) (err error) {
+	defer func() {
+		if !errors.Is(err, errCaptureOverflow) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			err = errcode.With(errcode.MicrophoneUnavailable, err)
+		}
+	}()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	if err := ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED); err != nil {

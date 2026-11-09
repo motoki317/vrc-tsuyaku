@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 )
 
@@ -388,7 +390,7 @@ func TestTemplateErrorContinuesToNextPhrase(t *testing.T) {
 		want := []string{"recognized", "translated", "page", "sent"}
 		if events[0].Text == "2" {
 			want = []string{"recognized", "translated", "error"}
-			if !strings.Contains(events[2].Text, "index") {
+			if events[2].Code != errcode.Template || !strings.Contains(events[2].Text, "index") {
 				t.Fatal("missing template error text", events[2])
 			}
 		}

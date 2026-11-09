@@ -6,10 +6,12 @@ import (
 	"strings"
 	"text/template"
 	"unicode/utf8"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 // ErrTemplate distinguishes a phrase's formatting failure from a failed UDP send.
-var ErrTemplate = errors.New("chatbox template")
+var ErrTemplate = errcode.With(errcode.Template, errors.New("chatbox template"))
 
 type Message struct {
 	Original    string `json:"original"`

@@ -9,6 +9,7 @@ import (
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/vad"
 )
 
@@ -17,12 +18,13 @@ import (
 // page and sent events for one phrase.
 // Original accompanies a translation. A sent event means Send returned nil.
 type Event struct {
-	PhraseID   uint64 `json:"phraseId,omitempty"`
-	Kind       string `json:"kind"`
-	Text       string `json:"text"`
-	Original   string `json:"original,omitempty"`
-	SourceLang string `json:"sourceLang,omitempty"`
-	TargetLang string `json:"targetLang,omitempty"`
+	PhraseID   uint64       `json:"phraseId,omitempty"`
+	Kind       string       `json:"kind"`
+	Code       errcode.Code `json:"code,omitempty"`
+	Text       string       `json:"text"`
+	Original   string       `json:"original,omitempty"`
+	SourceLang string       `json:"sourceLang,omitempty"`
+	TargetLang string       `json:"targetLang,omitempty"`
 }
 
 var nextPhraseID atomic.Uint64
@@ -205,8 +207,11 @@ func Run(ctx context.Context, s Stages) error {
 				if err := s.Send(ctx, r.template, message, func(page string) {
 					emit(Event{PhraseID: r.id, Kind: "page", Text: page, SourceLang: r.source, TargetLang: r.target})
 				}); err != nil {
+					if ctx.Err() != nil {
+						return context.Cause(ctx)
+					}
+					emit(Event{PhraseID: r.id, Kind: "error", Code: errcode.Of(err), Text: err.Error(), SourceLang: r.source, TargetLang: r.target})
 					if errors.Is(err, chatbox.ErrTemplate) {
-						emit(Event{PhraseID: r.id, Kind: "error", Text: err.Error(), SourceLang: r.source, TargetLang: r.target})
 						continue
 					}
 					return err

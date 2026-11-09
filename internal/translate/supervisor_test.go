@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 type fakeConfig struct {
@@ -264,7 +266,7 @@ func TestSupervisorLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-run.child.done
-	if err := run.child.exitError(); err == nil || !strings.Contains(err.Error(), "llama-server exited") {
+	if err := run.child.exitError(); errcode.Of(err) != errcode.TranslatorExited || !strings.Contains(err.Error(), "llama-server exited") {
 		t.Fatalf("exit error: %v", err)
 	}
 	if err := s.Start(ctx); err != nil {
@@ -289,7 +291,7 @@ func TestStartupFailureAndCancellation(t *testing.T) {
 		s, _ := fixture(t, true, true)
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
-		if err := s.Start(ctx); err == nil || !strings.Contains(err.Error(), "fixture: cannot load model") {
+		if err := s.Start(ctx); errcode.Of(err) != errcode.TranslatorExited || !strings.Contains(err.Error(), "fixture: cannot load model") {
 			t.Fatalf("startup error = %v", err)
 		}
 	})

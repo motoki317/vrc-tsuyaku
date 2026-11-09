@@ -15,6 +15,7 @@ import (
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 // ErrInvalidSettings marks validation failures returned by Save.
@@ -148,7 +149,7 @@ func Load(dataDir string) (Settings, error) {
 
 // Save validates settings and atomically replaces settings.yaml.
 // On failure the old settings remain in place.
-func Save(dataDir string, s Settings) error {
+func Save(dataDir string, s Settings) (err error) {
 	if err := s.Validate(); err != nil {
 		return settingsError(dataDir, fmt.Errorf("%w: %w", ErrInvalidSettings, err))
 	}
@@ -156,6 +157,7 @@ func Save(dataDir string, s Settings) error {
 	if err != nil {
 		return settingsError(dataDir, err)
 	}
+	defer func() { err = errcode.With(errcode.DiskWrite, err) }()
 	if err = os.MkdirAll(dataDir, 0o755); err != nil {
 		return settingsError(dataDir, err)
 	}

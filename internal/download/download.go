@@ -15,6 +15,7 @@ import (
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 // ErrLicenseRequired means saved settings lack acceptance for the pinned revision.
@@ -157,6 +158,11 @@ func (m *Manager) Download(ctx context.Context, id, goos string, notify func(Pro
 func (m *Manager) install(ctx context.Context, a catalog.Artifact, notify func(Progress)) (err error) {
 	defer func() {
 		if err != nil {
+			var path *os.PathError
+			var link *os.LinkError
+			if !errors.Is(err, ErrCleanup) && errcode.Of(err) == errcode.Unknown && (errors.As(err, &path) || errors.As(err, &link)) {
+				err = errcode.With(errcode.DiskWrite, err)
+			}
 			err = fmt.Errorf("install %s in %s: %w", a.ID, m.dataDir, err)
 		}
 	}()
