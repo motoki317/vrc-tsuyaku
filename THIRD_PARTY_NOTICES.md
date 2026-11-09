@@ -1,14 +1,23 @@
 # Third-party notices
 
-vrc-tsuyaku uses the [MIT License](LICENSE). The following projects informed its implementation. Each section names the vrc-tsuyaku files that use the project and says whether code was copied or only reimplemented.
+These projects supply code, algorithms, file formats, ideas, models, ONNX graphs or programs that vrc-tsuyaku uses.
+Neither the repository nor the executable includes the models, ONNX graphs or programs listed here.
+The app downloads the Haas and Parakeet conversions, the onnx-asr feature extractor, Silero VAD, PLaMo, ONNX Runtime and llama.cpp.
+The Go module entries say which modules ship in each OS's executable.
+
+## VRCT
+
+Source: [misyaguziya/VRCT](https://github.com/misyaguziya/VRCT/tree/9427520c0ae39406a17ba0f280b1ad2735395d51), commit `9427520c0ae39406a17ba0f280b1ad2735395d51`. License: MIT.
+
+vrc-tsuyaku takes its idea from VRCT. Both apps translate the user's speech into the VRChat chatbox and translate the voices that the user hears in VRChat. vrc-tsuyaku copies no VRCT code.
+
+`internal/chatbox/pager.go` reimplements VRCT's original-before-translation join with a newline separator.
 
 ## traPtitech/NeoShowcase
 
 Source: [traPtitech/NeoShowcase](https://github.com/traPtitech/NeoShowcase/tree/06fa2e6c52e74f760f09a84ac36cab12b3f4e947), commit `06fa2e6c52e74f760f09a84ac36cab12b3f4e947`. License: MIT.
 
-`.golangci.yml` copies the upstream file verbatim, apart from the attribution header.
-
-The full upstream notice follows, with its copyright holder's name unchanged:
+`.golangci.yml` copies the upstream file verbatim, apart from the attribution header. The upstream notice follows:
 
 ```text
 MIT License
@@ -213,7 +222,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-## Go dependencies
-
-Go module dependencies retain their own licenses and notices, which are not vendored here.
