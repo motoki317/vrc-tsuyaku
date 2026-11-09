@@ -165,15 +165,15 @@ Source: [golang.org/x/mod](https://go.googlesource.com/mod), version v0.42.0. Li
 
 ## PLaMo 3 Translate
 
-Model: [pfnet/plamo-3-translate-2b-GGUF](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF), Q4_K_M. License: [PLaMo Community License](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/blob/228a27cc0bb4f111219963848d50a3127c16ca73/LICENSE/en).
+Models: [pfnet/plamo-3-translate-2b-GGUF](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) and [pfnet/plamo-3-translate-0.8b-GGUF](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF), Q4_K_M. License: [PLaMo Community License](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/blob/4f672106b847200bfdc0f6af6c321cd94eba1aed/LICENSE/en).
 
-The app downloads the Q4_K_M GGUF at revision `228a27cc0bb4f111219963848d50a3127c16ca73` from this model repository.
-`internal/catalog/licenses/plamo-community.txt` contains the complete English license from that revision for display before downloading.
+The app downloads the Q4_K_M GGUF of the model that the player picks: 2B at revision `4f672106b847200bfdc0f6af6c321cd94eba1aed`, or 0.8B at revision `1cf96ae02133958a20074bfdfab76517bb737d00`.
+Both revisions carry the same English license. `internal/catalog/licenses/plamo-community.txt` contains it for display before downloading.
 Article 2 states:
 
-> The USER must be 18 years of age or older, or have reached the age of legal capacity in the USER’s country of residence, unless the USER's legal guardian or legal representative has consented to this AGREEMENT on the USER’s behalf.
+> The USER must be 18 years of age or older, or have reached the age of legal capacity in the USER's country of residence, unless the USER's legal guardian or legal representative has consented to this AGREEMENT on the USER's behalf.
 
-Article 4(1) states: "When providing the MODEL MATERIALS to third parties, the USER must meet the following requirements:" Its clause (ii) states:
+Article 4(1) states: "When providing the MODEL or DERIVED MODEL to third parties, the USER must meet the following requirements:" Its clause (ii) states:
 
 > Explicitly indicate "Built with PLaMo" in related websites, user interfaces, blog posts, product information pages, or product documentation.
 
