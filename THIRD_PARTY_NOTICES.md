@@ -126,6 +126,19 @@ The app downloads the Windows and Linux x64 CPU builds from the [b12201 release]
 The Windows build includes the OpenMP runtime `libomp.dll` under [Apache-2.0 WITH LLVM-exception](https://github.com/llvm/llvm-project/blob/baf637dcde8ccc24fd6ffbc82d8321ba18ec857f/openmp/LICENSE.TXT).
 That revision's `openmp/LICENSE.TXT` matches the bundled `LICENSE-LLVM-OpenMP` byte for byte.
 
+## jfreymuth/pulse
+
+Source: [jfreymuth/pulse](https://github.com/jfreymuth/pulse/tree/v0.1.1), version v0.1.1. License: MIT.
+
+`internal/audio/microphone_linux.go` calls the module's `proto` package. Its `connectPulse` function reimplements Unix socket setup from `proto/connect.go`; upstream also accepts TCP servers.
+`microphone_linux.go` copies no upstream source code. This Go module is compiled into the Linux executable.
+
+## go-wca and go-ole
+
+Sources: [moutend/go-wca](https://github.com/moutend/go-wca/tree/v0.3.0), version v0.3.0, and [go-ole/go-ole](https://github.com/go-ole/go-ole/tree/v1.2.6), version v1.2.6. Both are MIT-licensed.
+
+`internal/audio/microphone_windows.go` calls WASAPI and COM through these Go modules, which are compiled into the Windows executable.
+
 ## golang.org/x/sys
 
 Source: [golang.org/x/sys](https://go.googlesource.com/sys), version v0.49.0. License: BSD-3-Clause.
@@ -169,6 +182,36 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+```
+
+## whispering-ui
+
+Source: [Sharrnah/whispering-ui](https://github.com/Sharrnah/whispering-ui/tree/00b7533b148d0feec959e8ddf8c7b72b6ca9c329), commit `00b7533b148d0feec959e8ddf8c7b72b6ca9c329`. License: [MIT](https://github.com/Sharrnah/whispering-ui/blob/00b7533b148d0feec959e8ddf8c7b72b6ca9c329/LICENSE).
+
+`internal/audio/application_windows.go` adapts the process-loopback activation code in `Utilities/ProcessCapture_windows.go`: the activation parameters and the COM completion handler with a shared callback table.
+
+```text
+MIT License
+
+Copyright (c) 2022 Sharrnah
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ## Go dependencies
