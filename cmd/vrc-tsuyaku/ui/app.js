@@ -25,7 +25,6 @@ let lang = 'en';
 let state = null;
 let screen = '';
 let sub = 'languages';
-let leftSetup = false;
 let connection = 'ok';
 let lastEvent = 0;
 let liveSince = Infinity;
@@ -1455,30 +1454,18 @@ function flushFields() {
   if ($('template').dataset.dirty) saveTemplate();
 }
 
-function show(nextScreen, nextSub = sub, mode = 'push') {
-  if (nextScreen === screen && nextSub === sub && mode === 'push') return;
+// A screen change adds no history entry, so Exit can close the tab (see showExited).
+function show(nextScreen, nextSub = sub) {
+  if (nextScreen === screen && nextSub === sub) return;
   flushFields();
-  // Back never returns to Setup once the player leaves it.
-  if (screen === 'setup' && nextScreen !== 'setup') {
-    leftSetup = true;
-    if (mode === 'push') mode = 'replace';
-  }
   screen = nextScreen;
   sub = nextSub;
-  if (mode === 'push') history.pushState({screen, sub}, '', location.href);
-  else if (mode === 'replace') history.replaceState({screen, sub}, '', location.href);
   render();
   if (screen === 'translation') scrollLogToBottom();
   if (screen === 'settings') revealRailItem();
   // The preview shows the latest My voice phrase.
   if (screen === 'settings' && sub === 'chatbox') runPreview();
 }
-
-window.addEventListener('popstate', event => {
-  const entry = event.state;
-  if (!entry || !state) return;
-  show(entry.screen === 'setup' && leftSetup ? 'translation' : entry.screen, entry.sub || 'languages', 'none');
-});
 
 // A tab or rail item that carries a mark adds the mark's state to its accessible name.
 function markName(node, label, mark) {
@@ -1552,11 +1539,7 @@ function apply(next) {
   if (!next.settingsError) unsavedLanguage = null;
   const nextLang = resolveLanguage(languageSetting());
   if (nextLang !== lang || first) setLanguage(nextLang);
-  if (first) {
-    screen = FLOWS.some(ready) ? 'translation' : 'setup';
-    leftSetup = screen !== 'setup';
-    history.replaceState({screen, sub}, '', location.href);
-  }
+  if (first) screen = FLOWS.some(ready) ? 'translation' : 'setup';
   render();
   if (first && screen === 'translation') scrollLogToBottom();
 }
@@ -1747,7 +1730,8 @@ function showExited() {
   for (const node of [$('tabs'), $('connection'), $('main'), ...document.querySelectorAll('.bar-item')]) node.hidden = true;
   $('screen-exited').hidden = false;
   $('exited-title').focus();
-  // A script can close a tab only while the tab's history holds one entry, and every screen change adds one.
+  // A script can close a tab only while the tab's history holds one entry. The page adds none, but a tab that showed
+  // another page before the app's URL holds more, and the browser keeps it open.
   setTimeout(() => {
     window.close();
     setTimeout(() => setText($('exited-close'), t('action.closeTab')), 500);

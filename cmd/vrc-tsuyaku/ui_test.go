@@ -133,6 +133,20 @@ func TestNoTitleAttribute(t *testing.T) {
 	}
 }
 
+// A browser lets Exit's window.close() close the tab only while the tab's history holds one entry, so the page
+// changes screens and URLs without adding entries.
+var historyEntryPattern = regexp.MustCompile(`pushState|location\.assign|location\.(hash|href|search|pathname)\s*=[^=]|location\s*=[^=]`)
+
+func TestScreenChangesAddNoHistoryEntry(t *testing.T) {
+	data, err := ui.ReadFile("ui/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := historyEntryPattern.FindString(string(data)); m != "" {
+		t.Errorf("app.js adds a history entry with %q, so Exit could not close the tab", m)
+	}
+}
+
 func TestAppScriptStrings(t *testing.T) {
 	data, err := ui.ReadFile("ui/app.js")
 	if err != nil {
