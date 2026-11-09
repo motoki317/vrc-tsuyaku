@@ -1,6 +1,6 @@
 # App and web UI
 
-The [README](../../README.md) covers using the app.
+[Usage](../../docs/usage.md) covers using the app.
 
 `main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It also prints the page's URL to standard output.
 The page is embedded in the executable, so rebuild after you change `ui/`.
