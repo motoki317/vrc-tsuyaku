@@ -68,16 +68,17 @@ type app struct {
 	events        events
 	// operations serializes settings, flow and storage changes, including close.
 	// Callers hold it while calling start or stop.
-	operations       sync.Mutex
-	settingsWG       sync.WaitGroup
-	downloadsWG      sync.WaitGroup
-	updateWG         sync.WaitGroup
-	modelTurn        chan struct{}
-	engine           *asr.Engine
-	translator       *translate.Supervisor
-	queue            *chatbox.Queue
-	queueAddress     string
-	source           func(flowName, microphoneID string) audio.Source
+	operations   sync.Mutex
+	settingsWG   sync.WaitGroup
+	downloadsWG  sync.WaitGroup
+	updateWG     sync.WaitGroup
+	modelTurn    chan struct{}
+	engine       *asr.Engine
+	translator   *translate.Supervisor
+	queue        *chatbox.Queue
+	queueAddress string
+	source       func(flowName, microphoneID string) audio.Source
+	// start must call any returned Stages.Close, even on preparation error or cancellation.
 	prepare          func(ctx context.Context, flowName string, settings config.Settings) (pipeline.Stages, error)
 	downloadArtifact func(context.Context, string, string, func(download.Progress)) error
 	open             func(string) error
@@ -217,9 +218,6 @@ func (a *app) start(name string, s config.Settings) error {
 		defer close(run.done)
 		defer cancel()
 		stages, err := a.prepare(ctx, name, s)
-		if stages.Close != nil {
-			defer stages.Close()
-		}
 		if err == nil && ctx.Err() == nil {
 			stages.Settings = func() pipeline.PhraseSettings {
 				a.mu.Lock()
@@ -233,6 +231,9 @@ func (a *app) start(name string, s config.Settings) error {
 			a.emit(name, "state", "running")
 			stages.Emit = func(e pipeline.Event) { a.events.publish(name, e) }
 			err = a.runStages(ctx, stages)
+		}
+		if stages.Close != nil {
+			stages.Close()
 		}
 		a.mu.Lock()
 		run.status = flowState{State: "stopped"}
@@ -551,16 +552,12 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 		}
 		releaseSilero()
 	}
-	defer func() {
-		if err != nil {
-			release()
-		}
-	}()
+	stages = pipeline.Stages{Close: release}
 	var recognizer asr.Recognizer
 	spoken, _ := s.Flows.Languages(name)
 	language, ok := catalog.Spoken(spoken)
 	if !ok {
-		return pipeline.Stages{}, fmt.Errorf("unsupported spoken language %q", spoken)
+		return stages, fmt.Errorf("unsupported spoken language %q", spoken)
 	}
 	switch language.Recognizer {
 	case catalog.Haas:
@@ -568,26 +565,24 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	case catalog.Parakeet, catalog.ParakeetV3:
 		recognizer, releaseRecognizer, err = a.engine.LoadParakeet(catalog.ParakeetBundle(language.Recognizer, a.artifactDir(language.Recognizer)))
 	default:
-		return pipeline.Stages{}, fmt.Errorf("unsupported recognizer %q", language.Recognizer)
+		return stages, fmt.Errorf("unsupported recognizer %q", language.Recognizer)
 	}
 	if err != nil {
-		return pipeline.Stages{}, err
+		return stages, err
 	}
 	if a.translator == nil {
 		translator, ok := catalog.LookupTranslator(s.Translator)
 		if !ok {
-			return pipeline.Stages{}, fmt.Errorf("unsupported translator %q", s.Translator)
+			return stages, fmt.Errorf("unsupported translator %q", s.Translator)
 		}
 		a.translator, err = translate.New(catalog.LlamaServer(a.artifactDir(catalog.LlamaCPP)), catalog.PLaMoModel(translator.Artifact, a.artifactDir(translator.Artifact)))
 		if err != nil {
-			return pipeline.Stages{}, err
+			return stages, err
 		}
 	}
 	if err = a.translator.Start(ctx); err != nil {
-		return pipeline.Stages{}, err
+		return stages, err
 	}
-	stages = pipeline.Stages{Close: release, Source: a.source(name, s.Flows.Self.Microphone), Probability: silero.NewStream().Probability, Recognize: recognizer.Transcribe,
-		Translate: a.translator.Translate}
 	if name == "self" {
 		if a.queue == nil || a.queueAddress != s.Chatbox.Address {
 			if a.queue != nil {
@@ -596,12 +591,16 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 			}
 			a.queue, err = chatbox.New(s.Chatbox.Address)
 			if err != nil {
-				return pipeline.Stages{}, err
+				return stages, err
 			}
 			a.queueAddress = s.Chatbox.Address
 		}
 		stages.Send = a.queue.Send
 	}
+	stages.Source = a.source(name, s.Flows.Self.Microphone)
+	stages.Probability = silero.NewStream().Probability
+	stages.Recognize = recognizer.Transcribe
+	stages.Translate = a.translator.Translate
 	return stages, nil
 }
 

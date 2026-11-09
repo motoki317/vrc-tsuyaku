@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -251,6 +252,82 @@ func TestFailedStartReleasesContext(t *testing.T) {
 		if releases.Load() != int32(attempt+1) {
 			t.Fatal("failed start retained its models")
 		}
+	}
+}
+
+func TestFlowReleasesModelsBeforeFinalStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		prepareErr    error
+		captureErr    error
+		cancelPrepare bool
+		wantState     string
+	}{
+		{name: "completed", wantState: "stopped"},
+		{name: "capture error", captureErr: errors.New("capture failed"), wantState: "error"},
+		{name: "preparation error", prepareErr: errors.New("model load failed"), wantState: "error"},
+		{name: "preparation cancelled", cancelPrepare: true, wantState: "stopped"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := pendingDownloadApp(t)
+			a.translator = testTranslator(t)
+			prepared, closing, finishClose := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			unblock := sync.OnceFunc(func() { close(finishClose) })
+			t.Cleanup(unblock)
+			a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+				stages := pipeline.Stages{
+					Close: func() { close(closing); <-finishClose },
+					Source: recordingSource(func(context.Context, func([]float32) error) error {
+						return tc.captureErr
+					}),
+					Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
+					Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
+					Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+				}
+				close(prepared)
+				if tc.cancelPrepare {
+					<-ctx.Done()
+					return stages, ctx.Err()
+				}
+				return stages, tc.prepareErr
+			}
+			if err := a.changeFlow("self", "start"); err != nil {
+				t.Fatal(err)
+			}
+			<-prepared
+			a.mu.Lock()
+			run := a.flows["self"]
+			a.mu.Unlock()
+			if tc.cancelPrepare {
+				run.cancel()
+			}
+			select {
+			case <-closing:
+			case <-time.After(time.Second):
+				t.Fatal("flow did not release its stages")
+			}
+			a.mu.Lock()
+			state := run.status
+			a.mu.Unlock()
+			if !state.active() {
+				t.Error("flow reported its final status before releasing its models", state)
+			}
+			history, _ := a.events.after(0)
+			for _, e := range history {
+				if e.Flow == "self" && (e.Kind == "error" || e.Kind == "state" && e.Text == "stopped") {
+					t.Error("flow published its final status before releasing its models", e)
+				}
+			}
+			unblock()
+			select {
+			case <-run.done:
+			case <-time.After(time.Second):
+				t.Fatal("flow did not finish after releasing its stages")
+			}
+			if run.status.State != tc.wantState {
+				t.Fatalf("final status = %s, want %s", run.status.State, tc.wantState)
+			}
+		})
 	}
 }
 
