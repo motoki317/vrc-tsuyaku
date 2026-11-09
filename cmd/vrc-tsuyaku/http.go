@@ -24,6 +24,7 @@ var ui embed.FS
 
 func (a *app) handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /notices.txt", serveNotices)
 	mux.HandleFunc("POST /api/exit", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "0")
 		w.WriteHeader(http.StatusAccepted)

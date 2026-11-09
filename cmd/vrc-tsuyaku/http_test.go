@@ -191,7 +191,7 @@ func TestFetchSiteCheck(t *testing.T) {
 
 func TestHeaderChecksBeforeEveryRoute(t *testing.T) {
 	a := testApp(t)
-	for _, path := range []string{"/", "/app.js", "/api/state", "/api/events", "/api/settings", "/api/microphones", "/api/downloads/unknown", "/api/flows/self/start", "/api/chatbox/preview", "/api/open/data", "/api/exit", "/api/unknown"} {
+	for _, path := range []string{"/", "/app.js", "/notices.txt", "/api/state", "/api/events", "/api/settings", "/api/microphones", "/api/downloads/unknown", "/api/flows/self/start", "/api/chatbox/preview", "/api/open/data", "/api/exit", "/api/unknown"} {
 		for _, header := range []string{"Host", "Origin", "Sec-Fetch-Site"} {
 			r := localRequest("POST", path, "")
 			switch header {

@@ -19,6 +19,10 @@ build:
     mkdir -p dist
     go build -o dist/ ./...
 
+# Refresh the license texts embedded in the executable after a dependency change.
+notices:
+    go run ./internal/notices
+
 # Use the same release artifacts in local checks and CI.
 release tag:
     #!/usr/bin/env bash
