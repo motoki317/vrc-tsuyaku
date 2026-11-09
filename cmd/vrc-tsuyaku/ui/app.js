@@ -22,7 +22,7 @@ let strings = {};
 let lang = 'en';
 let state = null;
 let screen = '';
-let sub = 'languages';
+let sub = 'models';
 let connection = 'ok';
 let lastEvent = 0;
 let liveSince = Infinity;
@@ -127,6 +127,8 @@ function setLanguage(next) {
   collator = new Intl.Collator(lang);
   document.documentElement.lang = lang;
   for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n);
+  // The rail's labels reserve their bold width (see style.css).
+  for (const node of document.querySelectorAll('.rail [data-i18n]')) node.dataset.label = node.textContent;
   for (const node of document.querySelectorAll('[data-i18n-aria-label]')) node.setAttribute('aria-label', t(node.dataset.i18nAriaLabel));
   const name = t(lang === 'ja' ? 'value.languageJapanese' : 'value.languageEnglish');
   setText($('ui-language-name'), name);
@@ -528,8 +530,8 @@ async function changeFlow(flow, action) {
   }
 }
 
-// Download row: the same component in Setup (place "plan"), in Settings → Downloads ("settings") and in the license
-// dialog ("license"), which shows no action. Settings → About lists the licenses.
+// Download row: the same component in Setup's downloads list (place "plan"), in Settings' downloads list ("settings")
+// and in the license dialog ("license"), which shows no action. Settings → About lists the licenses.
 
 function downloadRow(cache, id, place) {
   let row = cache.get(id);
@@ -632,9 +634,12 @@ function renderList(list, cache, ids, place, head = null) {
   for (const [i, id] of ids.entries()) updateRow(rows[head ? i + 1 : i], id, place);
 }
 
-// Language plan: one instance, shown in Setup and in Settings → Languages.
+// Language plan: one instance, shown in Setup and in Settings → Languages and models. Settings adds each flow's
+// recognizer.
 
-const plan = {rows: {}, cache: new Map()};
+const plan = {rows: {}, cache: new Map(), settingsCache: new Map()};
+// The flow icons' column header. Each icon carries its own name, so screen readers skip the header.
+const usedByHead = h('li', {className: 'download download-head', 'aria-hidden': 'true'}, h('span', {className: 'used-by'}));
 
 // A select, or a radio group whose value is its checked radio's.
 function commitOnSettle(field, commit, read = () => field.value) {
@@ -666,6 +671,13 @@ function buildPlan() {
     const spoken = h('select', {className: 'select'});
     const target = h('select', {className: 'select'});
     const row = {control, spoken, target, label: h('span', {className: 'row-label'}), saveError: h('p', {className: 'error-text', hidden: true})};
+    // The spoken language selects the recognizer, so its group lists one choice, checked, in the same radio form as
+    // the translator choices.
+    row.recognizer = modelCard('recognizer-' + flow);
+    row.recognizer.input.checked = true;
+    row.recognizerLabel = h('span', {className: 'model-label'});
+    row.recognizerGroup = h('div', {className: 'options', role: 'radiogroup'}, row.recognizer.root);
+    row.model = h('div', {className: 'model'}, row.recognizerLabel, row.recognizerGroup);
     for (const [select, field] of [[spoken, 'Spoken'], [target, 'Target']]) {
       commitOnSettle(select, value => saveSettings(s => { s.Flows[KEY[flow]][field] = value; })
         .then(() => setError(row.saveError, null))
@@ -678,7 +690,7 @@ function buildPlan() {
     return h('div', {className: 'plan-row', 'data-flow': flow},
       h('div', {className: 'plan-head'}, icon(ICON[flow], 'flow-icon'), row.label, control.button),
       h('div', {className: 'chain'}, spoken, h('span', {className: 'link'}, icon('arrow-right', 'muted'), target)),
-      control.error, row.saveError);
+      control.error, row.saveError, row.model);
   });
   plan.all = h('button', {type: 'button', className: 'button download-all'},
     plan.allFill = h('span', {className: 'fill'}),
@@ -689,10 +701,11 @@ function buildPlan() {
     startDownloads(downloadAllView().ids, plan.all);
   });
   plan.summaryLabel = h('span');
+  plan.installed = h('p', {className: 'installed-total'}, plan.installedLabel = h('span'), ' ', plan.installedSize = h('span', {className: 'value'}));
   plan.list = h('ul', {className: 'download-list'});
   plan.details = h('details', {className: 'plan-downloads'},
-    h('summary', {}, icon('chevron-down', 'chevron'), plan.summaryLabel), plan.list);
-  plan.root = h('div', {className: 'plan'}, h('div', {className: 'plan-rows'}, rows), plan.all, plan.details);
+    h('summary', {}, icon('chevron-down', 'chevron'), plan.summaryLabel), plan.installed, plan.list);
+  plan.rowsRoot = h('div', {className: 'plan-rows'}, rows);
 }
 
 function spokenChoices(flow) {
@@ -712,10 +725,20 @@ function fillSelect(select, signature, build, value) {
   if (!select.dataset.dirty && select.value !== value) select.value = value;
 }
 
+const recognizerOf = flow => state.languages.spoken.find(language => language.code === settingsOf(flow).Spoken).recognizer;
+
+// The engine shares a recognizer between flows that need the same one, so each model counts once.
+function memoryEstimate() {
+  const ids = new Set([...FLOWS.map(recognizerOf), translatorOf(state.settings.Translator).artifact]);
+  return [...ids].reduce((sum, id) => sum + state.artifacts[id].artifact.MemoryBytes, 0);
+}
+
 function renderPlan() {
   const setup = screen === 'setup';
-  const slot = (setup ? $('screen-setup') : $('sub-languages')).querySelector('.plan-slot');
-  if (plan.root.parentNode !== slot) slot.append(plan.root);
+  const parent = setup ? $('screen-setup') : $('sub-models');
+  const slot = parent.querySelector('.plan-slot'), foot = parent.querySelector('.plan-foot');
+  if (plan.rowsRoot.parentNode !== slot) slot.append(plan.rowsRoot);
+  if (plan.all.parentNode !== foot) foot.append(plan.all, plan.details);
   for (const flow of FLOWS) {
     const row = plan.rows[flow];
     setText(row.label, flowLabel(flow));
@@ -733,11 +756,27 @@ function renderPlan() {
       () => [...top.map(code => new Option(languageName(code), code)), h('hr'), ...others.map(code => new Option(languageName(code), code))],
       settingsOf(flow).Target);
     row.control.update();
+    row.model.hidden = setup;
+    setText(row.recognizerLabel, t('label.recognizer'));
+    row.recognizerGroup.setAttribute('aria-label', t('label.recognizerFor', {flow: flowLabel(flow)}));
+    updateModelCard(row.recognizer, recognizerOf(flow));
   }
+  setText($('memory-total'), formatSize(memoryEstimate()));
   renderDownloadAll();
-  const ids = neededIds();
+  // Setup lists what the languages need. Settings adds every download that is not missing, so the player can delete
+  // or open it, or follow its progress after a language change.
+  const needed = neededIds();
+  const ids = byName(setup ? needed : Object.keys(state.artifacts).filter(id => needed.includes(id) || artifactKind(state.artifacts[id]) !== 'missing'));
   setText(plan.summaryLabel, t('label.downloads'));
-  renderList(plan.list, plan.cache, byName(ids), 'plan');
+  plan.installed.hidden = setup;
+  if (setup) renderList(plan.list, plan.cache, ids, 'plan');
+  else {
+    const installed = Object.keys(state.artifacts).filter(id => state.artifacts[id].state === 'installed');
+    setText(plan.installedLabel, t('label.installed'));
+    setText(plan.installedSize, formatSize(totalSize(installed)));
+    setText(usedByHead.firstChild, t('label.usedBy'));
+    renderList(plan.list, plan.settingsCache, ids, 'settings', usedByHead);
+  }
   // A failure, or a refused request, opens the section that holds it, once per failure.
   for (const id of ids) {
     if (artifactKind(state.artifacts[id]) !== 'failed' && !requestError(id)) knownFailures.delete(id);
@@ -811,7 +850,7 @@ function buildSwitchBar() {
       h('span', {className: 'chip-part'}, source, icon('arrow-right', 'small')), h('span', {className: 'chip-part'}, target));
     chip.addEventListener('click', () => {
       if (isDisabled(chip)) return;
-      show('settings', 'languages');
+      show('settings', 'models');
       plan.rows[flow].spoken.focus();
     });
     const label = h('span', {className: 'card-label'});
@@ -1050,19 +1089,14 @@ function latestSelfPhrase() {
   return [...phrases.values()].reverse().find(phrase => phrase.flow === 'self' && phrase.translation !== null);
 }
 
-// Settings: Translator
+// Model cards. The gain icon says what a translator trades: accuracy or speed.
 
-// The last failed save, until a save succeeds.
-let translatorRefusal = null;
-let translatorCards = [];
-const translatorRows = new Map();
-
-function translatorCard(translator) {
-  const headId = uid('translator'), detailId = uid('translator');
+function modelCard(name, value = '', gainIcon = '') {
+  const headId = uid('model'), detailId = uid('model');
   const card = {
-    input: h('input', {type: 'radio', name: 'translator', value: translator.id, 'aria-labelledby': headId, 'aria-describedby': detailId}),
+    input: h('input', {type: 'radio', name, value, 'aria-labelledby': headId, 'aria-describedby': detailId}),
     name: h('span', {className: 'option-name'}),
-    tag: h('span', {className: 'tag', hidden: !translator.default}),
+    tag: h('span', {className: 'tag', hidden: true}),
     stateIcon: icon('check'),
     stateText: h('span'),
     memory: h('span', {className: 'value'}),
@@ -1074,32 +1108,43 @@ function translatorCard(translator) {
       h('span', {className: 'option-head', id: headId}, card.name, card.tag),
       h('span', {className: 'option-detail', id: detailId}, card.state,
         h('span', {className: 'detail'}, icon('memory-stick'), card.memory),
-        h('span', {className: 'detail'}, icon(translator.speed > 1 ? 'gauge' : 'target'), card.gain))));
+        gainIcon && h('span', {className: 'detail'}, icon(gainIcon), card.gain))));
   return card;
 }
+
+function updateModelCard(card, id) {
+  const value = state.artifacts[id], artifact = value.artifact, installed = value.state === 'installed';
+  setText(card.name, artifact.Name);
+  card.state.classList.toggle('installed', installed);
+  setIcon(card.stateIcon, installed ? 'check' : 'download');
+  // The size alone does not say that the model is missing, so the download icon says it to screen readers.
+  if (installed) card.stateIcon.setAttribute('aria-hidden', 'true');
+  else card.stateIcon.removeAttribute('aria-hidden');
+  card.stateIcon.setAttribute('role', 'img');
+  card.stateIcon.setAttribute('aria-label', t('state.missing'));
+  setText(card.stateText, installed ? t('state.installed') : formatSize(artifactSize(artifact)));
+  setText(card.memory, t('value.memory', {size: formatSize(artifact.MemoryBytes)}));
+}
+
+// Settings: the translator, which both flows share
+
+// The last failed save, until a save succeeds.
+let translatorRefusal = null;
+let translatorCards = [];
 
 function renderTranslator() {
   const group = $('translators'), translators = state.languages.translators, saved = state.settings.Translator;
   const signature = JSON.stringify(translators.map(translator => translator.id));
   if (group.dataset.signature !== signature) {
-    translatorCards = translators.map(translatorCard);
+    translatorCards = translators.map(translator => modelCard('translator', translator.id, translator.speed > 1 ? 'gauge' : 'target'));
     group.replaceChildren(...translatorCards.map(card => card.root));
     group.dataset.signature = signature;
   }
   for (const [i, translator] of translators.entries()) {
-    const card = translatorCards[i], artifact = state.artifacts[translator.artifact].artifact;
-    const installed = state.artifacts[translator.artifact].state === 'installed';
-    setText(card.name, artifact.Name);
+    const card = translatorCards[i];
+    updateModelCard(card, translator.artifact);
+    card.tag.hidden = !translator.default;
     setText(card.tag, t('state.default'));
-    card.state.classList.toggle('installed', installed);
-    setIcon(card.stateIcon, installed ? 'check' : 'download');
-    // The size alone does not say that the model is missing, so the download icon says it to screen readers.
-    if (installed) card.stateIcon.setAttribute('aria-hidden', 'true');
-    else card.stateIcon.removeAttribute('aria-hidden');
-    card.stateIcon.setAttribute('role', 'img');
-    card.stateIcon.setAttribute('aria-label', t('state.missing'));
-    setText(card.stateText, installed ? t('state.installed') : formatSize(artifactSize(artifact)));
-    setText(card.memory, t('value.memory', {size: formatSize(artifact.MemoryBytes)}));
     // The catalog gives each model's speed relative to the most accurate one.
     setText(card.gain, translator.speed > 1 ? t('value.faster', {n: Math.floor(translator.speed)}) : t('value.moreAccurate'));
     if (!group.dataset.dirty) card.input.checked = translator.id === saved;
@@ -1107,10 +1152,6 @@ function renderTranslator() {
   const error = $('translator-error'), refusal = translatorRefusal;
   setError(error, refusal && (() => saveRefusal(refusal)));
   group.setAttribute('aria-describedby', ['translator-hint', !error.hidden && error.id].filter(Boolean).join(' '));
-  // The selected model's download row shows only while the model is not installed.
-  const id = translatorOf(saved)?.artifact, missing = !!id && state.artifacts[id].state !== 'installed';
-  $('translator-download').hidden = !missing;
-  renderList($('translator-download'), translatorRows, missing ? [id] : [], 'plan');
 }
 
 // Settings: Microphone
@@ -1370,19 +1411,7 @@ function renderChatbox() {
   renderPresets();
 }
 
-// Settings: Downloads
-
-const allCache = new Map();
-// The flow icons' column header. Each icon carries its own name, so screen readers skip the header.
-const usedByHead = h('li', {className: 'download download-head', 'aria-hidden': 'true'}, h('span', {className: 'used-by'}));
-
-function renderDownloads() {
-  const ids = byName(Object.keys(state.artifacts));
-  const installed = ids.filter(id => state.artifacts[id].state === 'installed');
-  setText($('installed-size'), formatSize(totalSize(installed)));
-  setText(usedByHead.firstChild, t('label.usedBy'));
-  renderList($('all-downloads'), allCache, ids, 'settings', usedByHead);
-}
+// Delete dialog
 
 function openDelete(id, opener) {
   const dialog = $('delete-dialog'), artifact = state.artifacts[id].artifact;
@@ -1409,6 +1438,8 @@ async function confirmDelete() {
   setDisabled(button, true);
   try {
     apply(await (await api('downloads/' + dialog.target, {method: 'DELETE'})).json());
+    // A deleted download that no flow needs leaves the list, so focus goes to the list's summary.
+    if (!dialog.opener.isConnected) dialog.opener = plan.details.querySelector('summary');
     dialog.close();
   } catch (e) {
     setError($('delete-error'), () => e.status === 409 ? t('error.inUse') : errorText(e.code, e.message));
@@ -1460,7 +1491,8 @@ function rebuild(node, inputs, build) {
   node.replaceChildren(...build());
 }
 
-// /api/state carries the downloads as a map without the catalog's order, so About sorts them as Downloads does.
+// /api/state carries the downloads as a map without the catalog's order, so About sorts them as the downloads list
+// does.
 function renderAbout() {
   for (const link of $('sub-about').querySelectorAll('[data-path]')) link.href = state.app.repository + link.dataset.path;
   rebuild($('app-version'), state.app, () => versionLine(state.app));
@@ -1565,7 +1597,7 @@ function renderFrame() {
   $('screen-setup').hidden = screen !== 'setup' || settingsError;
   $('screen-translation').hidden = screen !== 'translation' || settingsError;
   $('screen-settings').hidden = screen !== 'settings' || settingsError;
-  for (const name of ['languages', 'translator', 'microphone', 'chatbox', 'downloads', 'about']) $('sub-' + name).hidden = sub !== name;
+  for (const name of ['models', 'microphone', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
   $('screen-settings-error').hidden = !settingsError;
   setText($('settings-error-text'), state.settingsError || '');
   $('switchbar').hidden = !(settingsError || screen === 'translation');
@@ -1580,7 +1612,6 @@ function render() {
   renderTranslator();
   renderMicrophone();
   renderChatbox();
-  renderDownloads();
   renderAbout();
   renderMenu();
 }
