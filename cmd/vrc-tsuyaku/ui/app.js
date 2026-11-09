@@ -271,6 +271,7 @@ function artifactKind(value) {
 }
 
 const startable = id => ['missing', 'failed'].includes(artifactKind(state.artifacts[id]));
+const inProgress = id => pending.has(id) || ['queued', 'downloading', 'verifying'].includes(artifactKind(state.artifacts[id]));
 const totalSize = ids => ids.reduce((sum, id) => sum + artifactSize(state.artifacts[id].artifact), 0);
 // A refused download request shows on its row while the download stays missing.
 const requestError = id => artifactKind(state.artifacts[id]) === 'missing' ? downloadErrors.get(id) : undefined;
@@ -373,11 +374,9 @@ function confirmLicense(ids, opener) {
 
 function downloadAllView() {
   const ids = neededIds();
-  const kinds = ids.map(id => artifactKind(state.artifacts[id]));
-  const running = ids.some((id, i) => pending.has(id) || ['queued', 'downloading', 'verifying'].includes(kinds[i]));
   const missing = ids.filter(startable);
-  if (running) return {kind: 'running', ids, ...batchProgress(ids)};
-  if (kinds.includes('failed')) return {kind: 'retry', ids: missing, bytes: totalSize(missing)};
+  if (ids.some(inProgress)) return {kind: 'running', ids, ...batchProgress(ids)};
+  if (ids.some(id => artifactKind(state.artifacts[id]) === 'failed')) return {kind: 'retry', ids: missing, bytes: totalSize(missing)};
   if (missing.length) return {kind: 'idle', ids: missing, bytes: totalSize(missing)};
   return {kind: 'none'};
 }
@@ -530,7 +529,7 @@ async function changeFlow(flow, action) {
   }
 }
 
-// Download row: the same component in Setup's downloads list (place "plan"), in Settings' downloads list ("settings")
+// Download row: the same component in Setup's downloads list (place "plan"), in Settings' downloads lists ("settings")
 // and in the license dialog ("license"), which shows no action. Settings → About lists the licenses.
 
 function downloadRow(cache, id, place) {
@@ -634,12 +633,13 @@ function renderList(list, cache, ids, place, head = null) {
   for (const [i, id] of ids.entries()) updateRow(rows[head ? i + 1 : i], id, place);
 }
 
+// The flow icons' column header. Each icon carries its own name, so screen readers skip the header.
+const usedByHead = () => h('li', {className: 'download download-head', 'aria-hidden': 'true'}, h('span', {className: 'used-by'}));
+
 // Language plan: one instance, shown in Setup and in Settings → Languages and models. Settings adds each flow's
 // recognizer.
 
-const plan = {rows: {}, cache: new Map(), settingsCache: new Map()};
-// The flow icons' column header. Each icon carries its own name, so screen readers skip the header.
-const usedByHead = h('li', {className: 'download download-head', 'aria-hidden': 'true'}, h('span', {className: 'used-by'}));
+const plan = {rows: {}, cache: new Map(), settingsCache: new Map(), head: usedByHead()};
 
 // A select, or a radio group whose value is its checked radio's.
 function commitOnSettle(field, commit, read = () => field.value) {
@@ -701,10 +701,14 @@ function buildPlan() {
     startDownloads(downloadAllView().ids, plan.all);
   });
   plan.summaryLabel = h('span');
-  plan.installed = h('p', {className: 'installed-total'}, plan.installedLabel = h('span'), ' ', plan.installedSize = h('span', {className: 'value'}));
   plan.list = h('ul', {className: 'download-list'});
+  plan.more = h('button', {type: 'button', className: 'button secondary compact more'}, plan.moreLabel = h('span'), icon('arrow-right'));
+  plan.more.addEventListener('click', () => {
+    show('settings', 'downloads');
+    $('sub-downloads').querySelector('.sub-title').focus();
+  });
   plan.details = h('details', {className: 'plan-downloads'},
-    h('summary', {}, icon('chevron-down', 'chevron'), plan.summaryLabel), plan.installed, plan.list);
+    h('summary', {}, icon('chevron-down', 'chevron'), plan.summaryLabel), plan.list, plan.more);
   plan.rowsRoot = h('div', {className: 'plan-rows'}, rows);
 }
 
@@ -763,19 +767,17 @@ function renderPlan() {
   }
   setText($('memory-total'), formatSize(memoryEstimate()));
   renderDownloadAll();
-  // Setup lists what the languages need. Settings adds every download that is not missing, so the player can delete
-  // or open it, or follow its progress after a language change.
+  // The list holds what Download all fetches. Settings adds any download in progress, so its progress stays in view
+  // after a language change, and leaves every other download to Settings → Downloads.
   const needed = neededIds();
-  const ids = byName(setup ? needed : Object.keys(state.artifacts).filter(id => needed.includes(id) || artifactKind(state.artifacts[id]) !== 'missing'));
+  const ids = byName(setup ? needed : Object.keys(state.artifacts).filter(id => needed.includes(id) || inProgress(id)));
   setText(plan.summaryLabel, t('label.downloads'));
-  plan.installed.hidden = setup;
+  plan.more.hidden = setup;
   if (setup) renderList(plan.list, plan.cache, ids, 'plan');
   else {
-    const installed = Object.keys(state.artifacts).filter(id => state.artifacts[id].state === 'installed');
-    setText(plan.installedLabel, t('label.installed'));
-    setText(plan.installedSize, formatSize(totalSize(installed)));
-    setText(usedByHead.firstChild, t('label.usedBy'));
-    renderList(plan.list, plan.settingsCache, ids, 'settings', usedByHead);
+    setText(plan.head.firstChild, t('label.usedBy'));
+    setText(plan.moreLabel, t('action.allDownloads'));
+    renderList(plan.list, plan.settingsCache, ids, 'settings', plan.head);
   }
   // A failure, or a refused request, opens the section that holds it, once per failure.
   for (const id of ids) {
@@ -1411,6 +1413,29 @@ function renderChatbox() {
   renderPresets();
 }
 
+// Settings: Downloads. The groups split the catalog: what the current selection needs, what else is installed, and
+// the rest. A row that changes group keeps its element, so it can keep focus (see render).
+
+const downloads = {cache: new Map(), head: usedByHead()};
+
+function renderDownloads() {
+  const ids = byName(Object.keys(state.artifacts));
+  const needed = new Set(FLOWS.flatMap(required));
+  const installed = id => state.artifacts[id].state === 'installed';
+  const groups = {
+    needed: ids.filter(id => needed.has(id)),
+    unneeded: ids.filter(id => !needed.has(id) && installed(id)),
+    missing: ids.filter(id => !needed.has(id) && !installed(id)),
+  };
+  setText($('installed-size'), formatSize(totalSize(ids.filter(installed))));
+  setText(downloads.head.firstChild, t('label.usedBy'));
+  for (const [name, group] of Object.entries(groups)) {
+    const section = $('downloads-' + name);
+    section.hidden = !group.length;
+    renderList(section.querySelector('ul'), downloads.cache, group, 'settings', name === 'needed' ? downloads.head : null);
+  }
+}
+
 // Delete dialog
 
 function openDelete(id, opener) {
@@ -1438,7 +1463,8 @@ async function confirmDelete() {
   setDisabled(button, true);
   try {
     apply(await (await api('downloads/' + dialog.target, {method: 'DELETE'})).json());
-    // A deleted download that no flow needs leaves the list, so focus goes to the list's summary.
+    // A selection change on another page can take the row out of Languages and models' list, so focus goes to the
+    // list's summary.
     if (!dialog.opener.isConnected) dialog.opener = plan.details.querySelector('summary');
     dialog.close();
   } catch (e) {
@@ -1597,7 +1623,7 @@ function renderFrame() {
   $('screen-setup').hidden = screen !== 'setup' || settingsError;
   $('screen-translation').hidden = screen !== 'translation' || settingsError;
   $('screen-settings').hidden = screen !== 'settings' || settingsError;
-  for (const name of ['models', 'microphone', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
+  for (const name of ['models', 'downloads', 'microphone', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
   $('screen-settings-error').hidden = !settingsError;
   setText($('settings-error-text'), state.settingsError || '');
   $('switchbar').hidden = !(settingsError || screen === 'translation');
@@ -1606,14 +1632,22 @@ function renderFrame() {
 
 function render() {
   if (!state || exitState === 'exited') return;
+  const focused = document.activeElement;
   renderFrame();
   renderPlan();
   renderSwitchBar();
   renderTranslator();
   renderMicrophone();
   renderChatbox();
+  renderDownloads();
   renderAbout();
   renderMenu();
+  // A row that moves to another list leaves the document for a moment, which drops its focus. Focus goes back to the
+  // same control, or to its row when the move also took the control away.
+  if (focused !== document.body && document.activeElement === document.body && focused.isConnected) {
+    focused.focus({preventScroll: true});
+    if (document.activeElement === document.body) focused.closest('.download')?.focus({preventScroll: true});
+  }
 }
 
 function apply(next) {

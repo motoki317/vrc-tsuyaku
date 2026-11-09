@@ -76,6 +76,7 @@
   <section id="screen-settings" class="screen settings" hidden>
     <nav class="rail" data-i18n-aria-label="label.settingsSections">
       <button type="button" class="rail-item" data-sub="models"><svg class="icon" aria-hidden="true"><use href="#i-languages"></use></svg><span data-i18n="label.languagesModels"></span></button>
+      <button type="button" class="rail-item" data-sub="downloads"><svg class="icon" aria-hidden="true"><use href="#i-hard-drive-download"></use></svg><span data-i18n="label.downloads"></span></button>
       <button type="button" class="rail-item" data-sub="microphone"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="label.microphone"></span></button>
       <button type="button" class="rail-item" data-sub="chatbox"><svg class="icon" aria-hidden="true"><use href="#i-message-square-text"></use></svg><span data-i18n="label.chatbox"></span></button>
       <button type="button" class="rail-item" data-sub="about"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span data-i18n="label.about"></span><span class="update-dot" aria-hidden="true" hidden></span></button>
@@ -98,6 +99,26 @@
         </div>
         <p class="memory-total"><svg class="icon" aria-hidden="true"><use href="#i-memory-stick"></use></svg><span data-i18n="label.memoryTotal"></span><span id="memory-total" class="value"></span></p>
         <div class="plan-foot"></div>
+      </div>
+    </div>
+
+    <!-- Every catalog file shows once, in the first group that holds it. -->
+    <div id="sub-downloads" class="sub" hidden>
+      <h2 class="sub-title" tabindex="-1" data-i18n="label.downloads"></h2>
+      <p class="installed-total"><span data-i18n="label.installed"></span> <span id="installed-size" class="value"></span></p>
+      <div class="download-groups">
+        <div id="downloads-needed" class="download-group">
+          <h3 class="field-label" id="downloads-needed-label" data-i18n="label.neededDownloads"></h3>
+          <ul class="download-list" aria-labelledby="downloads-needed-label"></ul>
+        </div>
+        <div id="downloads-unneeded" class="download-group">
+          <h3 class="field-label" id="downloads-unneeded-label" data-i18n="label.unneededDownloads"></h3>
+          <ul class="download-list" aria-labelledby="downloads-unneeded-label"></ul>
+        </div>
+        <div id="downloads-missing" class="download-group">
+          <h3 class="field-label" id="downloads-missing-label" data-i18n="label.missingDownloads"></h3>
+          <ul class="download-list" aria-labelledby="downloads-missing-label"></ul>
+        </div>
       </div>
     </div>
 
