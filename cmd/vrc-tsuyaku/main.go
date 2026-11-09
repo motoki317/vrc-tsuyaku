@@ -53,6 +53,11 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 	if err != nil {
 		return err
 	}
+	if *override == "" {
+		if err := checkTemporaryFolder(dir); err != nil {
+			return err
+		}
+	}
 	a, err := newApp(ctx, dir)
 	if err != nil {
 		return err
