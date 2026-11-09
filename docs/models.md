@@ -13,7 +13,7 @@ The spoken language picks the speech recognition model:
 
 ## Translation
 
-[PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) or [0.8B](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF) translates into 54 targets, Easy Japanese (やさしい日本語) among them. The app downloads only the one that Settings → Translator selects, and [Usage](usage.md#translation-model) compares the two.
+[PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) or [0.8B](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF) translates into 54 targets, Easy Japanese (やさしい日本語) among them. The app downloads only the one that Settings → Languages and models selects, and [Usage](usage.md#translation-model) compares the two.
 
 Both models are under the same [PLaMo Community License](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/blob/4f672106b847200bfdc0f6af6c321cd94eba1aed/LICENSE/en). Article 2 states:
 
