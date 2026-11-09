@@ -117,6 +117,37 @@ The app sets 300 ms pre-roll, 500 ms end silence, a 250 ms minimum and a 15 s cu
 Neither file copies upstream source code.
 `internal/asr/silero.go` runs `silero_vad.onnx`, which the app downloads from silero-vad at the commit linked above.
 
+## llama.cpp
+
+Source: [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp/tree/b12201), build b12201. License: MIT.
+
+`internal/translate` starts `llama-server` and calls its HTTP API.
+The app downloads the Windows and Linux x64 CPU builds from the [b12201 release](https://github.com/ggml-org/llama.cpp/releases/tag/b12201).
+The Windows build includes the OpenMP runtime `libomp.dll` under [Apache-2.0 WITH LLVM-exception](https://github.com/llvm/llvm-project/blob/baf637dcde8ccc24fd6ffbc82d8321ba18ec857f/openmp/LICENSE.TXT).
+That revision's `openmp/LICENSE.TXT` matches the bundled `LICENSE-LLVM-OpenMP` byte for byte.
+
+## golang.org/x/sys
+
+Source: [golang.org/x/sys](https://go.googlesource.com/sys), version v0.49.0. License: BSD-3-Clause.
+
+`internal/translate` calls the Windows process and job-object APIs, and `internal/audio/application_windows.go` calls process and COM activation APIs through this Go module, which is compiled into the Windows executable.
+
+## PLaMo 3 Translate
+
+Model: [pfnet/plamo-3-translate-2b-GGUF](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF), Q4_K_M. License: [PLaMo Community License](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/blob/228a27cc0bb4f111219963848d50a3127c16ca73/LICENSE/en).
+
+The app downloads the Q4_K_M GGUF at revision `228a27cc0bb4f111219963848d50a3127c16ca73` from this model repository.
+`internal/catalog/licenses/plamo-community.txt` contains the complete English license from that revision for display before downloading.
+Article 2 states:
+
+> The USER must be 18 years of age or older, or have reached the age of legal capacity in the USER’s country of residence, unless the USER's legal guardian or legal representative has consented to this AGREEMENT on the USER’s behalf.
+
+Article 4(1) states: "When providing the MODEL MATERIALS to third parties, the USER must meet the following requirements:" Its clause (ii) states:
+
+> Explicitly indicate "Built with PLaMo" in related websites, user interfaces, blog posts, product information pages, or product documentation.
+
+The app shows "Built with PLaMo" in its UI and documentation.
+
 ## Go dependencies
 
 Go module dependencies retain their own licenses and notices, which are not vendored here.
