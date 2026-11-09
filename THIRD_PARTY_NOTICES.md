@@ -68,6 +68,55 @@ Source: [fla-org/flash-linear-attention](https://github.com/fla-org/flash-linear
 `tools/haas-export/export_onnx_decoder.py` reimplements the single-step KDA recurrence from `fla/ops/kda/fused_recurrent.py`, `ShortConvolution.step` from `fla/modules/convolution.py` and `FusedRMSNormGated` from `fla/modules/layernorm_gated.py`.
 It copies no upstream source code or Triton kernels.
 
+## ONNX Runtime
+
+Source: [microsoft/onnxruntime](https://github.com/microsoft/onnxruntime), version 1.31.1. License: MIT.
+
+The app downloads the CPU build of ONNX Runtime.
+
+`tools/haas-export/quantize_onnx.py` calls the int8 quantizer, and `tools/haas-export/haas_full_onnx.py` calls the inference API. Neither script copies ONNX Runtime source code.
+`internal/asr` calls the runtime through the Go binding [getcharzp/onnxruntime_purego](https://github.com/getcharzp/onnxruntime_purego), version v1.28.0 (MIT).
+The binding depends on [ebitengine/purego](https://github.com/ebitengine/purego), version v0.9.0 (Apache-2.0). Both Go modules are compiled into the executable.
+
+## onnx-asr
+
+Source: [istupakov/onnx-asr](https://github.com/istupakov/onnx-asr), version 0.12.0. License: MIT.
+
+`tools/haas-export/export_vocab.py` writes onnx-asr's `<piece> <id>` vocabulary format, and `internal/asr/vocab.go` reads it.
+`internal/catalog/pins.go` uses onnx-asr's Parakeet file names.
+`internal/asr/parakeet.go` reimplements the combined prediction/joint step from `models/nemo.py`.
+The app runs the `onnx_asr/preprocessors/data/nemo128.onnx` feature extractor from the onnx-asr 0.12.0 wheel.
+The app downloads the wheel from [PyPI](https://pypi.org/project/onnx-asr/0.12.0/) and extracts this feature extractor.
+`internal/asr/parakeet_test.go` reimplements onnx-asr's text rule from `asr.py` only for parity comparisons.
+It joins vocabulary pieces and replaces `▁` with spaces.
+It removes the first leading whitespace character and whitespace not followed by a Unicode word character.
+No onnx-asr source code is copied.
+
+## NVIDIA Parakeet
+
+Model: [nvidia/parakeet-tdt-0.6b-v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2), by NVIDIA. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+ONNX conversion: [istupakov/parakeet-tdt-0.6b-v2-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/tree/0bbb45a3365852604aef28b538a8f066f4ccaa85), revision `0bbb45a3365852604aef28b538a8f066f4ccaa85`. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+
+`internal/asr/parakeet.go` runs the converted int8 encoder and decoder/joint weights.
+The app downloads these weights from the ONNX conversion repository.
+
+## SentencePiece
+
+Source: [google/sentencepiece](https://github.com/google/sentencepiece), version 0.2.3. License: Apache-2.0.
+
+`internal/asr/vocab.go` reimplements SentencePiece decoding.
+No SentencePiece source code is copied.
+
+## Silero VAD
+
+Source and model: [snakers4/silero-vad](https://github.com/snakers4/silero-vad/tree/5cd7945676eb32225748052e2e6a0580e4686a08), v6.2.3 at commit `5cd7945676eb32225748052e2e6a0580e4686a08`. License: MIT.
+
+`internal/asr/silero.go` reimplements the state and audio-history protocol of `OnnxWrapper` in `src/silero_vad/utils_vad.py`.
+`internal/vad/segmenter.go` uses `VADIterator`'s probability hysteresis and silence confirmation, with its default thresholds of 0.5 and 0.35.
+The app sets 300 ms pre-roll, 500 ms end silence, a 250 ms minimum and a 15 s cut.
+Neither file copies upstream source code.
+`internal/asr/silero.go` runs `silero_vad.onnx`, which the app downloads from silero-vad at the commit linked above.
+
 ## Go dependencies
 
 Go module dependencies retain their own licenses and notices, which are not vendored here.
