@@ -71,6 +71,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 		fmt.Fprintf(errout, "Open the printed URL in a browser: %v\n", err)
 	}
 	a.startEnabled()
+	a.watchSettings()
 	select {
 	case err = <-done:
 		if errors.Is(err, http.ErrServerClosed) {

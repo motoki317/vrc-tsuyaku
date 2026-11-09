@@ -11,7 +11,6 @@ import (
 
 	"github.com/motoki317/vrc-tsuyaku/internal/asr"
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
-	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/download"
 )
 
@@ -94,7 +93,7 @@ func (a *app) openTarget(target string) error {
 			a.mu.Lock()
 			s := cloneSettings(a.settings)
 			a.mu.Unlock()
-			err = config.Save(a.dir, s)
+			err = a.writeSettings(s)
 		}
 		if err != nil {
 			return err

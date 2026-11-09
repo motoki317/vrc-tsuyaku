@@ -51,12 +51,14 @@ type app struct {
 	mu            sync.Mutex
 	settings      config.Settings
 	settingsError string
+	settingsFile  settingsFileState
 	artifacts     map[string]artifactState
 	flows         map[string]*flowRun
 	events        events
-	// operations serializes startEnabled, saveSettings, changeFlow,
-	// startDownload and close. Callers hold it while calling start or stop.
+	// operations serializes settings, flow and storage changes, including close.
+	// Callers hold it while calling start or stop.
 	operations   sync.Mutex
+	settingsWG   sync.WaitGroup
 	downloadsWG  sync.WaitGroup
 	modelTurn    chan struct{}
 	engine       *asr.Engine
@@ -79,6 +81,7 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		source: flowSource, open: openFile,
 	}
 	a.prepare = a.prepareModels
+	a.settingsFile = a.statSettings()
 	settings, loadErr := config.Load(dir)
 	if loadErr != nil {
 		settings = config.Defaults()
@@ -267,16 +270,26 @@ func (a *app) stop(name string) {
 func (a *app) saveSettings(s config.Settings) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
-	a.mu.Lock()
-	old := cloneSettings(a.settings)
-	a.mu.Unlock()
-	s.LicensesAccepted = old.LicensesAccepted
-	s.Flows.Self.Enabled = old.Flows.Self.Enabled
-	s.Flows.World.Enabled = old.Flows.World.Enabled
-	if err := config.Save(a.dir, s); err != nil {
+	s = a.preserveControls(s)
+	if err := a.writeSettings(s); err != nil {
 		return err
 	}
+	a.applySettings(s, "saved")
+	return nil
+}
+
+func (a *app) preserveControls(s config.Settings) config.Settings {
 	a.mu.Lock()
+	defer a.mu.Unlock()
+	s.LicensesAccepted = maps.Clone(a.settings.LicensesAccepted)
+	s.Flows.Self.Enabled = a.settings.Flows.Self.Enabled
+	s.Flows.World.Enabled = a.settings.Flows.World.Enabled
+	return s
+}
+
+func (a *app) applySettings(s config.Settings, event string) {
+	a.mu.Lock()
+	old := a.settings
 	var restart []string
 	for _, name := range []string{"self", "world"} {
 		oldSpoken, _ := old.Flows.Languages(name)
@@ -307,13 +320,13 @@ func (a *app) saveSettings(s config.Settings) error {
 			a.mu.Unlock()
 		}
 	}
-	a.emit("", "settings", "saved")
-	return nil
+	a.emit("", "settings", event)
 }
 
 func (a *app) changeFlow(name, action string) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
+	a.reloadSettingsLocked()
 	a.mu.Lock()
 	s := cloneSettings(a.settings)
 	settingsError := a.settingsError
@@ -322,7 +335,7 @@ func (a *app) changeFlow(name, action string) error {
 		startErr = a.checkStart(name, s)
 	}
 	a.mu.Unlock()
-	if settingsError != "" {
+	if settingsError != "" && action != "stop" {
 		return fmt.Errorf("save valid settings before changing a flow: %s", settingsError)
 	}
 	if startErr != nil {
@@ -334,14 +347,19 @@ func (a *app) changeFlow(name, action string) error {
 	} else {
 		s.Flows.World.Enabled = action == "start"
 	}
-	if err := config.Save(a.dir, s); err != nil {
-		return err
+	if settingsError == "" {
+		if err := a.writeSettings(s); err != nil {
+			return err
+		}
 	}
 	a.mu.Lock()
 	a.settings = s
-	a.settingsError = ""
 	a.mu.Unlock()
-	a.emit("", "settings", "saved")
+	text := "saved"
+	if settingsError != "" {
+		text = "changed"
+	}
+	a.emit("", "settings", text)
 	if action == "stop" {
 		a.stop(name)
 		return nil
@@ -369,7 +387,7 @@ func (a *app) startDownload(id string, accept bool) error {
 	if key := state.Artifact.AcceptanceKey; key != "" {
 		if accept {
 			s.LicensesAccepted[key] = time.Now().UTC().Format(time.RFC3339)
-			if err := config.Save(a.dir, s); err != nil {
+			if err := a.writeSettings(s); err != nil {
 				return err
 			}
 			a.mu.Lock()
@@ -493,6 +511,7 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 
 func (a *app) close() error {
 	a.cancel()
+	a.settingsWG.Wait()
 	a.operations.Lock()
 	defer a.operations.Unlock()
 	for _, name := range []string{"self", "world"} {
