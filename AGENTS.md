@@ -1,12 +1,16 @@
 # Rules for working on vrc-tsuyaku
 
-- vrc-tsuyaku is one Go program for Windows and Linux. Build every binary with `CGO_ENABLED=0`, so that `GOOS=windows go build` works from Linux. Load native libraries (ONNX Runtime) at run time with purego. Run llama.cpp as a `llama-server` child process.
-- No Python at run time. Python code lives only under `tools/`, for offline model conversion.
+- vrc-tsuyaku is a Go program for Windows and Linux. Write no cgo, so that `CGO_ENABLED=0 GOOS=windows go build` works from Linux. Load native libraries (ONNX Runtime) at run time with purego. Run llama.cpp as a `llama-server` child process.
+- Python code lives only under `tools/`, for offline model conversion. The app never runs Python.
 - Layout: `cmd/vrc-tsuyaku/` holds `main` and the web UI server, with the static UI files in `cmd/vrc-tsuyaku/ui/`. Everything else goes in `internal/<package>/`.
-- Audio between packages is always 16 kHz mono `float32`. Capture asks the OS audio server for that format, so the app has no resampler.
-- `internal/catalog` is the only place that names a model's or runtime's files, URLs, SHA-256 hashes, license and languages. Other code reads the catalog.
-- The web UI listens only on `127.0.0.1`, and every `/api/` request needs the session token.
-- Tests that need models, audio, ONNX Runtime or llama.cpp read their paths from `VRC_TSUYAKU_TEST_*` environment variables and skip when one is unset. Never commit models or test audio.
+- Audio between packages is always 16 kHz mono `float32`. Capture asks the OS audio API (WASAPI, PulseAudio) to deliver that format. Do not add a resampler.
+- In the Go app, `internal/catalog` is the only place that names a model's or runtime's files, URLs, SHA-256 hashes, license and languages.
+- The web UI listens only on `127.0.0.1`. Every `/api/` request needs the random token that the app puts in the URL fragment when it opens the browser.
+- The app reaches the internet only for a download that the user starts in the web UI. It writes only into its data directory (the executable's directory, or the one that `-data-dir` names), partial downloads included.
+- Tests that need models, audio, ONNX Runtime or llama.cpp read their inputs, such as paths and device names, from `VRC_TSUYAKU_TEST_*` environment variables and skip when a variable they need is unset. Never commit models or test audio.
+- Tests and checks play no sound that a person can hear. A developer machine's speakers or headset may be in use, for example in VRChat. Play test audio only into an output that discards it, such as a PulseAudio null sink that the check names. A player must exit if that output is missing. Never play test audio through a default or physical device. Only a person, never an agent, runs a check that needs audible sound.
+- Tests and checks record no person's microphone. Record only from a source that the check makes from a null sink, such as a PulseAudio remap source of the null sink's monitor. Never record from a default or physical microphone: under WSLg, the default source carries the Windows microphone. Only a person, never an agent, runs a check that needs a real microphone.
 - Before you finish a change, run `just lint test` and `GOOS=windows go build -o /dev/null ./...` inside `nix develop`.
-- Write everything in the repository (code, comments, docs, commit messages) in English. Tracked files must be publishable: no personal names, internal IDs, private paths or private history. Plans and working notes go in `docs/plans/`, which git ignores.
-- vrc-tsuyaku is MIT-licensed. When you adapt code, a protocol, a file format or a design from another project, credit it: a short header comment in the adapted file (source and license) and an entry in `THIRD_PARTY_NOTICES.md`. Copy third-party code only under a compatible license, with its copyright notice.
+- Write code, comments, docs and commit messages in English. Japanese appears only as data, such as test inputs and expected transcripts.
+- Tracked files and commit messages must be publishable: no local paths, no references to private notes or conversations, and no personal names except in copyright notices. Plans and working notes go in `docs/plans/`, which git ignores. `just lint test` still reads Go files there, so put a scratch Go program in a directory whose name starts with `_`, which Go tooling skips.
+- vrc-tsuyaku is MIT-licensed. When you copy or reimplement another project's code, algorithm, protocol, file format or design, credit it: a short header comment in each file that does so (source and license) and an entry in `THIRD_PARTY_NOTICES.md`. A design that no single file holds, such as VRCT's, gets only the entry. Calling a dependency's API and implementing a public specification, such as OSC 1.0, need no credit. Copy third-party code only under a compatible license, with its copyright notice.

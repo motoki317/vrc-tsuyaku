@@ -5,7 +5,7 @@
 
   outputs = { self, nixpkgs }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" ];
+      systems = [ "x86_64-linux" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
@@ -13,6 +13,7 @@
         default = pkgs.mkShell {
           packages = [ pkgs.go pkgs.golangci-lint pkgs.just pkgs.curl pkgs.unzip ];
           CGO_ENABLED = "0";
+          GOFLAGS = "-ldflags=-I=/lib64/ld-linux-x86-64.so.2";
         };
       });
     };

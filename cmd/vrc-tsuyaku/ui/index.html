@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vrc-tsuyaku</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>vrc-tsuyaku</h1>
+    <p>Speech translation for VRChat, running on this PC. Keep vrc-tsuyaku running while you use this page.</p>
+  </div>
+  <div class="top-side">
+    <p id="connection" class="connection" data-state="connecting">Connecting…</p>
+    <p class="credit">Built with PLaMo</p>
+  </div>
+</header>
+<div class="banners">
+  <div id="connection-banner" class="banner" data-tone="error" role="alert" hidden></div>
+  <div id="settings-banner" class="banner" data-tone="error" role="alert" hidden>
+    <h2>vrc-tsuyaku could not read settings.yaml</h2>
+    <p>Flows and downloads cannot start until this is fixed. Fix the file and restart vrc-tsuyaku, or replace the file with the default settings. Replacing deletes what the file holds now.</p>
+    <p id="settings-error" class="details"></p>
+    <button type="button" id="replace-settings" class="primary" aria-describedby="replace-message">Replace with default settings</button>
+    <div id="replace-message" class="message"></div>
+  </div>
+</div>
+<main id="main" hidden>
+<p class="note">Each change on this page is saved to settings.yaml at once. Saving removes any comments from that file.</p>
+
+<section id="downloads" class="step" aria-labelledby="downloads-title">
+  <div class="step-head">
+    <h2 id="downloads-title" tabindex="-1"><span class="step-number"><span class="visually-hidden">Step </span>1</span> Get the downloads</h2>
+    <span id="downloads-tag" class="tag"></span>
+  </div>
+  <details id="downloads-details">
+    <summary>Downloads and licenses</summary>
+    <p>The speech and translation models run on this PC. Nothing downloads until you press a button.</p>
+    <div id="license-gates"></div>
+    <div class="actions">
+      <button type="button" id="download-all" class="primary" aria-describedby="download-all-reason"></button>
+      <p id="download-all-reason" class="reason"></p>
+    </div>
+    <ul id="download-list" class="download-list"></ul>
+  </details>
+</section>
+
+<section id="flows" class="step" aria-labelledby="flows-title">
+  <h2 id="flows-title"><span class="step-number"><span class="visually-hidden">Step </span>2</span> Start a flow</h2>
+  <div class="flows">
+    <article id="flow-self" class="flow" aria-labelledby="self-title">
+      <div class="flow-head"><h3 id="self-title">Self flow</h3><span id="self-tag" class="tag"></span></div>
+      <p>Hears Japanese from your microphone and shows it with its English translation in your VRChat chatbox.</p>
+      <p class="hint">Turn on OSC in VRChat's Action Menu: OSC → Enabled.</p>
+      <div class="field">
+        <label for="microphone">Microphone</label>
+        <div class="field-row">
+          <select id="microphone" aria-describedby="microphone-message"></select>
+          <button type="button" id="refresh-mics" class="secondary">Refresh list<span class="visually-hidden"> of microphones</span></button>
+        </div>
+        <p id="microphone-message" class="message"></p>
+      </div>
+      <details id="address-details" class="field">
+        <summary>Chatbox address: <span id="address-current"></span></summary>
+        <label for="address">Chatbox address</label>
+        <p id="address-hint" class="hint">An IP address and port. VRChat listens on 127.0.0.1:9000.</p>
+        <input id="address" autocomplete="off" spellcheck="false" aria-describedby="address-hint address-message">
+        <p id="address-message" class="message"></p>
+      </details>
+      <div class="actions">
+        <button type="button" id="self-start" data-flow="self" data-action="start" class="primary" aria-describedby="self-message"></button>
+        <button type="button" id="self-stop" data-flow="self" data-action="stop" class="secondary" aria-describedby="self-message" hidden></button>
+      </div>
+      <div id="self-message" class="message"></div>
+      <p id="self-launch" class="hint"></p>
+    </article>
+    <article id="flow-world" class="flow" aria-labelledby="world-title">
+      <div class="flow-head"><h3 id="world-title">World flow</h3><span id="world-tag" class="tag"></span></div>
+      <p>Hears English in VRChat and shows the Japanese translation in step 3.</p>
+      <p class="hint">Start VRChat first. This flow hears only VRChat's audio.</p>
+      <div class="actions">
+        <button type="button" id="world-start" data-flow="world" data-action="start" class="primary" aria-describedby="world-message"></button>
+        <button type="button" id="world-stop" data-flow="world" data-action="stop" class="secondary" aria-describedby="world-message" hidden></button>
+      </div>
+      <div id="world-message" class="message"></div>
+      <p id="world-launch" class="hint"></p>
+    </article>
+  </div>
+</section>
+
+<section id="translations" class="step" aria-labelledby="log-title">
+  <h2 id="log-title"><span class="step-number"><span class="visually-hidden">Step </span>3</span> Watch the translations</h2>
+  <div id="log" class="log" role="log" aria-live="off" aria-labelledby="log-title" tabindex="0">
+    <p id="log-empty" class="empty">Translations appear here when a running flow hears speech.</p>
+    <ol id="log-list"></ol>
+  </div>
+</section>
+</main>
+<div id="announce" class="visually-hidden" role="status"></div>
+</body>
+</html>
