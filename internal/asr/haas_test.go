@@ -101,7 +101,7 @@ func TestHaasLifecycle(t *testing.T) {
 	if _, err := h.Transcribe(t.Context(), audio); err == nil {
 		t.Fatal("transcription succeeded after close")
 	}
-	if _, err := e.LoadHaas(catalog.HaasBundle(bundle, false)); err == nil {
+	if _, _, err := e.LoadHaas(catalog.HaasBundle(bundle, false)); err == nil {
 		t.Fatal("load succeeded after close")
 	}
 	if _, err := NewEngine(catalog.HaasBundle(bundle, false).Vocabulary); err == nil || !strings.Contains(err.Error(), "restart") {

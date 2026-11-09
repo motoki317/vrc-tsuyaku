@@ -82,10 +82,11 @@ func readTestWAV(t *testing.T, dir, id string) []float32 {
 
 func loadTestHaas(t *testing.T, e *Engine, bundle string, int8Encoder bool) *Haas {
 	t.Helper()
-	h, err := e.LoadHaas(catalog.HaasBundle(bundle, int8Encoder))
+	h, release, err := e.LoadHaas(catalog.HaasBundle(bundle, int8Encoder))
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(release)
 	return h
 }
 

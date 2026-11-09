@@ -59,10 +59,11 @@ func TestPinnedLinuxDownloads(t *testing.T) {
 	}
 	defer engine.Close()
 	sileroDir, _ := m.Directory(catalog.Silero, "linux")
-	vad, err := engine.LoadSilero(catalog.SileroModel(sileroDir))
+	vad, release, err := engine.LoadSilero(catalog.SileroModel(sileroDir))
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer release()
 	probability, err := vad.NewStream().Probability(ctx, make([]float32, 512))
 	if err != nil {
 		t.Fatal(err)

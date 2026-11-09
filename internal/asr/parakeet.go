@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 
 	ort "github.com/getcharzp/onnxruntime_purego"
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
@@ -16,6 +17,7 @@ import (
 
 // Parakeet recognizes speech with the int8 Parakeet TDT 0.6B v2 or v3 networks.
 type Parakeet struct {
+	mu                              sync.RWMutex
 	engine                          *Engine
 	vocab                           vocabulary
 	blank                           int
@@ -54,11 +56,14 @@ func newParakeet(engine *Engine, files catalog.ParakeetFiles) (*Parakeet, error)
 }
 
 func (p *Parakeet) close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	for _, session := range []*ort.Session{p.features, p.encoder, p.decoderJoint} {
 		if session != nil {
 			session.Close()
 		}
 	}
+	p.features, p.encoder, p.decoderJoint = nil, nil, nil
 }
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
@@ -73,8 +78,13 @@ func (p *Parakeet) Transcribe(ctx context.Context, audio []float32) (string, err
 func (p *Parakeet) tokens(ctx context.Context, audio []float32) ([]int, error) {
 	p.engine.mu.RLock()
 	defer p.engine.mu.RUnlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if err := p.engine.checkAudio(ctx, audio); err != nil {
 		return nil, err
+	}
+	if p.encoder == nil {
+		return nil, fmt.Errorf("Parakeet model is released")
 	}
 	encoded, err := p.encode(ctx, audio)
 	if err != nil {

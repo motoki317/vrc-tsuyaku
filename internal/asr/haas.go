@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"sync"
 
 	ort "github.com/getcharzp/onnxruntime_purego"
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
@@ -25,6 +26,7 @@ const haasBlank = 3072
 // Haas recognizes Japanese with the exported Haas encoder, prediction and joint
 // networks.
 type Haas struct {
+	mu                             sync.RWMutex
 	engine                         *Engine
 	vocab                          vocabulary
 	features, encoder, step, joint *ort.Session
@@ -63,11 +65,14 @@ func newHaas(engine *Engine, files catalog.HaasFiles) (*Haas, error) {
 }
 
 func (h *Haas) close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	for _, session := range []*ort.Session{h.features, h.encoder, h.step, h.joint} {
 		if session != nil {
 			session.Close()
 		}
 	}
+	h.features, h.encoder, h.step, h.joint = nil, nil, nil, nil
 }
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
@@ -82,8 +87,13 @@ func (h *Haas) Transcribe(ctx context.Context, audio []float32) (string, error) 
 func (h *Haas) tokens(ctx context.Context, audio []float32) ([]int, error) {
 	h.engine.mu.RLock()
 	defer h.engine.mu.RUnlock()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if err := h.engine.checkAudio(ctx, audio); err != nil {
 		return nil, err
+	}
+	if h.encoder == nil {
+		return nil, fmt.Errorf("Haas model is released")
 	}
 	encoded, err := h.encode(ctx, audio)
 	if err != nil {
