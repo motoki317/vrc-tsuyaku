@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/vad"
@@ -186,7 +187,7 @@ func Run(ctx context.Context, s Stages) error {
 	start(func() error {
 		defer close(translations)
 		for r := range texts {
-			translated, err := s.Translate(ctx, r.source, r.target, r.original)
+			translated, err := s.Translate(ctx, catalog.TranslatorSource(r.source), r.target, r.original)
 			if err != nil {
 				return err
 			}

@@ -519,8 +519,8 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	switch language.Recognizer {
 	case catalog.Haas:
 		recognizer, err = a.engine.LoadHaas(catalog.HaasBundle(a.artifactDir(catalog.Haas), true))
-	case catalog.Parakeet:
-		recognizer, err = a.engine.LoadParakeet(catalog.ParakeetBundle(catalog.Parakeet, a.artifactDir(catalog.Parakeet)))
+	case catalog.Parakeet, catalog.ParakeetV3:
+		recognizer, err = a.engine.LoadParakeet(catalog.ParakeetBundle(language.Recognizer, a.artifactDir(language.Recognizer)))
 	default:
 		return pipeline.Stages{}, fmt.Errorf("unsupported recognizer %q", language.Recognizer)
 	}

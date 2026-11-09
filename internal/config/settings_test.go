@@ -157,7 +157,8 @@ func TestLanguageValidation(t *testing.T) {
 		}
 	}
 	for _, tc := range []struct{ field, code string }{
-		{"spoken", ""}, {"spoken", "auto"}, {"spoken", "de"}, {"spoken", "ja-easy"}, {"spoken", "JA"},
+		{"spoken", ""}, {"spoken", "cs"}, {"spoken", "da"}, {"spoken", "el"}, {"spoken", "fi"},
+		{"spoken", "mt"}, {"spoken", "ro"}, {"spoken", "uk"}, {"spoken", "ja-easy"}, {"spoken", "JA"},
 		{"target", ""}, {"target", "auto"}, {"target", "invalid"}, {"target", "zh"},
 	} {
 		for _, name := range []string{"self", "world"} {
@@ -178,6 +179,36 @@ func TestLanguageValidation(t *testing.T) {
 				}
 				if err := Save(t.TempDir(), s); !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "flows."+name+"."+tc.field) {
 					t.Fatalf("invalid language: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestSpokenLanguageRoundTrip(t *testing.T) {
+	for _, language := range catalog.Languages().Spoken {
+		for _, flow := range []string{"self", "world"} {
+			t.Run(flow+"/"+language.Code, func(t *testing.T) {
+				s := Defaults()
+				if flow == "self" {
+					s.Flows.Self.Spoken = language.Code
+				} else {
+					s.Flows.World.Spoken = language.Code
+				}
+				dir := t.TempDir()
+				err := Save(dir, s)
+				if flow == "self" && language.Auto {
+					if !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "flows.self.spoken") {
+						t.Fatalf("self auto: %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := Load(dir)
+				if err != nil || !reflect.DeepEqual(got, s) {
+					t.Fatal(got, err)
 				}
 			})
 		}

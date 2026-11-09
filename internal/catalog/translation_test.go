@@ -21,22 +21,23 @@ func TestLanguages(t *testing.T) {
 			t.Fatalf("accepted target %q", invalid)
 		}
 	}
-	if len(languages.Spoken) != 2 {
+	if len(languages.Spoken) != 20 {
 		t.Fatal(languages.Spoken)
 	}
-	for _, tc := range []struct{ code, recognizer string }{{"ja", Haas}, {"en", Parakeet}} {
-		language, ok := Spoken(tc.code)
-		if !ok || language.Recognizer != tc.recognizer || language.Auto {
-			t.Fatalf("spoken %s: %+v, %v", tc.code, language, ok)
+	seen := make(map[string]bool)
+	for _, language := range languages.Spoken {
+		if seen[language.Code] {
+			t.Fatalf("duplicate spoken %q", language.Code)
 		}
+		seen[language.Code] = true
 		for _, goos := range []string{"linux", "windows"} {
-			a, err := Lookup(tc.recognizer, goos)
-			if err != nil || !slices.Contains(a.Languages, tc.code) {
-				t.Fatalf("recognizer %s: %+v, %v", tc.code, a, err)
+			a, err := Lookup(language.Recognizer, goos)
+			if err != nil || (!language.Auto && !slices.Contains(a.Languages, language.Code)) || slices.Contains(a.Languages, "auto") {
+				t.Fatalf("recognizer %s: %+v, %v", language.Code, a, err)
 			}
-			required, err := Required(tc.code)
-			if err != nil || !reflect.DeepEqual(required, append(slices.Clone(languages.CommonArtifacts), tc.recognizer)) {
-				t.Fatalf("required %s: %v, %v", tc.code, required, err)
+			required, err := Required(language.Code)
+			if err != nil || !reflect.DeepEqual(required, append(slices.Clone(languages.CommonArtifacts), language.Recognizer)) {
+				t.Fatalf("required %s: %v, %v", language.Code, required, err)
 			}
 			for _, id := range required {
 				if _, err := Lookup(id, goos); err != nil {
@@ -45,7 +46,7 @@ func TestLanguages(t *testing.T) {
 			}
 		}
 	}
-	for _, invalid := range []string{"", "auto", "de", "ja-easy", "JA"} {
+	for _, invalid := range []string{"", "cs", "da", "el", "fi", "mt", "ro", "uk", "ja-easy", "JA"} {
 		if _, ok := Spoken(invalid); ok {
 			t.Fatalf("accepted spoken %q", invalid)
 		}
@@ -56,6 +57,38 @@ func TestLanguages(t *testing.T) {
 	model, _ := Lookup(PLaMo, "linux")
 	if !reflect.DeepEqual(model.Languages, languages.Targets) {
 		t.Fatal("model languages differ from targets")
+	}
+}
+
+func TestSpokenRecognizerMapping(t *testing.T) {
+	for _, tc := range []struct {
+		code, recognizer string
+		auto             bool
+	}{
+		{"ja", Haas, false}, {"en", Parakeet, false},
+		{"bg", ParakeetV3, false}, {"de", ParakeetV3, false}, {"es", ParakeetV3, false},
+		{"et", ParakeetV3, false}, {"fr", ParakeetV3, false}, {"hr", ParakeetV3, false},
+		{"hu", ParakeetV3, false}, {"it", ParakeetV3, false}, {"lt", ParakeetV3, false},
+		{"lv", ParakeetV3, false}, {"nl", ParakeetV3, false}, {"pl", ParakeetV3, false},
+		{"pt", ParakeetV3, false}, {"ru", ParakeetV3, false}, {"sk", ParakeetV3, false},
+		{"sl", ParakeetV3, false}, {"sv", ParakeetV3, false}, {"auto", ParakeetV3, true},
+	} {
+		language, ok := Spoken(tc.code)
+		if !ok || language.Recognizer != tc.recognizer || language.Auto != tc.auto {
+			t.Fatalf("spoken %s: %+v, %v", tc.code, language, ok)
+		}
+	}
+}
+
+func TestTranslatorSource(t *testing.T) {
+	for _, tc := range []struct{ spoken, want string }{
+		{"ja", "ja"}, {"en", "en"}, {"de", "de"},
+		{"auto", ""}, {"pt", ""}, {"sv", ""},
+		{"cs", "cs"}, {"unsupported", "unsupported"},
+	} {
+		if got := TranslatorSource(tc.spoken); got != tc.want {
+			t.Fatalf("source for %q = %q, want %q", tc.spoken, got, tc.want)
+		}
 	}
 }
 

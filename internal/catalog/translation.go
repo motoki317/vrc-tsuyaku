@@ -33,6 +33,24 @@ type SpokenLanguage struct {
 var spokenLanguages = []SpokenLanguage{
 	{Code: Japanese, Recognizer: Haas},
 	{Code: English, Recognizer: Parakeet},
+	{Code: "bg", Recognizer: ParakeetV3},
+	{Code: "de", Recognizer: ParakeetV3},
+	{Code: "es", Recognizer: ParakeetV3},
+	{Code: "et", Recognizer: ParakeetV3},
+	{Code: "fr", Recognizer: ParakeetV3},
+	{Code: "hr", Recognizer: ParakeetV3},
+	{Code: "hu", Recognizer: ParakeetV3},
+	{Code: "it", Recognizer: ParakeetV3},
+	{Code: "lt", Recognizer: ParakeetV3},
+	{Code: "lv", Recognizer: ParakeetV3},
+	{Code: "nl", Recognizer: ParakeetV3},
+	{Code: "pl", Recognizer: ParakeetV3},
+	{Code: "pt", Recognizer: ParakeetV3},
+	{Code: "ru", Recognizer: ParakeetV3},
+	{Code: "sk", Recognizer: ParakeetV3},
+	{Code: "sl", Recognizer: ParakeetV3},
+	{Code: "sv", Recognizer: ParakeetV3},
+	{Code: "auto", Recognizer: ParakeetV3, Auto: true},
 }
 
 var commonArtifacts = []string{ONNXRuntime, Silero, LlamaCPP, PLaMo}
@@ -59,6 +77,16 @@ func Spoken(code string) (SpokenLanguage, bool) {
 		}
 	}
 	return SpokenLanguage{}, false
+}
+
+// TranslatorSource returns the PLaMo source for a spoken choice. Auto and
+// supported spoken languages outside PLaMo's list omit the source. Other codes
+// pass through unchanged.
+func TranslatorSource(code string) string {
+	if language, ok := Spoken(code); ok && (language.Auto || !IsTarget(code)) {
+		return ""
+	}
+	return code
 }
 
 func Required(spoken string) ([]string, error) {

@@ -285,6 +285,64 @@ func TestLanguageChangesApplyToNextPhrase(t *testing.T) {
 	}
 }
 
+func TestSpokenCodeSurvivesOmittedTranslationSource(t *testing.T) {
+	for _, tc := range []struct{ spoken, source string }{
+		{"ja", "ja"}, {"en", "en"}, {"de", "de"},
+		{"auto", ""}, {"pt", ""}, {"sv", ""},
+	} {
+		t.Run(tc.spoken, func(t *testing.T) {
+			s := fakeStages()
+			s.Settings = func() PhraseSettings {
+				return PhraseSettings{SourceLang: tc.spoken, TargetLang: "ja", Template: chatbox.DefaultTemplate}
+			}
+			translated, sent := 0, 0
+			s.Translate = func(_ context.Context, source, target, phrase string) (string, error) {
+				if source != tc.source || target != "ja" || phrase == "" {
+					t.Errorf("translation request: %q, %q, %q", source, target, phrase)
+				}
+				translated++
+				return "translation", nil
+			}
+			s.Send = func(_ context.Context, format string, message chatbox.Message, pageSent func(string)) error {
+				if message.SourceLang != tc.spoken || message.TargetLang != "ja" {
+					t.Errorf("chatbox languages: %+v", message)
+				}
+				pages, err := chatbox.Render(format, message)
+				if err != nil {
+					return err
+				}
+				if len(pages) != 1 || !strings.HasPrefix(pages[0], "["+tc.spoken+"] ") {
+					t.Errorf("chatbox pages: %v", pages)
+				}
+				sent++
+				pageSent(pages[0])
+				return nil
+			}
+			var eventsMu sync.Mutex
+			var events []Event
+			s.Emit = func(e Event) {
+				if e.Kind == "speech" {
+					return
+				}
+				eventsMu.Lock()
+				defer eventsMu.Unlock()
+				events = append(events, e)
+			}
+			if err := Run(t.Context(), s); err != nil {
+				t.Fatal(err)
+			}
+			if translated != 3 || sent != 3 || len(events) != 12 {
+				t.Fatal(translated, sent, events)
+			}
+			for _, e := range events {
+				if e.SourceLang != tc.spoken || e.TargetLang != "ja" {
+					t.Fatalf("event lost spoken code: %+v", e)
+				}
+			}
+		})
+	}
+}
+
 func TestSentWaitsForSuccessfulReturn(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(fmt.Sprint(fail), func(t *testing.T) {
