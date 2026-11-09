@@ -32,4 +32,4 @@ VRChat shows at most 144 characters and 9 lines at a time, so the app splits a l
 
 ## Memory
 
-Every model runs on the CPU, alongside VRChat. Turning a switch off keeps its models in memory. Exit the app to free that memory.
+Every model runs on the CPU, alongside VRChat. When you turn a switch off or change its spoken language, the app frees the speech recognition model that no switch uses any more. The translation model stays in memory until you exit the app.
