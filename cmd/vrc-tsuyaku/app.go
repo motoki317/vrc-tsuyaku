@@ -56,6 +56,7 @@ type app struct {
 	cancel        context.CancelFunc
 	dir, token    string
 	info          appInfo
+	update        updateState
 	downloads     *download.Manager
 	mu            sync.Mutex
 	settings      config.Settings
@@ -69,6 +70,7 @@ type app struct {
 	operations       sync.Mutex
 	settingsWG       sync.WaitGroup
 	downloadsWG      sync.WaitGroup
+	updateWG         sync.WaitGroup
 	modelTurn        chan struct{}
 	engine           *asr.Engine
 	translator       *translate.Supervisor
@@ -89,6 +91,7 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	build, _ := debug.ReadBuildInfo()
 	a := &app{ctx: ctx, cancel: cancel, dir: dir, token: rand.Text(), downloads: manager,
 		info:      appBuildInfo(build),
+		update:    updateState{State: "checking"},
 		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
 		source: flowSource, open: openFile,
 	}
@@ -161,6 +164,7 @@ func (a *app) snapshot() any {
 	}
 	return struct {
 		App             appInfo                  `json:"app"`
+		Update          updateState              `json:"update"`
 		Settings        config.Settings          `json:"settings"`
 		SettingsError   string                   `json:"settingsError,omitempty"`
 		Artifacts       map[string]artifactState `json:"artifacts"`
@@ -168,7 +172,7 @@ func (a *app) snapshot() any {
 		Required        map[string][]string      `json:"required"`
 		Languages       catalog.LanguageCatalog  `json:"languages"`
 		DefaultTemplate string                   `json:"defaultTemplate"`
-	}{a.info, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
+	}{a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
 }
 
 func (a *app) startEnabled() {
@@ -563,6 +567,7 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 
 func (a *app) close() error {
 	a.cancel()
+	a.updateWG.Wait()
 	a.settingsWG.Wait()
 	a.operations.Lock()
 	for _, name := range []string{"self", "world"} {

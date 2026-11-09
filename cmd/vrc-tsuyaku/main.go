@@ -65,6 +65,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 	server := &http.Server{Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
+	a.checkUpdate(latestReleaseURL, &http.Client{})
 	url := "http://" + listener.Addr().String() + "/#" + a.token
 	fmt.Fprintln(out, url)
 	if err := openBrowser(url); err != nil {

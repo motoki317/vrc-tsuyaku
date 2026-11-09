@@ -383,7 +383,7 @@ func TestTokenOnEveryAPI(t *testing.T) {
 	}
 }
 
-func TestNoNetworkUntilDownload(t *testing.T) {
+func TestAppConstructionAndUIStayOffline(t *testing.T) {
 	var calls atomic.Int32
 	old := http.DefaultTransport
 	transport := old.(*http.Transport).Clone()
