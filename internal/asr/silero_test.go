@@ -42,10 +42,11 @@ func TestSileroProbabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	model, err := e.LoadSilero(modelPath)
+	model, release, err := e.LoadSilero(modelPath)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer release()
 	stream := model.NewStream()
 	var maxDifference float64
 	for i, want := range ref.Probabilities {
@@ -72,18 +73,21 @@ func TestSileroLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(e.Close)
-	if _, err := e.LoadSilero(""); err == nil {
+	if _, _, err := e.LoadSilero(""); err == nil {
 		t.Fatal("accepted an empty model path")
 	}
-	if _, err := e.LoadSilero(filepath.Join(t.TempDir(), "missing")); err == nil {
+	if _, _, err := e.LoadSilero(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("loaded a missing model")
 	}
-	model, err := e.LoadSilero(modelPath)
+	model, release, err := e.LoadSilero(modelPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again, err := e.LoadSilero(modelPath); err != nil || again != model {
+	defer release()
+	if again, releaseAgain, err := e.LoadSilero(modelPath); err != nil || again != model {
 		t.Fatalf("session not shared: %v", err)
+	} else {
+		defer releaseAgain()
 	}
 	audio := make([]float32, 512)
 	for i := range audio {
@@ -141,7 +145,7 @@ func TestSileroLifecycle(t *testing.T) {
 	if _, err := stream.Probability(t.Context(), audio); err == nil {
 		t.Fatal("inference succeeded after close")
 	}
-	if _, err := e.LoadSilero(modelPath); err == nil {
+	if _, _, err := e.LoadSilero(modelPath); err == nil {
 		t.Fatal("load succeeded after close")
 	}
 }

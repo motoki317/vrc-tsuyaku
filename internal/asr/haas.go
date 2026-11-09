@@ -68,6 +68,7 @@ func (h *Haas) close() {
 			session.Close()
 		}
 	}
+	h.features, h.encoder, h.step, h.joint = nil, nil, nil, nil
 }
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
@@ -84,6 +85,9 @@ func (h *Haas) tokens(ctx context.Context, audio []float32) ([]int, error) {
 	defer h.engine.mu.RUnlock()
 	if err := h.engine.checkAudio(ctx, audio); err != nil {
 		return nil, err
+	}
+	if h.encoder == nil {
+		return nil, fmt.Errorf("Haas model is released")
 	}
 	encoded, err := h.encode(ctx, audio)
 	if err != nil {

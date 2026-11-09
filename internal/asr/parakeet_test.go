@@ -62,10 +62,11 @@ func TestOnnxASRText(t *testing.T) {
 
 func loadTestParakeet(t *testing.T, e *Engine, bundle string) *Parakeet {
 	t.Helper()
-	p, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.Parakeet, bundle))
+	p, release, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.Parakeet, bundle))
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(release)
 	return p
 }
 
@@ -117,10 +118,11 @@ func TestParakeetV3CPUParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	p, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.ParakeetV3, bundle))
+	p, release, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.ParakeetV3, bundle))
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer release()
 	seen := make(map[string]bool)
 	for _, ref := range refs {
 		if ref.Lang == "" || len(ref.Tokens) == 0 {
@@ -208,7 +210,7 @@ func TestParakeetLifecycle(t *testing.T) {
 	if _, err := p.Transcribe(t.Context(), audio); err == nil {
 		t.Fatal("transcription succeeded after close")
 	}
-	if _, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.Parakeet, bundle)); err == nil {
+	if _, _, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.Parakeet, bundle)); err == nil {
 		t.Fatal("load succeeded after close")
 	}
 }

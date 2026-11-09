@@ -39,9 +39,14 @@ type Engine struct {
 	mu        sync.RWMutex
 	loads     sync.Mutex
 	ort       *ort.Engine
-	models    map[catalog.HaasFiles]*Haas
-	parakeets map[catalog.ParakeetFiles]*Parakeet
-	sileros   map[string]*Silero
+	models    map[catalog.HaasFiles]*cachedModel[*Haas]
+	parakeets map[catalog.ParakeetFiles]*cachedModel[*Parakeet]
+	sileros   map[string]*cachedModel[*Silero]
+}
+
+type cachedModel[T interface{ close() }] struct {
+	model T
+	users int
 }
 
 // NewEngine loads ORT from libraryPath, which must be non-empty.
@@ -74,8 +79,8 @@ func NewEngine(libraryPath string) (*Engine, error) {
 		return nil, fmt.Errorf("load ORT %q: %w", libraryPath, err)
 	}
 	e := &Engine{
-		ort: runtime, models: make(map[catalog.HaasFiles]*Haas),
-		parakeets: make(map[catalog.ParakeetFiles]*Parakeet), sileros: make(map[string]*Silero),
+		ort: runtime, models: make(map[catalog.HaasFiles]*cachedModel[*Haas]),
+		parakeets: make(map[catalog.ParakeetFiles]*cachedModel[*Parakeet]), sileros: make(map[string]*cachedModel[*Silero]),
 	}
 	processEngine.active = e
 	processEngine.library = libraryPath
@@ -94,81 +99,93 @@ func (e *Engine) Close() {
 	if e.ort == nil {
 		return
 	}
-	for _, model := range e.models {
-		model.close()
-	}
-	e.models = nil
-	for _, model := range e.parakeets {
-		model.close()
-	}
-	e.parakeets = nil
-	for _, model := range e.sileros {
-		model.session.Close()
-	}
-	e.sileros = nil
+	closeModels(e.models)
+	closeModels(e.parakeets)
+	closeModels(e.sileros)
 	e.ort.Close()
 	e.ort = nil
 	processEngine.active = nil
+	releaseNativeMemory()
 }
 
 // LoadHaas loads four sessions and a vocabulary from five file paths.
 // It converts paths to absolute paths and uses them as the cache key.
 // Reusing the same cache key returns the cached model.
+// Release the returned reference after its last inference call. The release
+// function is idempotent. The last release unloads the model.
 // Loading both values of catalog.HaasBundle's int8Encoder argument loads the
 // features, decoder and joint sessions twice, once for each encoder.
-func (e *Engine) LoadHaas(files catalog.HaasFiles) (*Haas, error) {
+func (e *Engine) LoadHaas(files catalog.HaasFiles) (*Haas, func(), error) {
 	var err error
 	for _, path := range []*string{&files.Features, &files.Encoder, &files.Decoder, &files.Joint, &files.Vocabulary} {
 		if *path == "" {
-			return nil, fmt.Errorf("Haas model path is empty")
+			return nil, nil, fmt.Errorf("Haas model path is empty")
 		}
 		*path, err = filepath.Abs(*path)
 		if err != nil {
-			return nil, fmt.Errorf("resolve Haas path: %w", err)
+			return nil, nil, fmt.Errorf("resolve Haas path: %w", err)
 		}
 	}
-	if err := e.beginLoad(); err != nil {
-		return nil, err
-	}
-	defer e.endLoad()
-	if model := e.models[files]; model != nil {
-		return model, nil
-	}
-	model, err := newHaas(e, files)
-	if err != nil {
-		return nil, err
-	}
-	e.models[files] = model
-	return model, nil
+	return loadModel(e, e.models, files, func() (*Haas, error) { return newHaas(e, files) })
 }
 
 // LoadParakeet loads Parakeet TDT 0.6B v2 or v3 int8 from four file paths.
 // It converts paths to absolute paths and uses them as the cache key.
 // Reusing the same cache key returns the cached model.
-func (e *Engine) LoadParakeet(files catalog.ParakeetFiles) (*Parakeet, error) {
+// Release the returned reference after its last inference call. The release
+// function is idempotent. The last release unloads the model.
+func (e *Engine) LoadParakeet(files catalog.ParakeetFiles) (*Parakeet, func(), error) {
 	var err error
 	for _, path := range []*string{&files.Features, &files.Encoder, &files.DecoderJoint, &files.Vocabulary} {
 		if *path == "" {
-			return nil, fmt.Errorf("Parakeet model path is empty")
+			return nil, nil, fmt.Errorf("Parakeet model path is empty")
 		}
 		*path, err = filepath.Abs(*path)
 		if err != nil {
-			return nil, fmt.Errorf("resolve Parakeet path: %w", err)
+			return nil, nil, fmt.Errorf("resolve Parakeet path: %w", err)
 		}
 	}
+	return loadModel(e, e.parakeets, files, func() (*Parakeet, error) { return newParakeet(e, files) })
+}
+
+func loadModel[K comparable, T interface{ close() }](e *Engine, cache map[K]*cachedModel[T], key K, load func() (T, error)) (T, func(), error) {
 	if err := e.beginLoad(); err != nil {
-		return nil, err
+		var zero T
+		return zero, nil, err
 	}
 	defer e.endLoad()
-	if model := e.parakeets[files]; model != nil {
-		return model, nil
+	entry := cache[key]
+	if entry == nil {
+		model, err := load()
+		if err != nil {
+			return model, nil, err
+		}
+		entry = &cachedModel[T]{model: model}
+		cache[key] = entry
 	}
-	model, err := newParakeet(e, files)
-	if err != nil {
-		return nil, err
+	entry.users++
+	return entry.model, sync.OnceFunc(func() {
+		e.loads.Lock()
+		defer e.loads.Unlock()
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		if cache[key] != entry {
+			return
+		}
+		entry.users--
+		if entry.users == 0 {
+			entry.model.close()
+			delete(cache, key)
+			releaseNativeMemory()
+		}
+	}), nil
+}
+
+func closeModels[K comparable, T interface{ close() }](cache map[K]*cachedModel[T]) {
+	for key, entry := range cache {
+		entry.model.close()
+		delete(cache, key)
 	}
-	e.parakeets[files] = model
-	return model, nil
 }
 
 // Serialize cache changes while allowing inference. The read lock keeps Close

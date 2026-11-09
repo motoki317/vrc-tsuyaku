@@ -231,11 +231,12 @@ func TestFailedStartReleasesContext(t *testing.T) {
 		a.artifacts[id] = artifact
 	}
 	contexts := make(chan context.Context, 1)
+	var releases atomic.Int32
 	a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
 		contexts <- ctx
-		return pipeline.Stages{}, errors.New("model load failed")
+		return pipeline.Stages{Close: func() { releases.Add(1) }}, errors.New("model load failed")
 	}
-	for range 2 {
+	for attempt := range 2 {
 		if err := a.changeFlow("self", "start"); err != nil {
 			t.Fatal(err)
 		}
@@ -247,6 +248,61 @@ func TestFailedStartReleasesContext(t *testing.T) {
 		if !errors.Is(ctx.Err(), context.Canceled) {
 			t.Fatal("failed start retained its context")
 		}
+		if releases.Load() != int32(attempt+1) {
+			t.Fatal("failed start retained its models")
+		}
+	}
+}
+
+func TestFlowReleasesModelsAfterStopOrRestart(t *testing.T) {
+	for _, phase := range []string{"starting", "running"} {
+		t.Run(phase, func(t *testing.T) {
+			a, _ := pendingDownloadApp(t)
+			a.translator = testTranslator(t)
+			prepared := make(chan string, 2)
+			var active, releases atomic.Int32
+			a.prepare = func(ctx context.Context, _ string, s config.Settings) (pipeline.Stages, error) {
+				if active.Add(1) != 1 {
+					t.Error("restart loaded another recognizer before releasing the old one")
+				}
+				stages := pipeline.Stages{
+					Close: func() { active.Add(-1); releases.Add(1) },
+					Source: recordingSource(func(ctx context.Context, _ func([]float32) error) error {
+						prepared <- s.Flows.Self.Spoken
+						<-ctx.Done()
+						return ctx.Err()
+					}),
+					Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
+					Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
+					Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+				}
+				if phase == "starting" {
+					prepared <- s.Flows.Self.Spoken
+					<-ctx.Done()
+				}
+				return stages, nil
+			}
+			if err := a.changeFlow("self", "start"); err != nil {
+				t.Fatal(err)
+			}
+			if got := <-prepared; got != catalog.Japanese {
+				t.Fatal("unexpected initial language", got)
+			}
+			s := cloneSettings(a.settings)
+			s.Flows.Self.Spoken = "fr"
+			if err := a.saveSettings(s); err != nil {
+				t.Fatal(err)
+			}
+			if got := <-prepared; got != "fr" || releases.Load() != 1 {
+				t.Fatal("language switch did not release its old models", got, releases.Load())
+			}
+			if err := a.changeFlow("self", "stop"); err != nil {
+				t.Fatal(err)
+			}
+			if active.Load() != 0 || releases.Load() != 2 {
+				t.Fatal("stop retained its models", active.Load(), releases.Load())
+			}
+		})
 	}
 }
 

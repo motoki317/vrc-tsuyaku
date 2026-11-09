@@ -15,7 +15,7 @@ import (
 )
 
 // Silero shares one session across independent audio streams.
-// Its session lives until Engine.Close.
+// Its session lives until the last owner releases it or Engine.Close.
 type Silero struct {
 	engine  *Engine
 	session *ort.Session
@@ -24,28 +24,28 @@ type Silero struct {
 // LoadSilero loads the Silero VAD v6.2.3 graph.
 // It converts path to an absolute path and uses it as the cache key.
 // Reusing the same cache key returns the cached model.
-func (e *Engine) LoadSilero(path string) (*Silero, error) {
+// Release the returned reference after its streams finish. The release function
+// is idempotent. The last release unloads the session.
+func (e *Engine) LoadSilero(path string) (*Silero, func(), error) {
 	if path == "" {
-		return nil, fmt.Errorf("Silero model path is empty")
+		return nil, nil, fmt.Errorf("Silero model path is empty")
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("resolve Silero path: %w", err)
+		return nil, nil, fmt.Errorf("resolve Silero path: %w", err)
 	}
-	if err := e.beginLoad(); err != nil {
-		return nil, err
-	}
-	defer e.endLoad()
-	if model := e.sileros[path]; model != nil {
-		return model, nil
-	}
-	session, err := e.session(path, 1)
-	if err != nil {
-		return nil, fmt.Errorf("load Silero: %w", err)
-	}
-	model := &Silero{engine: e, session: session}
-	e.sileros[path] = model
-	return model, nil
+	return loadModel(e, e.sileros, path, func() (*Silero, error) {
+		session, err := e.session(path, 1)
+		if err != nil {
+			return nil, fmt.Errorf("load Silero: %w", err)
+		}
+		return &Silero{engine: e, session: session}, nil
+	})
+}
+
+func (s *Silero) close() {
+	s.session.Close()
+	s.session = nil
 }
 
 // SileroStream owns one stream's recurrent state and 64 preceding audio samples.
@@ -77,6 +77,9 @@ func (s *SileroStream) Probability(ctx context.Context, audio []float32) (float3
 	defer e.mu.RUnlock()
 	if err := e.checkAudio(ctx, audio); err != nil {
 		return 0, err
+	}
+	if s.model.session == nil {
+		return 0, fmt.Errorf("Silero model is released")
 	}
 	if len(audio) != 512 {
 		return 0, fmt.Errorf("Silero requires 512 samples, got %d", len(audio))

@@ -41,7 +41,9 @@ type PhraseSettings struct {
 // Send is optional and calls pageSent after each page it successfully writes.
 // Run emits a page event for each callback and a sent event after Send returns nil.
 // Emit must be safe for concurrent calls and must not block the pipeline.
+// Close is optional. The caller runs it after all stage calls finish.
 type Stages struct {
+	Close       func()
 	Source      audio.Source
 	Probability func(context.Context, []float32) (float32, error)
 	Recognize   func(context.Context, []float32) (string, error)

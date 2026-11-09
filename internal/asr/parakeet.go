@@ -59,6 +59,7 @@ func (p *Parakeet) close() {
 			session.Close()
 		}
 	}
+	p.features, p.encoder, p.decoderJoint = nil, nil, nil
 }
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
@@ -75,6 +76,9 @@ func (p *Parakeet) tokens(ctx context.Context, audio []float32) ([]int, error) {
 	defer p.engine.mu.RUnlock()
 	if err := p.engine.checkAudio(ctx, audio); err != nil {
 		return nil, err
+	}
+	if p.encoder == nil {
+		return nil, fmt.Errorf("Parakeet model is released")
 	}
 	encoded, err := p.encode(ctx, audio)
 	if err != nil {

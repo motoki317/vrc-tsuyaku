@@ -217,6 +217,9 @@ func (a *app) start(name string, s config.Settings) error {
 		defer close(run.done)
 		defer cancel()
 		stages, err := a.prepare(ctx, name, s)
+		if stages.Close != nil {
+			defer stages.Close()
+		}
 		if err == nil && ctx.Err() == nil {
 			stages.Settings = func() pipeline.PhraseSettings {
 				a.mu.Lock()
@@ -521,7 +524,7 @@ func (a *app) artifactDir(id string) string {
 	return dir
 }
 
-func (a *app) prepareModels(ctx context.Context, name string, s config.Settings) (pipeline.Stages, error) {
+func (a *app) prepareModels(ctx context.Context, name string, s config.Settings) (stages pipeline.Stages, err error) {
 	select {
 	case a.modelTurn <- struct{}{}:
 	case <-ctx.Done():
@@ -531,17 +534,28 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	if err := ctx.Err(); err != nil {
 		return pipeline.Stages{}, err
 	}
-	var err error
 	if a.engine == nil {
 		a.engine, err = asr.NewEngine(catalog.ORTLibrary(a.artifactDir(catalog.ONNXRuntime)))
 		if err != nil {
 			return pipeline.Stages{}, err
 		}
 	}
-	silero, err := a.engine.LoadSilero(catalog.SileroModel(a.artifactDir(catalog.Silero)))
+	silero, releaseSilero, err := a.engine.LoadSilero(catalog.SileroModel(a.artifactDir(catalog.Silero)))
 	if err != nil {
 		return pipeline.Stages{}, err
 	}
+	var releaseRecognizer func()
+	release := func() {
+		if releaseRecognizer != nil {
+			releaseRecognizer()
+		}
+		releaseSilero()
+	}
+	defer func() {
+		if err != nil {
+			release()
+		}
+	}()
 	var recognizer asr.Recognizer
 	spoken, _ := s.Flows.Languages(name)
 	language, ok := catalog.Spoken(spoken)
@@ -550,9 +564,9 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	}
 	switch language.Recognizer {
 	case catalog.Haas:
-		recognizer, err = a.engine.LoadHaas(catalog.HaasBundle(a.artifactDir(catalog.Haas), true))
+		recognizer, releaseRecognizer, err = a.engine.LoadHaas(catalog.HaasBundle(a.artifactDir(catalog.Haas), true))
 	case catalog.Parakeet, catalog.ParakeetV3:
-		recognizer, err = a.engine.LoadParakeet(catalog.ParakeetBundle(language.Recognizer, a.artifactDir(language.Recognizer)))
+		recognizer, releaseRecognizer, err = a.engine.LoadParakeet(catalog.ParakeetBundle(language.Recognizer, a.artifactDir(language.Recognizer)))
 	default:
 		return pipeline.Stages{}, fmt.Errorf("unsupported recognizer %q", language.Recognizer)
 	}
@@ -572,7 +586,7 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	if err = a.translator.Start(ctx); err != nil {
 		return pipeline.Stages{}, err
 	}
-	stages := pipeline.Stages{Source: a.source(name, s.Flows.Self.Microphone), Probability: silero.NewStream().Probability, Recognize: recognizer.Transcribe,
+	stages = pipeline.Stages{Close: release, Source: a.source(name, s.Flows.Self.Microphone), Probability: silero.NewStream().Probability, Recognize: recognizer.Transcribe,
 		Translate: a.translator.Translate}
 	if name == "self" {
 		if a.queue == nil || a.queueAddress != s.Chatbox.Address {
