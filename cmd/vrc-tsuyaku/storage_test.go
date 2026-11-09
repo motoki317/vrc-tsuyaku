@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 )
 
@@ -31,6 +32,79 @@ func TestUILanguageAPI(t *testing.T) {
 	w = request(a, "PUT", "/api/settings", string(body), a.token)
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "ui.language") {
 		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestDeleteDownload(t *testing.T) {
+	a := testApp(t)
+	for _, id := range []string{catalog.Haas, catalog.Parakeet} {
+		dir := a.artifactDir(id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "fixture"), []byte(id), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		state := a.artifacts[id]
+		state.State = "installed"
+		a.artifacts[id] = state
+	}
+	path := "/api/downloads/" + catalog.Haas
+	for _, token := range []string{"", "wrong"} {
+		if w := request(a, "DELETE", path, "", token); w.Code != http.StatusUnauthorized {
+			t.Fatal(w.Code)
+		}
+	}
+	for range 2 {
+		w := request(a, "DELETE", path, "", a.token)
+		if w.Code != http.StatusOK {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		if _, err := os.Stat(a.artifactDir(catalog.Haas)); !os.IsNotExist(err) || a.artifacts[catalog.Haas].State != "missing" {
+			t.Fatal("deleted artifact remains installed", err)
+		}
+		if body, err := os.ReadFile(filepath.Join(a.artifactDir(catalog.Parakeet), "fixture")); err != nil || string(body) != catalog.Parakeet {
+			t.Fatal("neighbor changed", string(body), err)
+		}
+	}
+	for _, id := range []string{"unknown", "..%2Fsettings.yaml"} {
+		if w := request(a, "DELETE", "/api/downloads/"+id, "", a.token); w.Code != http.StatusNotFound {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestDeleteDownloadInUse(t *testing.T) {
+	for _, flow := range []string{"self", "world"} {
+		for _, phase := range []string{"starting", "running"} {
+			t.Run(flow+"/"+phase, func(t *testing.T) {
+				a := testApp(t)
+				a.flows[flow].status.State = phase
+				spoken, _ := a.settings.Flows.Languages(flow)
+				for _, id := range wantRequirements(t, spoken) {
+					if w := request(a, "DELETE", "/api/downloads/"+id, "", a.token); w.Code != http.StatusConflict {
+						t.Fatal(id, w.Code, w.Body.String())
+					}
+				}
+				unused := catalog.Haas
+				if spoken == "ja" {
+					unused = catalog.Parakeet
+				}
+				if w := request(a, "DELETE", "/api/downloads/"+unused, "", a.token); w.Code != http.StatusOK {
+					t.Fatal(w.Code, w.Body.String())
+				}
+			})
+		}
+	}
+	a := testApp(t)
+	state := a.artifacts[catalog.Haas]
+	state.State = "downloading"
+	a.artifacts[catalog.Haas] = state
+	if w := request(a, "DELETE", "/api/downloads/"+catalog.Haas, "", a.token); w.Code != http.StatusConflict {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := request(a, "DELETE", "/api/downloads/"+catalog.Parakeet, "", a.token); w.Code != http.StatusOK {
+		t.Fatal("unrelated download blocked deletion", w.Code, w.Body.String())
 	}
 }
 

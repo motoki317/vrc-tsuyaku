@@ -32,8 +32,8 @@ type Progress struct {
 	Downloaded, Total int64
 }
 
-// Manager serializes operations within one data directory. Reuse one Manager for
-// that directory; callers must not install through separate managers concurrently.
+// Manager serializes downloads and installation checks within one data directory.
+// Reuse one Manager per directory. Do not install through separate managers concurrently.
 // Creating a manager makes no network requests and creates no files.
 type Manager struct {
 	dataDir string
@@ -86,6 +86,41 @@ func (m *Manager) Directory(id, goos string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(m.dataDir, "downloads", id), nil
+}
+
+// Remove deletes only the catalog artifact's directory, without following its symlinks.
+// The caller must prevent concurrent downloads or checks of this artifact.
+func (m *Manager) Remove(id, goos string) error {
+	if _, err := catalog.Lookup(id, goos); err != nil {
+		return err
+	}
+	data, err := os.OpenRoot(m.dataDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer data.Close()
+	info, err := data.Lstat("downloads")
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("downloads must be a directory, not a symlink")
+	}
+	root, err := data.OpenRoot("downloads")
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return root.RemoveAll(id)
 }
 
 // Download fetches and verifies every source and selected archive member before

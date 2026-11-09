@@ -26,6 +26,13 @@ var processEngine struct {
 	library string
 }
 
+// RuntimeResident reports whether the binding still holds the runtime library.
+func RuntimeResident() bool {
+	processEngine.Lock()
+	defer processEngine.Unlock()
+	return processEngine.library != ""
+}
+
 // Engine owns the process's ORT environment and all loaded model sessions.
 // Sessions run on the CPU: recognizers use four intra-op threads, Silero uses one.
 type Engine struct {

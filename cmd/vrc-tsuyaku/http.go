@@ -8,9 +8,11 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 )
@@ -88,6 +90,22 @@ func (a *app) handler() http.Handler {
 			return
 		}
 		w.WriteHeader(http.StatusAccepted)
+	})
+	mux.HandleFunc("DELETE /api/downloads/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if _, err := catalog.Lookup(id, runtime.GOOS); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if err := a.deleteDownload(id); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, errArtifactInUse) {
+				status = http.StatusConflict
+			}
+			apiError(w, err, status)
+			return
+		}
+		writeJSON(w, a.snapshot())
 	})
 	mux.HandleFunc("GET /api/events", a.streamEvents)
 	mux.HandleFunc("POST /api/open/{target}", func(w http.ResponseWriter, r *http.Request) {
