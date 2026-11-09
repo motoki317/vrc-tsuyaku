@@ -1,0 +1,39 @@
+# Release workflow follows motoki317/noctiluca (MIT):
+# https://github.com/motoki317/noctiluca/blob/d072f072d3ba748f6fb1c7d0f10739ae24c1b16e/.github/workflows/release.yml
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+        with:
+          just-version: "1.59.0"
+      - name: Build archives, checksums and notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: just release "$RELEASE_TAG"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            dist/vrc-tsuyaku-windows.zip dist/vrc-tsuyaku-linux.tar.gz dist/SHA256SUMS \
+            --verify-tag --generate-notes --notes-file dist/release-notes.md

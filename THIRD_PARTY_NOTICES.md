@@ -5,6 +5,36 @@ Neither the repository nor the executable includes the models, ONNX graphs or pr
 The app downloads the Haas and Parakeet conversions, the onnx-asr feature extractor for Parakeet v2, Silero VAD, PLaMo, ONNX Runtime and llama.cpp.
 The Go module entries say which modules ship in each OS's executable.
 
+## noctiluca
+
+Source: [motoki317/noctiluca](https://github.com/motoki317/noctiluca/tree/d072f072d3ba748f6fb1c7d0f10739ae24c1b16e), commit `d072f072d3ba748f6fb1c7d0f10739ae24c1b16e`. License: MIT.
+
+The release workflow and archive recipe follow noctiluca's shell release workflow. The upstream notice follows:
+
+```text
+MIT License
+
+Copyright (c) 2026 The noctiluca authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## VRCT
 
 Source: [misyaguziya/VRCT](https://github.com/misyaguziya/VRCT/tree/9427520c0ae39406a17ba0f280b1ad2735395d51), commit `9427520c0ae39406a17ba0f280b1ad2735395d51`. License: MIT.
