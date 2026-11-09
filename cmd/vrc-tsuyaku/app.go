@@ -187,10 +187,11 @@ func (a *app) start(name string, s config.Settings) error {
 		defer cancel()
 		stages, err := a.prepare(ctx, name, s)
 		if err == nil && ctx.Err() == nil {
-			stages.Languages = func() (string, string) {
+			stages.Settings = func() pipeline.PhraseSettings {
 				a.mu.Lock()
 				defer a.mu.Unlock()
-				return a.settings.Flows.Languages(name)
+				source, target := a.settings.Flows.Languages(name)
+				return pipeline.PhraseSettings{SourceLang: source, TargetLang: target, Template: a.settings.Chatbox.Template}
 			}
 			a.mu.Lock()
 			run.status = flowState{State: "running"}
@@ -484,7 +485,7 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 			}
 			a.queueAddress = s.Chatbox.Address
 		}
-		stages.Send = a.queue.SendPages
+		stages.Send = a.queue.Send
 	}
 	return stages, nil
 }

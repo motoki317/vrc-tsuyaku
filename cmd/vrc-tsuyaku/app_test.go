@@ -487,7 +487,7 @@ func TestSettingsValidationAndWriteStatus(t *testing.T) {
 func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 	for _, flow := range []string{"self", "world"} {
 		for _, phase := range []string{"stopped", "error", "starting", "running"} {
-			for _, change := range []string{"enabled", "microphone", "address", "spoken", "target"} {
+			for _, change := range []string{"enabled", "microphone", "address", "spoken", "target", "template"} {
 				t.Run(flow+"/"+phase+"/"+change, func(t *testing.T) {
 					a := testApp(t)
 					for id, artifact := range a.artifacts {
@@ -525,6 +525,8 @@ func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 					s.Flows.Self.Enabled = !s.Flows.Self.Enabled
 					s.Flows.World.Enabled = !s.Flows.World.Enabled
 					switch change {
+					case "template":
+						s.Chatbox.Template = "{{.Translation}}"
 					case "microphone":
 						s.Flows.Self.Microphone = "other"
 					case "address":

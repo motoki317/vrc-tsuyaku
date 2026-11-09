@@ -8,10 +8,8 @@ import (
 	"io"
 	"net"
 	"net/netip"
-	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
 const pageInterval = 1500 * time.Millisecond
@@ -59,29 +57,22 @@ func newQueue(conn io.WriteCloser) *Queue {
 	return &Queue{conn: conn, turn: make(chan struct{}, 1), closed: make(chan struct{})}
 }
 
-// Send joins original and translation with a newline, in that order.
+// Send renders format with message, then splits the result into pages.
 // Send splits each message into pages of at most 144 runes and nine newline-delimited lines.
 // Splits prefer sentence endings, then whitespace, then rune boundaries.
 // Whitespace at page edges is omitted. Whitespace-only input sends nothing.
-// Invalid UTF-8 or an embedded NUL in either input fails before any page is sent.
+// A template error or invalid rendered text fails before any page is sent.
+// sent runs synchronously after each successful page write and must not call Send on this queue.
 //
 // Send blocks until every page is written or an error occurs. Concurrent calls
 // cannot interleave pages. Each write attempt is at least 1.5 seconds after the
 // previous attempt finishes, including attempts from earlier Send calls.
 // Cancellation stops pending pages, including while waiting behind another Send.
 // Cancellation cannot interrupt an active UDP write, but Close can. Errors are not retried.
-func (q *Queue) Send(ctx context.Context, original, translation string) error {
-	return q.SendPages(ctx, original, translation, nil)
-}
-
-// SendPages has Send's contract and calls sent after each successful page write.
-// sent runs synchronously and must not call Send or SendPages on this queue.
-func (q *Queue) SendPages(ctx context.Context, original, translation string, sent func(string)) error {
-	if !utf8.ValidString(original) || !utf8.ValidString(translation) {
-		return errors.New("chatbox text must be valid UTF-8")
-	}
-	if strings.ContainsRune(original, 0) || strings.ContainsRune(translation, 0) {
-		return errors.New("chatbox text must not contain NUL")
+func (q *Queue) Send(ctx context.Context, format string, message Message, sent func(string)) error {
+	messagePages, err := Render(format, message)
+	if err != nil {
+		return err
 	}
 	select {
 	case <-ctx.Done():
@@ -94,7 +85,7 @@ func (q *Queue) SendPages(ctx context.Context, original, translation string, sen
 	if err := q.check(ctx); err != nil {
 		return err
 	}
-	for i, page := range pages(original + "\n" + translation) {
+	for i, page := range messagePages {
 		if delay := time.Until(q.next); delay > 0 {
 			timer := time.NewTimer(delay)
 			select {
