@@ -704,11 +704,6 @@ function spokenChoices(flow) {
   return {first, rest};
 }
 
-function spokenLabel(language) {
-  const value = state.artifacts[language.recognizer], name = languageName(language.code);
-  return value && value.state !== 'installed' ? t('value.withSize', {name, size: formatSize(artifactSize(value.artifact))}) : name;
-}
-
 function fillSelect(select, signature, build, value) {
   // Rebuilding a focused select would close its open list.
   if (select.dataset.signature !== signature && document.activeElement !== select) {
@@ -728,8 +723,8 @@ function renderPlan() {
     row.spoken.setAttribute('aria-label', t('label.spoken', {flow: flowLabel(flow)}));
     row.target.setAttribute('aria-label', t('label.target', {flow: flowLabel(flow)}));
     const {first, rest} = spokenChoices(flow);
-    const option = language => new Option(spokenLabel(language), language.code);
-    fillSelect(row.spoken, JSON.stringify([lang, first.map(spokenLabel), rest.map(spokenLabel)]),
+    const option = language => new Option(languageName(language.code), language.code);
+    fillSelect(row.spoken, JSON.stringify([lang, [...first, ...rest].map(language => language.code)]),
       () => [...first.map(option), rest.length ? h('optgroup', {label: t('label.european')}, rest.map(option)) : null].filter(Boolean),
       settingsOf(flow).Spoken);
     const targets = state.languages.targets;
