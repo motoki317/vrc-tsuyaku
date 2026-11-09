@@ -35,7 +35,7 @@ The server rejects a token supplied only in the query string.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/state` | `app` (build information), `update` (the update check: `state`, `version` and `url`), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog) and `defaultTemplate` |
+| `GET /api/state` | `app` (build information), `update` (the update check: `state`, `version` and `url`), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators) and `defaultTemplate` |
 | `PUT /api/settings` | Save a complete `config.Settings` JSON object. Invalid input returns 400. A failed write returns 500. If another program changed `settings.yaml` after the app last read it, the app reads the file again, writes nothing and returns 409 with code `settings_changed`. The page then fetches the state and repeats the player's change once |
 | `GET /api/microphones` | Microphone IDs and names |
 | `POST /api/chatbox/preview` | Render a template with a sample message, such as `{"template": "{{.Translation}}", "original": "こんにちは", "translation": "Hello", "sourceLang": "ja", "targetLang": "en"}`. Returns `{"pages": [...]}`, the chatbox pages that VRChat receives, or 400 for an invalid template |
@@ -54,6 +54,7 @@ Artifact and flow states and `error` events carry the same `code` field.
 
 A settings save restarts a starting or running flow when the change needs another recognizer, for example from Japanese to English.
 A changed microphone or chatbox address also restarts the self flow.
+A changed `Translator` restarts both flows when they are starting or running. An enabled flow that waits for the old translator's download starts with the new one if it is installed.
 Other changes, such as the target language or the chatbox template, apply from the flow's next phrase.
 
 Each event has an `id`, which orders all events, a `time` and a `kind`. Events about one flow also name it in `flow`:
@@ -77,6 +78,7 @@ The app fixes both languages and the template before it recognizes the phrase, s
 A start that the flow's checks refuse, for example for missing downloads, emits an `error` event with `operation: "start"`.
 
 Settings JSON uses Go field names, such as `Flows.Self.Microphone` and `Chatbox.Template`, rather than YAML keys.
+`Translator` takes an `id` from `languages.translators`: `plamo-3-translate-2b`, the default, or `plamo-3-translate-0.8b`.
 `Flows.Self.Spoken` and `Flows.World.Spoken` take a spoken code from the language catalog, and `Flows.Self.Target` and `Flows.World.Target` take a target code. Only `Flows.World.Spoken` accepts `auto`.
 `Chatbox.Template` is a Go [`text/template`](https://pkg.go.dev/text/template) over `chatbox.Message`: `{{.Original}}`, `{{.Translation}}`, `{{.SourceLang}}` and `{{.TargetLang}}`.
 The app splits the rendered text into chatbox pages of at most 144 characters and 9 lines.
