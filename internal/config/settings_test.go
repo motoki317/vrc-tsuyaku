@@ -8,6 +8,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 )
 
 func TestLoadDefaultsAndPartial(t *testing.T) {
@@ -33,8 +35,76 @@ func TestLoadDefaultsAndPartial(t *testing.T) {
 		if err != nil || got.Flows.Self.Enabled || got.Chatbox.Address != "127.0.0.1:9000" {
 			t.Fatalf("partial: %+v, %v", got, err)
 		}
+		if got.Flows.Self.Spoken != "ja" || got.Flows.Self.Target != "en" || got.Flows.World.Spoken != "en" || got.Flows.World.Target != "ja" {
+			t.Fatalf("missing language defaults: %+v", got.Flows)
+		}
 		if body != "" && (got.Flows.Self.Microphone != "endpoint" || !got.Flows.World.Enabled) {
 			t.Fatalf("fields missing: %+v", got)
+		}
+	}
+}
+
+func TestMVPMigrationAndLanguageRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	body := "flows:\n  self: {enabled: true, microphone: endpoint}\n  world: {enabled: true}\nchatbox: {address: '127.0.0.1:47123'}\nlicenses_accepted: {example: '2026-11-09T01:02:03Z'}\n"
+	if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Defaults()
+	want.Flows.Self.Enabled, want.Flows.World.Enabled = true, true
+	want.Flows.Self.Microphone = "endpoint"
+	want.Chatbox.Address = "127.0.0.1:47123"
+	want.LicensesAccepted["example"] = "2026-11-09T01:02:03Z"
+	if !reflect.DeepEqual(s, want) {
+		t.Fatalf("migration: %+v, want %+v", s, want)
+	}
+	s.Flows.Self.Spoken, s.Flows.Self.Target = "en", "ja-easy"
+	s.Flows.World.Spoken, s.Flows.World.Target = "ja", "zh-hans"
+	if err := Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(dir)
+	if err != nil || !reflect.DeepEqual(got, s) {
+		t.Fatalf("language round trip: %+v, %v", got, err)
+	}
+}
+
+func TestLanguageValidation(t *testing.T) {
+	for _, code := range catalog.Languages().Targets {
+		s := Defaults()
+		s.Flows.Self.Target, s.Flows.World.Target = code, code
+		if err := s.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct{ field, code string }{
+		{"spoken", ""}, {"spoken", "auto"}, {"spoken", "de"}, {"spoken", "ja-easy"}, {"spoken", "JA"},
+		{"target", ""}, {"target", "auto"}, {"target", "invalid"}, {"target", "zh"},
+	} {
+		for _, name := range []string{"self", "world"} {
+			t.Run(name+"/"+tc.field+"/"+tc.code, func(t *testing.T) {
+				s := Defaults()
+				if name == "self" {
+					if tc.field == "spoken" {
+						s.Flows.Self.Spoken = tc.code
+					} else {
+						s.Flows.Self.Target = tc.code
+					}
+				} else {
+					if tc.field == "spoken" {
+						s.Flows.World.Spoken = tc.code
+					} else {
+						s.Flows.World.Target = tc.code
+					}
+				}
+				if err := Save(t.TempDir(), s); !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "flows."+name+"."+tc.field) {
+					t.Fatalf("invalid language: %v", err)
+				}
+			})
 		}
 	}
 }
@@ -48,6 +118,8 @@ func TestInvalidSettings(t *testing.T) {
 		{"licenses_accepted: {license: yesterday}", "licenses_accepted"},
 		{"flows: {}\n---\nflows: {}", "one YAML document"},
 		{"flows: {self: {enabled: true, enabled: false}}", "already defined"},
+		{"flows: {self: {spoken: auto}}", "flows.self.spoken"},
+		{"flows: {world: {target: invalid}}", "flows.world.target"},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			dir := t.TempDir()

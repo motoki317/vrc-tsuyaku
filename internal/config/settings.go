@@ -13,6 +13,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 )
 
@@ -34,10 +35,21 @@ type Flows struct {
 type SelfFlow struct {
 	Enabled    bool   `yaml:"enabled"`
 	Microphone string `yaml:"microphone"`
+	Spoken     string `yaml:"spoken"`
+	Target     string `yaml:"target"`
 }
 
 type WorldFlow struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled bool   `yaml:"enabled"`
+	Spoken  string `yaml:"spoken"`
+	Target  string `yaml:"target"`
+}
+
+func (f Flows) Languages(name string) (spoken, target string) {
+	if name == "self" {
+		return f.Self.Spoken, f.Self.Target
+	}
+	return f.World.Spoken, f.World.Target
 }
 
 type Chatbox struct {
@@ -47,13 +59,27 @@ type Chatbox struct {
 // Defaults leaves both flows stopped and uses the local VRChat address.
 func Defaults() Settings {
 	return Settings{
+		Flows: Flows{
+			Self:  SelfFlow{Spoken: catalog.Japanese, Target: catalog.English},
+			World: WorldFlow{Spoken: catalog.English, Target: catalog.Japanese},
+		},
 		Chatbox:          Chatbox{Address: "127.0.0.1:9000"},
 		LicensesAccepted: make(map[string]string),
 	}
 }
 
-// Validate checks the chatbox destination and RFC3339 license acceptance timestamps.
+// Validate rejects unsupported languages, invalid destinations and invalid acceptance timestamps.
 func (s Settings) Validate() error {
+	for _, name := range []string{"self", "world"} {
+		spoken, target := s.Flows.Languages(name)
+		language, ok := catalog.Spoken(spoken)
+		if !ok || (name == "self" && language.Auto) {
+			return fmt.Errorf("flows.%s.spoken: unsupported language %q", name, spoken)
+		}
+		if !catalog.IsTarget(target) {
+			return fmt.Errorf("flows.%s.target: unsupported language %q", name, target)
+		}
+	}
 	if _, err := chatbox.ParseAddress(s.Chatbox.Address); err != nil {
 		return err
 	}

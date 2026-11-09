@@ -49,8 +49,7 @@ type Source struct {
 }
 
 // Artifact describes a complete installation. A nonempty AcceptanceKey must be
-// present in saved settings before download. Languages uses the Japanese and English
-// codes defined in translation.go.
+// present in saved settings before download. Languages uses the codes in translation.go.
 type Artifact struct {
 	ID, Name, AcceptanceKey string
 	Languages               []string

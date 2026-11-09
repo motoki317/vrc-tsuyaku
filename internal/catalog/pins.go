@@ -10,7 +10,7 @@ const (
 )
 
 var artifacts = map[string]entry{
-	Haas: {referenceEncoder: "encoder.onnx", Artifact: Artifact{Name: "Haas Japanese int8", Languages: []string{Japanese},
+	Haas: {referenceEncoder: "encoder.onnx", Artifact: Artifact{Name: "Haas Japanese int8", Languages: recognizerLanguages(Haas),
 		Licenses: []License{{Name: "Apache-2.0", URL: haasBase + "LICENSE", Covers: "Haas model and export"}},
 		Sources: []Source{
 			plain(haasBase, "features.onnx", "features", 1192336, "e7eab6e413919b88a62a697dc3821646491635e431d587bced33c8b888550d53"),
@@ -20,7 +20,7 @@ var artifacts = map[string]entry{
 			plain(haasBase, "vocab.txt", "vocabulary", 28704, "ec78b13c5d9f156cf0d5fdbd6b5aec5785680f319c92630c11d5d11b14b83a84"),
 			plain(haasBase, "LICENSE", "", 11358, "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"),
 		}}},
-	Parakeet: {Artifact: Artifact{Name: "Parakeet TDT 0.6B v2 int8", Languages: []string{English},
+	Parakeet: {Artifact: Artifact{Name: "Parakeet TDT 0.6B v2 int8", Languages: recognizerLanguages(Parakeet),
 		Licenses: []License{{Name: "CC-BY-4.0", URL: "https://creativecommons.org/licenses/by/4.0/", Covers: "NVIDIA weights and ONNX conversion"}, {Name: "MIT", URL: "https://github.com/istupakov/onnx-asr/blob/v0.12.0/LICENSE", Covers: "onnx-asr feature extractor"}},
 		Sources: []Source{
 			plain(parakeetBase, "encoder-model.int8.onnx", "encoder", 652184014, "3e0581fda6ab843888b51e56d7ee78b6d5bc3237ec113af1f732d1d5286aa155"),
@@ -33,7 +33,7 @@ var artifacts = map[string]entry{
 	Silero: {Artifact: Artifact{Name: "Silero VAD v6.2.3", Licenses: []License{{Name: "MIT", URL: "https://github.com/snakers4/silero-vad/blob/5cd7945676eb32225748052e2e6a0580e4686a08/LICENSE", Covers: "Silero graph"}}, Sources: []Source{
 		plain("https://raw.githubusercontent.com/snakers4/silero-vad/5cd7945676eb32225748052e2e6a0580e4686a08/src/silero_vad/data/", "silero_vad.onnx", "model", 2327524, "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"),
 	}}},
-	PLaMo: {Artifact: Artifact{Name: "PLaMo 3 Translate 2B Q4_K_M", Languages: []string{Japanese, English}, AcceptanceKey: PLaMoAcceptanceKey,
+	PLaMo: {Artifact: Artifact{Name: "PLaMo 3 Translate 2B Q4_K_M", Languages: targetCodes, AcceptanceKey: PLaMoAcceptanceKey,
 		Licenses: []License{{Name: "PLaMo Community License", URL: plamoBase + "LICENSE/en", Covers: "PLaMo model", Text: plamoLicense}}, Sources: []Source{
 			plain(plamoBase, "plamo-3-translate-2b-Q4_K_M.gguf", "model", 1807203040, "1ffd9073afcc70e35ccc942428aa2b73d7aa2b9ea779bf504b775369e0276c13"),
 		}}},
