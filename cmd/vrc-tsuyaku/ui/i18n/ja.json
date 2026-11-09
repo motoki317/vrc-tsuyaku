@@ -13,7 +13,7 @@
   "label.message": "メッセージ",
   "label.microphone": "マイク",
   "label.preview": "プレビュー",
-  "label.product": "vrc-tsuyaku",
+  "label.product": "VRC\u00a0Tsuyaku",
   "label.releases": "リリース",
   "label.screens": "画面",
   "label.self": "自分の声",
@@ -91,7 +91,7 @@
 
   "value.announce": "{flow}：{text}",
   "value.auto": "自動判定",
-  "value.description": "PC上で動く、VRChat向けの音声翻訳アプリ",
+  "value.description": "VRChat向けの音声翻訳アプリ",
   "value.developmentBuild": "開発版",
   "value.gigabytes": "{n} GB",
   "value.jaEasy": "やさしい日本語",
@@ -134,9 +134,9 @@
   "error.inUse": "このダウンロードは使用中です。使っているスイッチをオフにしてから再試行してください。",
   "error.leftover": "古いファイルが残っています。データフォルダーを開いて削除してください。",
   "error.microphones": "マイクの一覧を取得できません。{refresh}を押して再試行してください。",
-  "error.notAnswering": "vrc\u2011tsuyakuが応答しません。起動するか、vrc\u2011tsuyakuが最後に開いた画面を使ってください。",
+  "error.notAnswering": "VRC\u00a0Tsuyakuが応答しません。起動するか、VRC\u00a0Tsuyakuが最後に開いた画面を使ってください。",
   "error.notSaved": "保存できませんでした。再試行してください。",
-  "error.request": "vrc\u2011tsuyakuが応答しません。再試行してください。",
-  "error.staleToken": "この画面は以前の起動時のものです。vrc\u2011tsuyakuが最後に開いた画面を使ってください。",
+  "error.request": "VRC\u00a0Tsuyakuが応答しません。再試行してください。",
+  "error.staleToken": "この画面は以前の起動時のものです。VRC\u00a0Tsuyakuが最後に開いた画面を使ってください。",
   "error.templateInvalid": "テンプレートを修正してください。{{.Translation}}のような項目を使います。"
 }
