@@ -1586,6 +1586,11 @@ function render() {
 }
 
 function apply(next) {
+  // A later launch can reuse this page's port. Its event IDs restart at 1, so this page would skip them as seen.
+  if (state && next.app.launch !== state.app.launch) {
+    location.reload();
+    return;
+  }
   const first = !state;
   state = next;
   for (const [id, value] of Object.entries(next.artifacts)) {
