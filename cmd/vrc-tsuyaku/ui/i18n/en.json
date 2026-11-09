@@ -35,11 +35,13 @@
   "action.cancel": "Cancel",
   "action.changeLanguages": "Change languages for {flow}: {pair}",
   "action.close": "Close",
+  "action.closeTab": "Close this tab.",
   "action.delete": "Delete",
   "action.deleteName": "Delete {name}",
   "action.download": "Download {name}",
   "action.downloadAll": "Download all",
   "action.downloadFor": "Download {size} for {flow}",
+  "action.exit": "Exit",
   "action.insertToken": "Insert {token}",
   "action.latest": "Show latest, {count} new",
   "action.next": "Next",
@@ -115,6 +117,7 @@
   "value.withSize": "{name} · {size}",
 
   "title.delete": "Delete {name}?",
+  "title.exited": "VRC\u00a0Tsuyaku exited",
   "title.replaceSettings": "Replace settings.yaml?",
   "title.settingsError": "settings.yaml could not be read",
 

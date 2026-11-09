@@ -35,11 +35,13 @@
   "action.cancel": "キャンセル",
   "action.changeLanguages": "{flow}の言語を変更：{pair}",
   "action.close": "閉じる",
+  "action.closeTab": "このタブを閉じてください。",
   "action.delete": "削除",
   "action.deleteName": "{name}を削除",
   "action.download": "{name}をダウンロード",
   "action.downloadAll": "すべてダウンロード",
   "action.downloadFor": "{flow}用に{size}をダウンロード",
+  "action.exit": "終了",
   "action.insertToken": "{token}を挿入",
   "action.latest": "最新を表示（新着{count}件）",
   "action.next": "次へ",
@@ -115,6 +117,7 @@
   "value.withSize": "{name} · {size}",
 
   "title.delete": "{name}を削除しますか？",
+  "title.exited": "VRC\u00a0Tsuyakuを終了しました",
   "title.replaceSettings": "settings.yamlを置き換えますか？",
   "title.settingsError": "settings.yamlを読み込めません",
 

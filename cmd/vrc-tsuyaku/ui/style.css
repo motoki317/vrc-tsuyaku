@@ -104,16 +104,18 @@ a { color: var(--link); }
 .tab[aria-current="page"] { background: var(--surface-2); color: var(--fg); }
 .tab.failed .icon { color: var(--error); }
 .update-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--link); }
-.menu { position: relative; margin-left: auto; }
-.menu-button {
+.bar-item { position: relative; }
+.menu { margin-left: auto; }
+.bar-button {
   display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 6px 10px;
   border: 1px solid var(--line); border-radius: 20px; background: transparent; font-weight: 600;
 }
+.bar-button[aria-disabled="true"] { opacity: 0.45; cursor: default; }
 .menu-list {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 10; min-width: 180px; padding: 4px;
   display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
 }
-.menu-error {
+.bar-error {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 10; width: max-content; max-width: min(320px, calc(100vw - 32px));
   margin: 0; padding: 8px 12px; background: var(--surface); border: 1px solid var(--error); border-radius: 12px;
 }
@@ -131,8 +133,14 @@ a { color: var(--link); }
 .connection:not([data-kind="reconnecting"]) { color: var(--error); }
 .connection:not([data-kind="reconnecting"]) .spinner-slot { display: none; }
 main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-main[inert] { opacity: 0.5; }
+main[inert], .topbar [inert] { opacity: 0.5; }
 .screen { flex: 1; min-height: 0; }
+
+/* Exited */
+.exited { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 32px 16px; text-align: center; }
+.exited h2 { margin: 0; font-size: 1.25em; }
+.exited h2:focus { outline: none; }
+.exited p { margin: 0; }
 
 /* Setup */
 .setup-column { max-width: 560px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 24px; }
@@ -488,14 +496,17 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 }
 
 @media (max-width: 519px) {
-  /* The name hides as .visually-hidden does, so the page keeps its h1 for screen readers. */
-  .product { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .topbar-inner { gap: 8px; padding: 0 12px; }
+  /* The name hides as .visually-hidden does, so the page keeps its h1 for screen readers.
+     The tabs, the UI-language menu and Exit need the whole bar at 390 px, so the mark gives way while the tabs show. */
+  .product, .topbar-inner:has(#tabs:not([hidden])) .brand {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .topbar-inner { gap: 8px; padding: 0 8px; }
   .tab { gap: 4px; padding: 6px 8px; }
   .tabs { gap: 2px; }
-  .menu-button { padding: 6px 8px; }
-  /* The tabs keep their labels, so the language name gives way. The button's accessible name keeps it. */
-  .menu-name { display: none; }
+  .bar-button { padding: 6px 8px; }
+  /* The tabs keep their labels, so the language name and Exit give way. Each button's accessible name keeps its label. */
+  .bar-label { display: none; }
   .segmented { display: flex; flex-direction: column; border-radius: 12px; }
   .segment { border-left: 0; border-top: 1px solid var(--outline); text-align: left; }
   .segment:first-child { border-top: 0; }

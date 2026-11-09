@@ -23,6 +23,12 @@ var ui embed.FS
 
 func (a *app) handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/exit", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "0")
+		w.WriteHeader(http.StatusAccepted)
+		_ = http.NewResponseController(w).Flush()
+		a.cancel()
+	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.snapshot()) })
 	mux.HandleFunc("GET /api/microphones", func(w http.ResponseWriter, r *http.Request) {
 		devices, err := audio.Microphones(r.Context())
