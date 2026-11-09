@@ -341,7 +341,7 @@ func TestLicenseGateBeforeNetwork(t *testing.T) {
 		t.Fatalf("missing consent: %v, hits %d", err, hits)
 	}
 	s := config.Defaults()
-	s.LicensesAccepted["plamo-community-license@older"] = "2026-11-09T00:00:00Z"
+	s.LicensesAccepted["plamo-community-license@228a27cc0bb4f111219963848d50a3127c16ca73"] = "2026-11-09T00:00:00Z"
 	if err = config.Save(m.dataDir, s); err != nil {
 		t.Fatal(err)
 	}

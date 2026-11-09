@@ -17,11 +17,11 @@ const (
 	PLaMo         = "plamo-3-translate-2b-q4_k_m"
 	LlamaCPP      = "llama.cpp-b12201-cpu"
 	ONNXRuntime   = "onnxruntime-1.31.1-cpu"
-	plamoRevision = "228a27cc0bb4f111219963848d50a3127c16ca73"
+	plamoRevision = "4f672106b847200bfdc0f6af6c321cd94eba1aed"
 )
 
-// PLaMoAcceptanceKey ties saved consent to the exact model revision.
-const PLaMoAcceptanceKey = "plamo-community-license@" + plamoRevision
+// PLaMoAcceptanceKey names the license text so models can share saved consent.
+const PLaMoAcceptanceKey = "plamo-community-license@2026-11-09"
 
 //go:embed licenses/plamo-community.txt
 var plamoLicense string
