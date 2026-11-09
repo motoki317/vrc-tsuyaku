@@ -1587,7 +1587,7 @@ function render() {
 
 function apply(next) {
   // A later launch can reuse this page's port. Its event IDs restart at 1, so this page would skip them as seen.
-  if (state && next.app.launch !== state.app.launch) {
+  if (state && next.launch !== state.launch) {
     location.reload();
     return;
   }
