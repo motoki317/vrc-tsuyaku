@@ -13,8 +13,8 @@ func TestPages(t *testing.T) {
 		want                        []string
 	}{
 		{"order", "こんにちは。", "Hello.", []string{"こんにちは。\nHello."}},
-		{"empty", "", "", nil},
-		{"whitespace", " \t\n", "\n ", nil},
+		{"empty", "", "", []string{}},
+		{"whitespace", " \t\n", "\n ", []string{}},
 		{"original only", "hello", "", []string{"hello"}},
 		{"translation only", "", "hello", []string{"hello"}},
 		{"interior whitespace", "a  b\nc", "d", []string{"a  b\nc\nd"}},
@@ -29,7 +29,7 @@ func TestPages(t *testing.T) {
 		{"decimal", "3.14" + strings.Repeat("x", 142), "", []string{"3.14" + strings.Repeat("x", 140), "xx"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := pages(tc.original, tc.translation)
+			got := pages(tc.original + "\n" + tc.translation)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("pages = %q, want %q", got, tc.want)
 			}
@@ -50,7 +50,7 @@ func FuzzPages(f *testing.F) {
 		if !utf8.ValidString(original) || !utf8.ValidString(translation) {
 			t.Skip()
 		}
-		got := pages(original, translation)
+		got := pages(original + "\n" + translation)
 		var joined strings.Builder
 		for _, page := range got {
 			if !utf8.ValidString(page) || utf8.RuneCountInString(page) > 144 || strings.Count(page, "\n")+1 > 9 || strings.TrimSpace(page) == "" {

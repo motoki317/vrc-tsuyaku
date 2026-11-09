@@ -12,11 +12,17 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 type recordedWrite struct {
 	packet []byte
 	at     time.Time
+}
+
+func send(q *Queue, ctx context.Context, original, translation string) error {
+	return q.Send(ctx, "{{.Original}}\n{{.Translation}}", Message{Original: original, Translation: translation}, nil)
 }
 
 type recordingSocket struct {
@@ -64,7 +70,7 @@ func TestQueueTiming(t *testing.T) {
 		defer q.Close()
 		start := time.Now()
 		done := make(chan error, 1)
-		go func() { done <- q.Send(t.Context(), strings.Repeat("猫", 145), "English") }()
+		go func() { done <- send(q, t.Context(), strings.Repeat("猫", 145), "English") }()
 		synctest.Wait()
 		if writes, _ := socket.recorded(); len(writes) != 1 || !writes[0].at.Equal(start) {
 			t.Fatalf("first page did not send immediately: %v", writes)
@@ -78,11 +84,11 @@ func TestQueueTiming(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatal(err)
 		}
-		if err := q.Send(t.Context(), "next", "次"); err != nil {
+		if err := send(q, t.Context(), "next", "次"); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(5 * time.Second)
-		if err := q.Send(t.Context(), "after idle", "待機後"); err != nil {
+		if err := send(q, t.Context(), "after idle", "待機後"); err != nil {
 			t.Fatal(err)
 		}
 		wantTimes := []time.Duration{0, 1500 * time.Millisecond, 3 * time.Second, 8 * time.Second}
@@ -107,7 +113,7 @@ func TestQueueSlowWrites(t *testing.T) {
 		socket := &recordingSocket{delay: 2 * time.Second}
 		q := newQueue(socket)
 		defer q.Close()
-		if err := q.Send(t.Context(), strings.Repeat("x", 300), ""); err != nil {
+		if err := send(q, t.Context(), strings.Repeat("x", 300), ""); err != nil {
 			t.Fatal(err)
 		}
 		writes, _ := socket.recorded()
@@ -125,9 +131,9 @@ func TestQueueConcurrentMessages(t *testing.T) {
 		q := newQueue(socket)
 		defer q.Close()
 		done := make(chan error, 2)
-		go func() { done <- q.Send(t.Context(), strings.Repeat("a", 145), "A") }()
+		go func() { done <- send(q, t.Context(), strings.Repeat("a", 145), "A") }()
 		synctest.Wait()
-		go func() { done <- q.Send(t.Context(), strings.Repeat("b", 145), "B") }()
+		go func() { done <- send(q, t.Context(), strings.Repeat("b", 145), "B") }()
 		for range 2 {
 			if err := <-done; err != nil {
 				t.Fatal(err)
@@ -152,11 +158,11 @@ func TestQueueCancellation(t *testing.T) {
 		defer q.Close()
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- q.Send(ctx, strings.Repeat("a", 145), "A") }()
+		go func() { done <- send(q, ctx, strings.Repeat("a", 145), "A") }()
 		synctest.Wait()
 		waiting, cancelWaiting := context.WithCancel(t.Context())
 		other := make(chan error, 1)
-		go func() { other <- q.Send(waiting, "queued", "待機") }()
+		go func() { other <- send(q, waiting, "queued", "待機") }()
 		synctest.Wait()
 		cancelWaiting()
 		if err := <-other; !errors.Is(err, context.Canceled) {
@@ -170,7 +176,7 @@ func TestQueueCancellation(t *testing.T) {
 		if writes, _ := socket.recorded(); len(writes) != 1 {
 			t.Fatalf("sent %d pages after cancellation", len(writes))
 		}
-		if err := q.Send(t.Context(), "new", "新"); err != nil {
+		if err := send(q, t.Context(), "new", "新"); err != nil {
 			t.Fatal(err)
 		}
 		writes, _ := socket.recorded()
@@ -185,9 +191,9 @@ func TestQueueClose(t *testing.T) {
 		socket := &recordingSocket{}
 		q := newQueue(socket)
 		done := make(chan error, 2)
-		go func() { done <- q.Send(t.Context(), strings.Repeat("a", 300), "") }()
+		go func() { done <- send(q, t.Context(), strings.Repeat("a", 300), "") }()
 		synctest.Wait()
-		go func() { done <- q.Send(t.Context(), "queued", "") }()
+		go func() { done <- send(q, t.Context(), "queued", "") }()
 		synctest.Wait()
 		for range 2 {
 			if err := q.Close(); err != nil {
@@ -199,7 +205,7 @@ func TestQueueClose(t *testing.T) {
 				t.Fatalf("close during Send = %v", err)
 			}
 		}
-		if err := q.Send(t.Context(), "later", ""); !errors.Is(err, net.ErrClosed) {
+		if err := send(q, t.Context(), "later", ""); !errors.Is(err, net.ErrClosed) {
 			t.Fatalf("Send after Close = %v", err)
 		}
 		if writes, closed := socket.recorded(); len(writes) != 1 || closed != 1 {
@@ -215,21 +221,21 @@ func TestQueueWriteErrors(t *testing.T) {
 			socket := &recordingSocket{}
 			q := newQueue(socket)
 			defer q.Close()
-			if err := q.Send(t.Context(), "first", ""); err != nil {
+			if err := send(q, t.Context(), "first", ""); err != nil {
 				t.Fatal(err)
 			}
 			socket.err = wantErr
 			if short {
 				socket.err, socket.short, wantErr = nil, true, io.ErrShortWrite
 			}
-			if err := q.Send(t.Context(), strings.Repeat("x", 300), ""); !errors.Is(err, wantErr) {
+			if err := send(q, t.Context(), strings.Repeat("x", 300), ""); !errors.Is(err, wantErr) || errcode.Of(err) != errcode.ChatboxSend {
 				t.Fatalf("write error = %v, want %v", err, wantErr)
 			}
 			if writes, _ := socket.recorded(); len(writes) != 2 {
 				t.Fatalf("retried or continued after a write error: %d writes", len(writes))
 			}
 			socket.err, socket.short = nil, false
-			if err := q.Send(t.Context(), "later", ""); err != nil {
+			if err := send(q, t.Context(), "later", ""); err != nil {
 				t.Fatal(err)
 			}
 			writes, _ := socket.recorded()
@@ -246,21 +252,43 @@ func TestQueueRejectsInvalidText(t *testing.T) {
 	defer q.Close()
 	for _, input := range []string{"bad\x00text", "bad\xfftext"} {
 		for _, parts := range [][2]string{{input, "valid"}, {"valid", input}} {
-			if err := q.Send(t.Context(), parts[0], parts[1]); err == nil {
+			if err := send(q, t.Context(), parts[0], parts[1]); err == nil {
 				t.Fatalf("accepted %q", parts)
 			}
 		}
 	}
-	if err := q.Send(t.Context(), " \n", "\t"); err != nil {
+	if err := send(q, t.Context(), " \n", "\t"); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := q.Send(ctx, "cancelled", ""); !errors.Is(err, context.Canceled) {
+	if err := send(q, ctx, "cancelled", ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("already cancelled Send = %v", err)
 	}
 	if writes, _ := socket.recorded(); len(writes) != 0 {
 		t.Fatalf("unexpected writes: %d", len(writes))
+	}
+}
+
+func TestQueueTemplateFailureSendsNothing(t *testing.T) {
+	socket := &recordingSocket{}
+	q := newQueue(socket)
+	defer q.Close()
+	for _, format := range []string{"{{", `partial {{index .Translation 100}}`, `partial {{printf "%c" 0}}`} {
+		if err := q.Send(t.Context(), format, Message{Translation: "short"}, func(string) {
+			t.Error("page callback after a template failure")
+		}); !errors.Is(err, ErrTemplate) || errcode.Of(err) != errcode.Template {
+			t.Fatalf("template error = %v", err)
+		}
+	}
+	if writes, _ := socket.recorded(); len(writes) != 0 {
+		t.Fatalf("sent partial output: %d writes", len(writes))
+	}
+	if err := q.Send(t.Context(), DefaultTemplate, Message{Original: "こんにちは", Translation: "Hello", SourceLang: "ja", TargetLang: "en"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if writes, _ := socket.recorded(); len(writes) != 1 || decodePacket(t, writes[0].packet) != "[ja] こんにちは\n[en] Hello" {
+		t.Fatalf("queue did not recover: %v", writes)
 	}
 }
 
@@ -321,7 +349,7 @@ func TestQueueUDP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer q.Close()
-	if err := q.Send(t.Context(), strings.Repeat("猫", 145), "Hello."); err != nil {
+	if err := send(q, t.Context(), strings.Repeat("猫", 145), "Hello."); err != nil {
 		t.Fatal(err)
 	}
 	if err := listener.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
@@ -336,5 +364,36 @@ func TestQueueUDP(t *testing.T) {
 		if got := decodePacket(t, packet[:n]); got != want {
 			t.Fatalf("received text = %q, want %q", got, want)
 		}
+	}
+}
+
+func TestQueueDefaultTemplateUDP(t *testing.T) {
+	listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	q, err := New(listener.LocalAddr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer q.Close()
+	var reported []string
+	if err := q.Send(t.Context(), DefaultTemplate, Message{Original: "こんにちは", Translation: "Hello", SourceLang: "ja", TargetLang: "en"}, func(page string) {
+		reported = append(reported, page)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	packet := make([]byte, 2048)
+	n, _, err := listener.ReadFromUDP(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[ja] こんにちは\n[en] Hello"
+	if got := decodePacket(t, packet[:n]); got != want || !slices.Equal(reported, []string{want}) {
+		t.Fatalf("received %q, callback %q, want %q", got, reported, want)
 	}
 }

@@ -8,6 +8,11 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 )
 
 func TestLoadDefaultsAndPartial(t *testing.T) {
@@ -33,8 +38,179 @@ func TestLoadDefaultsAndPartial(t *testing.T) {
 		if err != nil || got.Flows.Self.Enabled || got.Chatbox.Address != "127.0.0.1:9000" {
 			t.Fatalf("partial: %+v, %v", got, err)
 		}
+		if got.Flows.Self.Spoken != "ja" || got.Flows.Self.Target != "en" || got.Flows.World.Spoken != "en" || got.Flows.World.Target != "ja" {
+			t.Fatalf("missing language defaults: %+v", got.Flows)
+		}
+		if got.Chatbox.Template != chatbox.DefaultTemplate {
+			t.Fatalf("missing template default: %q", got.Chatbox.Template)
+		}
+		if got.UI.Language != "" {
+			t.Fatal("missing UI language must follow the browser", got.UI)
+		}
 		if body != "" && (got.Flows.Self.Microphone != "endpoint" || !got.Flows.World.Enabled) {
 			t.Fatalf("fields missing: %+v", got)
+		}
+	}
+}
+
+func TestUILanguage(t *testing.T) {
+	dir := t.TempDir()
+	for _, language := range []string{"", "en", "ja"} {
+		s := Defaults()
+		s.UI.Language = language
+		if err := Save(dir, s); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Load(dir)
+		if err != nil || !reflect.DeepEqual(got, s) {
+			t.Fatal(got, err)
+		}
+	}
+	s := Defaults()
+	s.UI.Language = "fr"
+	if err := Save(dir, s); !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "ui.language") {
+		t.Fatalf("accepted unsupported UI language: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte("ui: {language: JA}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "ui.language") {
+		t.Fatalf("loaded unsupported UI language: %v", err)
+	}
+}
+
+func TestChatboxTemplateSettings(t *testing.T) {
+	dir := t.TempDir()
+	s := Defaults()
+	for _, format := range []string{"{{.Translation}}", "", "[{{.SourceLang}}] {{.Original}}\n{{.Translation}}", `{{if .Original}}{{index .Original 3}}{{end}}`} {
+		s.Chatbox.Template = format
+		if err := Save(dir, s); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Load(dir)
+		if err != nil || !reflect.DeepEqual(got, s) {
+			t.Fatal(got, err)
+		}
+	}
+	before, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, format := range []string{"{{", "[{{.SourceLang}}] {{.Orignal}}"} {
+		s.Chatbox.Template = format
+		if err := Save(dir, s); !errors.Is(err, ErrInvalidSettings) || !errors.Is(err, chatbox.ErrTemplate) || !strings.Contains(err.Error(), "chatbox.template") {
+			t.Fatalf("accepted invalid template %q: %v", format, err)
+		}
+		after, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))
+		if err != nil || string(after) != string(before) {
+			t.Fatal("invalid template replaced settings", err)
+		}
+	}
+}
+
+func TestLoadRejectsTemplateFieldTypo(t *testing.T) {
+	dir := t.TempDir()
+	body := "chatbox: {template: '[{{.SourceLang}}] {{.Orignal}}'}\n"
+	if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); !errors.Is(err, chatbox.ErrTemplate) || !strings.Contains(err.Error(), "chatbox.template") || !strings.Contains(err.Error(), "Orignal") {
+		t.Fatalf("accepted template field typo at load: %v", err)
+	}
+}
+
+func TestMVPMigrationAndLanguageRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	body := "flows:\n  self: {enabled: true, microphone: endpoint}\n  world: {enabled: true}\nchatbox: {address: '127.0.0.1:47123'}\nlicenses_accepted: {example: '2026-11-09T01:02:03Z'}\n"
+	if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Defaults()
+	want.Flows.Self.Enabled, want.Flows.World.Enabled = true, true
+	want.Flows.Self.Microphone = "endpoint"
+	want.Chatbox.Address = "127.0.0.1:47123"
+	want.LicensesAccepted["example"] = "2026-11-09T01:02:03Z"
+	if !reflect.DeepEqual(s, want) {
+		t.Fatalf("migration: %+v, want %+v", s, want)
+	}
+	s.Flows.Self.Spoken, s.Flows.Self.Target = "en", "ja-easy"
+	s.Flows.World.Spoken, s.Flows.World.Target = "ja", "zh-hans"
+	if err := Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(dir)
+	if err != nil || !reflect.DeepEqual(got, s) {
+		t.Fatalf("language round trip: %+v, %v", got, err)
+	}
+}
+
+func TestLanguageValidation(t *testing.T) {
+	for _, code := range catalog.Languages().Targets {
+		s := Defaults()
+		s.Flows.Self.Target, s.Flows.World.Target = code, code
+		if err := s.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct{ field, code string }{
+		{"spoken", ""}, {"spoken", "cs"}, {"spoken", "da"}, {"spoken", "el"}, {"spoken", "fi"},
+		{"spoken", "mt"}, {"spoken", "ro"}, {"spoken", "uk"}, {"spoken", "ja-easy"}, {"spoken", "JA"},
+		{"target", ""}, {"target", "auto"}, {"target", "invalid"}, {"target", "zh"},
+	} {
+		for _, name := range []string{"self", "world"} {
+			t.Run(name+"/"+tc.field+"/"+tc.code, func(t *testing.T) {
+				s := Defaults()
+				if name == "self" {
+					if tc.field == "spoken" {
+						s.Flows.Self.Spoken = tc.code
+					} else {
+						s.Flows.Self.Target = tc.code
+					}
+				} else {
+					if tc.field == "spoken" {
+						s.Flows.World.Spoken = tc.code
+					} else {
+						s.Flows.World.Target = tc.code
+					}
+				}
+				if err := Save(t.TempDir(), s); !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "flows."+name+"."+tc.field) {
+					t.Fatalf("invalid language: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestSpokenLanguageRoundTrip(t *testing.T) {
+	for _, language := range catalog.Languages().Spoken {
+		for _, flow := range []string{"self", "world"} {
+			t.Run(flow+"/"+language.Code, func(t *testing.T) {
+				s := Defaults()
+				if flow == "self" {
+					s.Flows.Self.Spoken = language.Code
+				} else {
+					s.Flows.World.Spoken = language.Code
+				}
+				dir := t.TempDir()
+				err := Save(dir, s)
+				if flow == "self" && language.Auto {
+					if !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "flows.self.spoken") {
+						t.Fatalf("self auto: %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := Load(dir)
+				if err != nil || !reflect.DeepEqual(got, s) {
+					t.Fatal(got, err)
+				}
+			})
 		}
 	}
 }
@@ -48,6 +224,9 @@ func TestInvalidSettings(t *testing.T) {
 		{"licenses_accepted: {license: yesterday}", "licenses_accepted"},
 		{"flows: {}\n---\nflows: {}", "one YAML document"},
 		{"flows: {self: {enabled: true, enabled: false}}", "already defined"},
+		{"flows: {self: {spoken: auto}}", "flows.self.spoken"},
+		{"flows: {world: {target: invalid}}", "flows.world.target"},
+		{"chatbox: {template: '{{'}", "chatbox.template"},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			dir := t.TempDir()
@@ -100,7 +279,7 @@ func TestSaveRenameFailureCleansTemp(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "settings.yaml"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(dir, Defaults()); err == nil || errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), dir) {
+	if err := Save(dir, Defaults()); errcode.Of(err) != errcode.DiskWrite || errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), dir) {
 		t.Fatalf("got %v", err)
 	}
 	entries, err := os.ReadDir(dir)

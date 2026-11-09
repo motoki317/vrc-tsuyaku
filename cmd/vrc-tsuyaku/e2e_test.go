@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 	"time"
 	"unicode"
@@ -183,7 +182,7 @@ func TestEndToEnd(t *testing.T) {
 			translation = e.Text
 		}
 	}
-	if original == "" || translation == "" || text != original+"\n"+translation {
+	if original == "" || translation == "" || text != "[ja] "+original+"\n[en] "+translation {
 		t.Fatalf("page %q, original %q, translation %q", text, original, translation)
 	}
 	japanese, english := false, false
@@ -259,7 +258,7 @@ func decodeTestOSC(t *testing.T, b []byte) string {
 		t.Fatalf("OSC %s %s", address, tags)
 	}
 	text := read()
-	if len(b) != 0 || !strings.Contains(text, "\n") {
+	if len(b) != 0 {
 		t.Fatalf("invalid page %q", text)
 	}
 	return text

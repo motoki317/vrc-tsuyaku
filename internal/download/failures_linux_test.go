@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 func TestUnwritableExistingDirectory(t *testing.T) {
@@ -32,7 +34,7 @@ func TestUnwritableExistingDirectory(t *testing.T) {
 			}
 			defer func() { _ = os.Chmod(dir, 0o755) }()
 			err = m.install(context.Background(), fixture([]byte("bytes")), nil)
-			if err == nil || !strings.Contains(err.Error(), m.dataDir) || strings.Contains(err.Error(), "-data-dir") {
+			if errcode.Of(err) != errcode.DiskWrite || !strings.Contains(err.Error(), m.dataDir) || strings.Contains(err.Error(), "-data-dir") {
 				t.Fatalf("missing directory/remedy: %v", err)
 			}
 		})
@@ -65,7 +67,7 @@ func TestCleanupFailureAfterPublication(t *testing.T) {
 	}()
 	installed := false
 	err := m.install(context.Background(), a, func(p Progress) { installed = installed || p.Phase == "installed" })
-	if !errors.Is(err, ErrCleanup) || !strings.Contains(err.Error(), m.dataDir) || !installed || strings.Contains(err.Error(), "-data-dir") {
+	if errcode.Of(err) != errcode.Unknown || !errors.Is(err, ErrCleanup) || !strings.Contains(err.Error(), m.dataDir) || !installed || strings.Contains(err.Error(), "-data-dir") {
 		t.Fatalf("committed state not reported: %v, event %v", err, installed)
 	}
 	if ok, err := m.check(context.Background(), a); !ok || err != nil {

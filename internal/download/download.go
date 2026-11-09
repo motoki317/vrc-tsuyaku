@@ -15,6 +15,7 @@ import (
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 // ErrLicenseRequired means saved settings lack acceptance for the pinned revision.
@@ -32,8 +33,8 @@ type Progress struct {
 	Downloaded, Total int64
 }
 
-// Manager serializes operations within one data directory. Reuse one Manager for
-// that directory; callers must not install through separate managers concurrently.
+// Manager serializes downloads and installation checks within one data directory.
+// Reuse one Manager per directory. Do not install through separate managers concurrently.
 // Creating a manager makes no network requests and creates no files.
 type Manager struct {
 	dataDir string
@@ -88,6 +89,41 @@ func (m *Manager) Directory(id, goos string) (string, error) {
 	return filepath.Join(m.dataDir, "downloads", id), nil
 }
 
+// Remove deletes only the catalog artifact's directory, without following its symlinks.
+// The caller must prevent concurrent downloads or checks of this artifact.
+func (m *Manager) Remove(id, goos string) error {
+	if _, err := catalog.Lookup(id, goos); err != nil {
+		return err
+	}
+	data, err := os.OpenRoot(m.dataDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer data.Close()
+	info, err := data.Lstat("downloads")
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("downloads must be a directory, not a symlink")
+	}
+	root, err := data.OpenRoot("downloads")
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return root.RemoveAll(id)
+}
+
 // Download fetches and verifies every source and selected archive member before
 // replacing an installation. Before publication, failure or cancellation removes
 // staging files and preserves an existing installation. Each retry starts from
@@ -122,6 +158,11 @@ func (m *Manager) Download(ctx context.Context, id, goos string, notify func(Pro
 func (m *Manager) install(ctx context.Context, a catalog.Artifact, notify func(Progress)) (err error) {
 	defer func() {
 		if err != nil {
+			var path *os.PathError
+			var link *os.LinkError
+			if !errors.Is(err, ErrCleanup) && errcode.Of(err) == errcode.Unknown && (errors.As(err, &path) || errors.As(err, &link)) {
+				err = errcode.With(errcode.DiskWrite, err)
+			}
 			err = fmt.Errorf("install %s in %s: %w", a.ID, m.dataDir, err)
 		}
 	}()

@@ -14,9 +14,11 @@ import (
 )
 
 type reference struct {
-	ID  string `json:"id"`
-	Hyp string `json:"hyp"`
-	Ref string `json:"ref"`
+	ID     string `json:"id"`
+	Hyp    string `json:"hyp"`
+	Ref    string `json:"ref"`
+	Lang   string `json:"lang"`
+	Tokens []int  `json:"tokens"`
 }
 
 func requireEnv(t *testing.T, name string) string {

@@ -1,8 +1,8 @@
 # Third-party notices
 
-These projects supply code, algorithms, file formats, ideas, models, ONNX graphs or programs that vrc-tsuyaku uses.
+These projects supply code, algorithms, file formats, ideas, icons, models, ONNX graphs or programs that vrc-tsuyaku uses.
 Neither the repository nor the executable includes the models, ONNX graphs or programs listed here.
-The app downloads the Haas and Parakeet conversions, the onnx-asr feature extractor, Silero VAD, PLaMo, ONNX Runtime and llama.cpp.
+The app downloads the Haas and Parakeet conversions, the onnx-asr feature extractor for Parakeet v2, Silero VAD, PLaMo, ONNX Runtime and llama.cpp.
 The Go module entries say which modules ship in each OS's executable.
 
 ## VRCT
@@ -11,7 +11,7 @@ Source: [misyaguziya/VRCT](https://github.com/misyaguziya/VRCT/tree/9427520c0ae3
 
 vrc-tsuyaku takes its idea from VRCT. Both apps translate the user's speech into the VRChat chatbox and translate the voices that the user hears in VRChat. vrc-tsuyaku copies no VRCT code.
 
-`internal/chatbox/pager.go` reimplements VRCT's original-before-translation join with a newline separator.
+The default chatbox template in `internal/chatbox/pager.go` follows VRCT's defaults: the original comes before the translation, with a newline between them.
 
 ## traPtitech/NeoShowcase
 
@@ -94,8 +94,8 @@ Source: [istupakov/onnx-asr](https://github.com/istupakov/onnx-asr), version 0.1
 `tools/haas-export/export_vocab.py` writes onnx-asr's `<piece> <id>` vocabulary format, and `internal/asr/vocab.go` reads it.
 `internal/catalog/pins.go` uses onnx-asr's Parakeet file names.
 `internal/asr/parakeet.go` reimplements the combined prediction/joint step from `models/nemo.py`.
-The app runs the `onnx_asr/preprocessors/data/nemo128.onnx` feature extractor from the onnx-asr 0.12.0 wheel.
-The app downloads the wheel from [PyPI](https://pypi.org/project/onnx-asr/0.12.0/) and extracts this feature extractor.
+For Parakeet v2, the app downloads the onnx-asr 0.12.0 wheel from [PyPI](https://pypi.org/project/onnx-asr/0.12.0/) and extracts `onnx_asr/preprocessors/data/nemo128.onnx`.
+For v3, it uses the feature extractor published with the pinned ONNX conversion.
 `internal/asr/parakeet_test.go` reimplements onnx-asr's text rule from `asr.py` only for parity comparisons.
 It joins vocabulary pieces and replaces `▁` with spaces.
 It removes the first leading whitespace character and whitespace not followed by a Unicode word character.
@@ -105,6 +105,9 @@ No onnx-asr source code is copied.
 
 Model: [nvidia/parakeet-tdt-0.6b-v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2), by NVIDIA. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
 ONNX conversion: [istupakov/parakeet-tdt-0.6b-v2-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/tree/0bbb45a3365852604aef28b538a8f066f4ccaa85), revision `0bbb45a3365852604aef28b538a8f066f4ccaa85`. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+
+Model: [nvidia/parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), by NVIDIA. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+ONNX conversion: [istupakov/parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce), revision `8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce`. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
 
 `internal/asr/parakeet.go` runs the converted int8 encoder and decoder/joint weights.
 The app downloads these weights from the ONNX conversion repository.
@@ -139,7 +142,7 @@ That revision's `openmp/LICENSE.TXT` matches the bundled `LICENSE-LLVM-OpenMP` b
 
 Source: [jfreymuth/pulse](https://github.com/jfreymuth/pulse/tree/v0.1.1), version v0.1.1. License: MIT.
 
-`internal/audio/microphone_linux.go` calls the module's `proto` package. Its `connectPulse` function reimplements Unix socket setup from `proto/connect.go`; upstream also accepts TCP servers.
+`internal/audio/microphone_linux.go` calls the module's `proto` package. The file's `connectPulse` function reimplements Unix socket setup from `proto/connect.go`; upstream also accepts TCP servers.
 `microphone_linux.go` copies no upstream source code. This Go module is compiled into the Linux executable.
 
 ## go-wca and go-ole
@@ -153,6 +156,12 @@ Sources: [moutend/go-wca](https://github.com/moutend/go-wca/tree/v0.3.0), versio
 Source: [golang.org/x/sys](https://go.googlesource.com/sys), version v0.49.0. License: BSD-3-Clause.
 
 `internal/translate` calls the Windows process and job-object APIs, and `internal/audio/application_windows.go` calls process and COM activation APIs through this Go module, which is compiled into the Windows executable.
+
+## golang.org/x/mod
+
+Source: [golang.org/x/mod](https://go.googlesource.com/mod), version v0.42.0. License: BSD-3-Clause.
+
+`cmd/vrc-tsuyaku` validates and compares version strings through this Go module, which is compiled into the Windows and Linux executables.
 
 ## PLaMo 3 Translate
 
@@ -203,6 +212,58 @@ Source: [Sharrnah/whispering-ui](https://github.com/Sharrnah/whispering-ui/tree/
 MIT License
 
 Copyright (c) 2022 Sharrnah
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Lucide
+
+Source: [lucide-static 1.60.0](https://www.npmjs.com/package/lucide-static/v/1.60.0) on npm. License: ISC, and MIT for the icons that Lucide derives from Feather.
+
+`cmd/vrc-tsuyaku/ui/icons.svg` copies Lucide icons as SVG symbols, and some of them derive from Feather. The upstream notice follows:
+
+```text
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+---
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

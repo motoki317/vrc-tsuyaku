@@ -20,7 +20,9 @@ import (
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
@@ -74,8 +76,11 @@ func request(a *app, method, path, body, token string) *httptest.ResponseRecorde
 
 func TestRequiredArtifactsInState(t *testing.T) {
 	a := testApp(t)
+	a.settings.Chatbox.Template = "{{.Translation}}"
 	var state struct {
-		Required map[string][]string `json:"required"`
+		Required        map[string][]string     `json:"required"`
+		Languages       catalog.LanguageCatalog `json:"languages"`
+		DefaultTemplate string                  `json:"defaultTemplate"`
 	}
 	w := request(a, "GET", "/api/state", "", a.token)
 	if w.Code != http.StatusOK {
@@ -85,40 +90,76 @@ func TestRequiredArtifactsInState(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, flow := range []string{"self", "world"} {
-		if !reflect.DeepEqual(state.Required[flow], required(flow)) {
-			t.Fatalf("%s: %v, want %v", flow, state.Required[flow], required(flow))
+		spoken, _ := a.settings.Flows.Languages(flow)
+		want, _ := catalog.Required(spoken)
+		if !reflect.DeepEqual(state.Required[flow], want) {
+			t.Fatalf("%s: %v, want %v", flow, state.Required[flow], want)
 		}
+	}
+	if !reflect.DeepEqual(state.Languages, catalog.Languages()) {
+		t.Fatal("language choices missing from state", state.Languages)
+	}
+	if state.DefaultTemplate != chatbox.DefaultTemplate {
+		t.Fatalf("default template = %q, want %q", state.DefaultTemplate, chatbox.DefaultTemplate)
+	}
+	s := cloneSettings(a.settings)
+	s.Flows.Self.Spoken, s.Flows.World.Spoken = "en", "ja"
+	s.Flows.Self.Target, s.Flows.World.Target = "ko", "ja-easy"
+	body, _ := json.Marshal(s)
+	w = request(a, "PUT", "/api/settings", string(body), a.token)
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(state.Required["self"], wantRequirements(t, "en")) || !reflect.DeepEqual(state.Required["world"], wantRequirements(t, "ja")) {
+		t.Fatal("requirements did not follow spoken language", state.Required)
 	}
 }
 
-func TestMissingDownloadsLeaveFlowStopped(t *testing.T) {
+func wantRequirements(t *testing.T, spoken string) []string {
+	t.Helper()
+	required, err := catalog.Required(spoken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return required
+}
+
+func TestMissingDownloadsRejectStartWithoutEnabling(t *testing.T) {
 	for _, flow := range []string{"self", "world"} {
 		t.Run(flow, func(t *testing.T) {
 			a := testApp(t)
+			seedSafeFlowSettings(t, a)
 			before := cloneSettings(a.settings)
+			fileBefore, err := os.ReadFile(filepath.Join(a.dir, "settings.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
 			response := request(a, "POST", "/api/flows/"+flow+"/start", "", a.token)
 			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "missing downloads:") {
 				t.Fatal(response.Code, response.Body.String())
 			}
-			if got := a.flows[flow].status; got != (flowState{State: "stopped"}) {
+			if got := a.flows[flow].status; got.State != "error" || got.Code != errcode.MissingDownloads {
 				t.Fatal(got)
 			}
 			history, _ := a.events.after(0)
 			if len(history) != 1 || history[0].Flow != flow || history[0].Kind != "error" || history[0].Operation != "start" ||
-				!strings.HasPrefix(history[0].Text, "missing downloads:") {
+				history[0].Code != errcode.MissingDownloads || !strings.HasPrefix(history[0].Text, "missing downloads:") {
 				t.Fatal(history)
 			}
 			if !reflect.DeepEqual(a.settings, before) {
 				t.Fatal("refused start changed settings", a.settings)
 			}
-			if _, err := os.Stat(filepath.Join(a.dir, "settings.yaml")); !errors.Is(err, os.ErrNotExist) {
+			if after, err := os.ReadFile(filepath.Join(a.dir, "settings.yaml")); err != nil || !bytes.Equal(after, fileBefore) {
 				t.Fatal("refused start wrote settings", err)
 			}
 			for id, state := range a.artifacts {
 				state.State = "installed"
 				a.artifacts[id] = state
 			}
-			if got := a.flows[flow].status; got != (flowState{State: "stopped"}) || a.flows[flow].cancel != nil {
+			if got := a.flows[flow].status; got.State != "error" || got.Code != errcode.MissingDownloads || a.flows[flow].cancel != nil {
 				t.Fatal("artifact availability changed the flow", got)
 			}
 		})
@@ -297,7 +338,7 @@ func TestStopRacesNormalCompletion(t *testing.T) {
 				}),
 				Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
 				Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
-				Translate:   func(context.Context, string) (string, error) { return "", nil },
+				Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
 			}, nil
 		}
 		if err := a.changeFlow("world", "start"); err != nil {
@@ -342,7 +383,7 @@ func TestTokenOnEveryAPI(t *testing.T) {
 	}
 }
 
-func TestNoNetworkUntilDownload(t *testing.T) {
+func TestAppConstructionAndUIStayOffline(t *testing.T) {
 	var calls atomic.Int32
 	old := http.DefaultTransport
 	transport := old.(*http.Transport).Clone()
@@ -444,6 +485,7 @@ func TestSettingsValidationAndWriteStatus(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(a.dir, "settings.yaml"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	pollSettings(a)
 	s.Chatbox.Address = "127.0.0.1:47123"
 	body, _ = json.Marshal(s)
 	response := request(a, "PUT", "/api/settings", string(body), a.token)
@@ -458,7 +500,7 @@ func TestSettingsValidationAndWriteStatus(t *testing.T) {
 func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 	for _, flow := range []string{"self", "world"} {
 		for _, phase := range []string{"stopped", "error", "starting", "running"} {
-			for _, change := range []string{"enabled", "microphone", "address"} {
+			for _, change := range []string{"enabled", "microphone", "address", "spoken", "target", "template"} {
 				t.Run(flow+"/"+phase+"/"+change, func(t *testing.T) {
 					a := testApp(t)
 					for id, artifact := range a.artifacts {
@@ -496,16 +538,30 @@ func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 					s.Flows.Self.Enabled = !s.Flows.Self.Enabled
 					s.Flows.World.Enabled = !s.Flows.World.Enabled
 					switch change {
+					case "template":
+						s.Chatbox.Template = "{{.Translation}}"
 					case "microphone":
 						s.Flows.Self.Microphone = "other"
 					case "address":
 						s.Chatbox.Address = "127.0.0.1:47123"
+					case "spoken":
+						if flow == "self" {
+							s.Flows.Self.Spoken = "en"
+						} else {
+							s.Flows.World.Spoken = "ja"
+						}
+					case "target":
+						if flow == "self" {
+							s.Flows.Self.Target = "ja-easy"
+						} else {
+							s.Flows.World.Target = "zh-hant"
+						}
 					}
 					body, _ := json.Marshal(s)
 					if response := request(a, "PUT", "/api/settings", string(body), a.token); response.Code != http.StatusOK {
 						t.Fatal(response.Code, response.Body.String())
 					}
-					restart := flow == "self" && active && change != "enabled"
+					restart := active && (change == "spoken" || (flow == "self" && (change == "microphone" || change == "address")))
 					if restart {
 						waitFor(t, func() bool { return starts.Load() == 2 })
 					}

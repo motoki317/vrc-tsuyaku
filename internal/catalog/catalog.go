@@ -8,10 +8,11 @@ import (
 	"slices"
 )
 
-// Haas, Parakeet, Silero, PLaMo, LlamaCPP and ONNXRuntime identify the downloadable artifacts.
+// These constants identify the downloadable artifacts.
 const (
 	Haas          = "haas-ja-v1.0-int8"
 	Parakeet      = "parakeet-tdt-0.6b-v2-int8"
+	ParakeetV3    = "parakeet-tdt-0.6b-v3-int8"
 	Silero        = "silero-vad-v6.2.3"
 	PLaMo         = "plamo-3-translate-2b-q4_k_m"
 	LlamaCPP      = "llama.cpp-b12201-cpu"
@@ -28,7 +29,7 @@ var plamoLicense string
 // License names a license and identifies the material it covers in Covers.
 // Text, when nonempty, holds the complete license for display before a download starts.
 type License struct {
-	Name, URL, Covers, Text string
+	Name, URL, Covers, Text, Credit string
 }
 
 // File is one installed regular file. Member is its exact archive path, or empty
@@ -49,8 +50,7 @@ type Source struct {
 }
 
 // Artifact describes a complete installation. A nonempty AcceptanceKey must be
-// present in saved settings before download. Languages uses the Japanese and English
-// codes defined in translation.go.
+// present in saved settings before download. Languages uses the codes in translation.go.
 type Artifact struct {
 	ID, Name, AcceptanceKey string
 	Languages               []string

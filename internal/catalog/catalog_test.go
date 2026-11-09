@@ -14,7 +14,7 @@ import (
 func TestPins(t *testing.T) {
 	for _, goos := range []string{"linux", "windows"} {
 		list, err := List(goos)
-		if err != nil || len(list) != 6 {
+		if err != nil || len(list) != 7 {
 			t.Fatalf("catalog: %v, %v", list, err)
 		}
 		for _, a := range list {
@@ -26,6 +26,9 @@ func TestPins(t *testing.T) {
 				for _, l := range a.Licenses {
 					if l.Name == "" || l.Covers == "" {
 						t.Fatal("incomplete license")
+					}
+					if a.ID != PLaMo && l.Credit != "" {
+						t.Fatalf("unexpected required credit %q", l.Credit)
 					}
 					checkHTTPS(t, l.URL)
 				}
@@ -102,10 +105,12 @@ func TestCopiesAndPaths(t *testing.T) {
 	if fp.Encoder == h.Encoder {
 		t.Fatal("fp32 encoder missing")
 	}
-	p := ParakeetBundle(dir)
+	p := ParakeetBundle(Parakeet, dir)
+	v3 := ParakeetBundle(ParakeetV3, dir)
 	for _, tc := range []struct{ id, role, path string }{
 		{Haas, "features", h.Features}, {Haas, "encoder", h.Encoder}, {Haas, "decoder", h.Decoder}, {Haas, "joint", h.Joint}, {Haas, "vocabulary", h.Vocabulary},
 		{Parakeet, "features", p.Features}, {Parakeet, "encoder", p.Encoder}, {Parakeet, "decoder_joint", p.DecoderJoint}, {Parakeet, "vocabulary", p.Vocabulary},
+		{ParakeetV3, "features", v3.Features}, {ParakeetV3, "encoder", v3.Encoder}, {ParakeetV3, "decoder_joint", v3.DecoderJoint}, {ParakeetV3, "vocabulary", v3.Vocabulary},
 		{Silero, "model", SileroModel(dir)}, {PLaMo, "model", PLaMoModel(dir)},
 	} {
 		a, _ := Lookup(tc.id, "linux")
@@ -134,6 +139,9 @@ func TestPLaMoLicenseAvailableOffline(t *testing.T) {
 	}
 	if len(a.Licenses) != 1 || !strings.Contains(a.Licenses[0].Text, "legal guardian") {
 		t.Fatal("full license unavailable before network")
+	}
+	if a.Licenses[0].Credit != "Built with PLaMo" {
+		t.Fatalf("required credit = %q, want Built with PLaMo", a.Licenses[0].Credit)
 	}
 	sum := sha256.Sum256([]byte(a.Licenses[0].Text))
 	if hex.EncodeToString(sum[:]) != "d9979039b8f1a96fa81e1be61c4550d06f8542b25119e3f765c7c011a68597fb" {

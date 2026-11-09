@@ -6,8 +6,11 @@ The path names the ONNX Runtime shared library: `onnxruntime.dll` on Windows or 
 
 For Japanese, `files := catalog.HaasBundle(directory, int8Encoder)` names the [Haas files](../../tools/haas-export/README.md#files-and-runtime-contract) in `directory` and picks the encoder.
 Load them with `Engine.LoadHaas(files)`.
-For English, `files := catalog.ParakeetBundle(directory)` names the [Parakeet TDT 0.6B v2 int8 files](../catalog/pins.go).
-Load them with `Engine.LoadParakeet(files)`.
+For English, `files := catalog.ParakeetBundle(catalog.Parakeet, directory)` names the [Parakeet TDT 0.6B v2 int8 files](../catalog/pins.go).
+For the other European languages and for detection, `catalog.ParakeetBundle(catalog.ParakeetV3, directory)` names the Parakeet TDT 0.6B v3 int8 files.
+Load either bundle with `Engine.LoadParakeet(files)`.
+The recognizer takes no language: v3 transcribes any of its languages from the audio alone.
+`catalog.Spoken(code)` names the recognizer for each spoken language.
 
 Call `Transcribe(ctx, audio)` for each phrase of 16 kHz mono `float32` audio produced by [vad.Segmenter](../vad/segmenter.go).
 
@@ -91,6 +94,24 @@ The recognizer keeps SentencePiece's spacing, as NeMo does, so the app's text ca
 
 ```sh
 nix develop -c go test ./internal/asr -run 'TestParakeet(CPUParity|Lifecycle)$' -v -count=1 -timeout=20m
+```
+
+`TestParakeetV3CPUParity` runs on Linux and reads these paths:
+
+| Variable | Contents |
+| --- | --- |
+| `VRC_TSUYAKU_TEST_ORT_LIB` | ONNX Runtime 1.31.1 CPU shared library |
+| `VRC_TSUYAKU_TEST_PARAKEET_V3_BUNDLE` | Parakeet v3 int8 directory with the four files that `internal/catalog/pins.go` names |
+| `VRC_TSUYAKU_TEST_PARAKEET_V3_WAV_DIR` | `<id>.wav` files, canonical 44-byte headers, 16 kHz mono PCM16 |
+| `VRC_TSUYAKU_TEST_PARAKEET_V3_REF` | onnx-asr reference rows with `id`, `hyp` and `ref` as above, plus `lang` and the reference token IDs in `tokens` |
+
+v3 uses the `nemo128.onnx` that the [v3 conversion repository](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce) publishes.
+The reference generator, outside this repository, runs onnx-asr 0.12.0's `NemoConformerTdt` on the same four files and the conversion repository's `config.json`, with four intra-op threads and one inter-op thread.
+It takes the token IDs from the class's `_decoding` and the text from its `_decode_tokens`.
+On every clip, the test requires identical token IDs, and requires both onnx-asr's text rule and the app's transcript to equal `hyp`. The rows must include at least one clip each in `en`, `de`, `fr`, `es` and `ru`.
+
+```sh
+nix develop -c go test ./internal/asr -run '^TestParakeetV3CPUParity$' -v -count=1 -timeout=20m
 ```
 
 ### Silero VAD

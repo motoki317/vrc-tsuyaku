@@ -3,102 +3,193 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>vrc-tsuyaku</title>
+<meta name="color-scheme" content="dark">
+<title data-i18n="label.product"></title>
 <link rel="stylesheet" href="/style.css">
 <script src="/app.js" defer></script>
 </head>
 <body>
-<header class="top">
-  <div>
-    <h1>vrc-tsuyaku</h1>
-    <p>Speech translation for VRChat, running on this PC. Keep vrc-tsuyaku running while you use this page.</p>
-  </div>
-  <div class="top-side">
-    <p id="connection" class="connection" data-state="connecting">Connecting…</p>
-    <p class="credit">Built with PLaMo</p>
+<header class="topbar">
+  <div class="topbar-inner">
+    <h1 class="brand"><span class="mark" aria-hidden="true"></span><span class="product" data-i18n="label.product"></span></h1>
+    <nav id="tabs" class="tabs" data-i18n-aria-label="label.screens" hidden>
+      <button type="button" class="tab" data-screen="translation"><svg class="icon" aria-hidden="true"><use href="#i-captions"></use></svg><span data-i18n="label.translation"></span></button>
+      <button type="button" class="tab" data-screen="settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span data-i18n="label.settings"></span><span class="update-dot" aria-hidden="true" hidden></span></button>
+    </nav>
+    <div class="menu">
+      <button type="button" id="ui-language" class="menu-button" aria-haspopup="menu" aria-expanded="false" aria-controls="ui-language-menu">
+        <svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg><span id="ui-language-name" class="menu-name"></span><svg class="icon small" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+      </button>
+      <div id="ui-language-menu" class="menu-list" role="menu" data-i18n-aria-label="label.uiLanguage" hidden>
+        <button type="button" role="menuitemradio" data-value="" data-i18n="value.languageBrowser"></button>
+        <button type="button" role="menuitemradio" data-value="en" lang="en" data-i18n="value.languageEnglish"></button>
+        <button type="button" role="menuitemradio" data-value="ja" lang="ja" data-i18n="value.languageJapanese"></button>
+      </div>
+      <p id="ui-language-error" class="menu-error error-text" hidden></p>
+    </div>
   </div>
 </header>
-<div class="banners">
-  <div id="connection-banner" class="banner" data-tone="error" role="alert" hidden></div>
-  <div id="settings-banner" class="banner" data-tone="error" role="alert" hidden>
-    <h2>vrc-tsuyaku could not read settings.yaml</h2>
-    <p>Flows and downloads cannot start until this is fixed. Fix the file and restart vrc-tsuyaku, or replace the file with the default settings. Replacing deletes what the file holds now.</p>
-    <p id="settings-error" class="details"></p>
-    <button type="button" id="replace-settings" class="primary" aria-describedby="replace-message">Replace with default settings</button>
-    <div id="replace-message" class="message"></div>
-  </div>
+
+<div id="connection" class="connection" hidden>
+  <svg class="icon" aria-hidden="true"><use href="#i-wifi-off"></use></svg>
+  <span class="spinner-slot" aria-hidden="true"><svg class="icon spin"><use href="#i-loader-circle"></use></svg></span>
+  <span id="connection-text" role="status"></span>
 </div>
-<main id="main" hidden>
-<p class="note">Each change on this page is saved to settings.yaml at once. Saving removes any comments from that file.</p>
 
-<section id="downloads" class="step" aria-labelledby="downloads-title">
-  <div class="step-head">
-    <h2 id="downloads-title" tabindex="-1"><span class="step-number"><span class="visually-hidden">Step </span>1</span> Get the downloads</h2>
-    <span id="downloads-tag" class="tag"></span>
-  </div>
-  <details id="downloads-details">
-    <summary>Downloads and licenses</summary>
-    <p>The speech and translation models run on this PC. Nothing downloads until you press a button.</p>
-    <div id="license-gates"></div>
-    <div class="actions">
-      <button type="button" id="download-all" class="primary" aria-describedby="download-all-reason"></button>
-      <p id="download-all-reason" class="reason"></p>
+<main id="main">
+  <section id="screen-setup" class="screen setup" hidden>
+    <div class="setup-column">
+      <div class="plan-slot"></div>
+      <div class="setup-next">
+        <button type="button" id="next" class="button"><span data-i18n="action.next"></span><svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+      </div>
     </div>
-    <ul id="download-list" class="download-list"></ul>
-  </details>
-</section>
+  </section>
 
-<section id="flows" class="step" aria-labelledby="flows-title">
-  <h2 id="flows-title"><span class="step-number"><span class="visually-hidden">Step </span>2</span> Start a flow</h2>
-  <div class="flows">
-    <article id="flow-self" class="flow" aria-labelledby="self-title">
-      <div class="flow-head"><h3 id="self-title">Self flow</h3><span id="self-tag" class="tag"></span></div>
-      <p>Hears Japanese from your microphone and shows it with its English translation in your VRChat chatbox.</p>
-      <p class="hint">Turn on OSC in VRChat's Action Menu: OSC → Enabled.</p>
-      <div class="field">
-        <label for="microphone">Microphone</label>
-        <div class="field-row">
-          <select id="microphone" aria-describedby="microphone-message"></select>
-          <button type="button" id="refresh-mics" class="secondary">Refresh list<span class="visually-hidden"> of microphones</span></button>
+  <section id="screen-translation" class="screen translation" hidden>
+    <div id="log" class="log" role="log" aria-live="off" tabindex="0" data-i18n-aria-label="label.log">
+      <div class="log-column">
+        <ol id="log-list" class="log-list"></ol>
+        <div id="ghosts" class="ghosts" aria-hidden="true">
+          <div class="ghost world"><span class="avatar"><svg class="icon"><use href="#i-users"></use></svg></span><span class="ghost-bubble"></span></div>
+          <div class="ghost self"><span class="ghost-bubble"></span><span class="avatar"><svg class="icon"><use href="#i-mic"></use></svg></span></div>
         </div>
-        <p id="microphone-message" class="message"></p>
+        <div id="dots-world" class="msg world speaking" aria-hidden="true" hidden>
+          <span class="avatar"><svg class="icon"><use href="#i-users"></use></svg></span>
+          <div class="bubble"><span class="dots"><i></i><i></i><i></i></span></div>
+        </div>
+        <div id="dots-self" class="msg self speaking" aria-hidden="true" hidden>
+          <div class="bubble"><span class="dots"><i></i><i></i><i></i></span></div>
+        </div>
       </div>
-      <details id="address-details" class="field">
-        <summary>Chatbox address: <span id="address-current"></span></summary>
-        <label for="address">Chatbox address</label>
-        <p id="address-hint" class="hint">An IP address and port. VRChat listens on 127.0.0.1:9000.</p>
-        <input id="address" autocomplete="off" spellcheck="false" aria-describedby="address-hint address-message">
-        <p id="address-message" class="message"></p>
-      </details>
-      <div class="actions">
-        <button type="button" id="self-start" data-flow="self" data-action="start" class="primary" aria-describedby="self-message"></button>
-        <button type="button" id="self-stop" data-flow="self" data-action="stop" class="secondary" aria-describedby="self-message" hidden></button>
-      </div>
-      <div id="self-message" class="message"></div>
-      <p id="self-launch" class="hint"></p>
-    </article>
-    <article id="flow-world" class="flow" aria-labelledby="world-title">
-      <div class="flow-head"><h3 id="world-title">World flow</h3><span id="world-tag" class="tag"></span></div>
-      <p>Hears English in VRChat and shows the Japanese translation in step 3.</p>
-      <p class="hint">Start VRChat first. This flow hears only VRChat's audio.</p>
-      <div class="actions">
-        <button type="button" id="world-start" data-flow="world" data-action="start" class="primary" aria-describedby="world-message"></button>
-        <button type="button" id="world-stop" data-flow="world" data-action="stop" class="secondary" aria-describedby="world-message" hidden></button>
-      </div>
-      <div id="world-message" class="message"></div>
-      <p id="world-launch" class="hint"></p>
-    </article>
-  </div>
-</section>
+    </div>
+    <button type="button" id="unread" class="unread" hidden><svg class="icon" aria-hidden="true"><use href="#i-arrow-down"></use></svg><span id="unread-count"></span></button>
+  </section>
 
-<section id="translations" class="step" aria-labelledby="log-title">
-  <h2 id="log-title"><span class="step-number"><span class="visually-hidden">Step </span>3</span> Watch the translations</h2>
-  <div id="log" class="log" role="log" aria-live="off" aria-labelledby="log-title" tabindex="0">
-    <p id="log-empty" class="empty">Translations appear here when a running flow hears speech.</p>
-    <ol id="log-list"></ol>
+  <section id="screen-settings" class="screen settings" hidden>
+    <nav class="rail" data-i18n-aria-label="label.settingsSections">
+      <button type="button" class="rail-item" data-sub="languages"><svg class="icon" aria-hidden="true"><use href="#i-languages"></use></svg><span data-i18n="label.languages"></span></button>
+      <button type="button" class="rail-item" data-sub="microphone"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="label.microphone"></span></button>
+      <button type="button" class="rail-item" data-sub="chatbox"><svg class="icon" aria-hidden="true"><use href="#i-message-square-text"></use></svg><span data-i18n="label.chatbox"></span></button>
+      <button type="button" class="rail-item" data-sub="downloads"><svg class="icon" aria-hidden="true"><use href="#i-hard-drive-download"></use></svg><span data-i18n="label.downloads"></span></button>
+      <button type="button" class="rail-item" data-sub="about"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span data-i18n="label.about"></span><span class="update-dot" aria-hidden="true" hidden></span></button>
+    </nav>
+
+    <div id="sub-languages" class="sub" hidden>
+      <h2 class="sub-title" tabindex="-1" data-i18n="label.languages"></h2>
+      <div class="plan-slot"></div>
+    </div>
+
+    <div id="sub-microphone" class="sub" hidden>
+      <div class="sub-head"><h2 class="sub-title" id="microphone-label" tabindex="-1" data-i18n="label.microphone"></h2><span class="saved" id="microphone-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
+      <div class="field-row">
+        <select id="microphone" class="select" aria-labelledby="microphone-label"></select>
+        <button type="button" id="refresh-mics" class="icon-button" data-i18n-aria-label="action.refresh"><svg class="icon" aria-hidden="true"><use href="#i-refresh-cw"></use></svg></button>
+        <span id="microphone-state" class="field-state warning" hidden><svg class="icon" aria-hidden="true"><use href="#i-circle-alert"></use></svg><span data-i18n="state.notConnected"></span></span>
+      </div>
+      <p id="microphone-error" class="error-text" hidden></p>
+    </div>
+
+    <div id="sub-chatbox" class="sub" hidden>
+      <h2 class="sub-title" tabindex="-1" data-i18n="label.chatbox"></h2>
+      <div class="field-group">
+        <div class="label-row"><label class="field-label" for="address" data-i18n="label.address"></label><span class="saved" id="address-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
+        <div class="field-row">
+          <input id="address" class="input mono" autocomplete="off" spellcheck="false" aria-describedby="address-error">
+        </div>
+        <p id="address-error" class="error-text" hidden></p>
+      </div>
+      <div class="field-group">
+        <div class="label-row"><span class="field-label" id="message-label" data-i18n="label.message"></span><span class="saved" id="template-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
+        <div id="presets" class="segmented" role="group" aria-labelledby="message-label"></div>
+        <div id="custom" hidden>
+          <div id="tokens" class="chips" role="group" data-i18n-aria-label="label.insert"></div>
+          <textarea id="template" class="input mono template" rows="3" spellcheck="false" aria-labelledby="message-label" aria-describedby="template-error"></textarea>
+        </div>
+        <div id="template-error" class="error-text" hidden></div>
+        <div id="preview" class="preview" role="group" data-i18n-aria-label="label.preview"></div>
+      </div>
+    </div>
+
+    <div id="sub-downloads" class="sub" hidden>
+      <h2 class="sub-title" tabindex="-1" data-i18n="label.downloads"></h2>
+      <p class="installed-total"><span data-i18n="label.installed"></span> <span id="installed-size" class="value"></span></p>
+      <ul id="all-downloads" class="download-list"></ul>
+    </div>
+
+    <div id="sub-about" class="sub" hidden>
+      <h2 class="sub-title about-title" tabindex="-1" data-i18n="label.product"></h2>
+      <p class="about-description" data-i18n="value.description"></p>
+      <p id="app-version" class="about-version"></p>
+      <p id="app-update" class="about-update" role="status"></p>
+      <!-- Each link is app.repository from /api/state plus its data-path. -->
+      <p class="about-links">
+        <a data-path="" target="_blank" rel="noreferrer"><span data-i18n="label.sourceCode"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
+        <a data-path="/releases" target="_blank" rel="noreferrer"><span data-i18n="label.releases"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
+        <a data-path="/blob/main/LICENSE" target="_blank" rel="noreferrer"><span data-i18n="label.appLicense"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
+        <a data-path="/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noreferrer"><span data-i18n="label.thirdPartyNotices"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
+      </p>
+      <h3 class="field-label" id="licenses-label" data-i18n="label.softwareUsed"></h3>
+      <ul id="licenses" class="license-list" aria-labelledby="licenses-label"></ul>
+    </div>
+
+    <div class="rail-foot">
+      <button type="button" class="rail-item" data-open="data" data-error="open-data-error" data-i18n-aria-label="action.openData"><svg class="icon" aria-hidden="true"><use href="#i-folder-open"></use></svg><span data-i18n="label.dataFolder"></span><svg class="icon small exit" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></button>
+      <p class="error-text" id="open-data-error" hidden></p>
+      <button type="button" class="rail-item" data-open="settings" data-error="open-settings-error" data-i18n-aria-label="action.openSettingsFile"><svg class="icon" aria-hidden="true"><use href="#i-file-cog"></use></svg><span data-i18n="label.settingsFile"></span><svg class="icon small exit" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></button>
+      <p class="error-text" id="open-settings-error" hidden></p>
+    </div>
+  </section>
+
+  <section id="screen-settings-error" class="screen settings-error" hidden>
+    <div class="settings-error-column">
+      <h2 class="settings-error-title"><svg class="icon large" aria-hidden="true"><use href="#i-file-warning"></use></svg><span data-i18n="title.settingsError"></span></h2>
+      <pre id="settings-error-text" class="settings-error-text"></pre>
+      <div class="settings-error-actions">
+        <button type="button" class="button secondary" data-open="settings" data-error="replace-error"><svg class="icon" aria-hidden="true"><use href="#i-file-cog"></use></svg><span data-i18n="action.openSettingsFile"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></button>
+        <button type="button" id="replace-settings" class="button secondary"><span data-i18n="action.replaceSettings"></span></button>
+      </div>
+      <p id="replace-error" class="error-text" hidden></p>
+    </div>
+  </section>
+
+  <div id="switchbar" class="switchbar" hidden>
+    <div class="switchbar-inner"></div>
   </div>
-</section>
 </main>
-<div id="announce" class="visually-hidden" role="status"></div>
+
+<dialog id="license-dialog" class="dialog license" aria-labelledby="license-title">
+  <div class="dialog-head">
+    <h2 id="license-title"></h2>
+    <button type="button" class="icon-button" data-close data-i18n-aria-label="action.close"><svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg></button>
+  </div>
+  <ul id="license-downloads" class="download-list license-downloads"></ul>
+  <pre id="license-text" class="license-text" tabindex="0" role="region" aria-labelledby="license-title"></pre>
+  <div class="dialog-actions">
+    <button type="button" class="button secondary" data-close data-i18n="action.cancel"></button>
+    <button type="button" id="license-accept" class="button"><svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg><span data-i18n="action.acceptDownload"></span></button>
+  </div>
+</dialog>
+
+<dialog id="delete-dialog" class="dialog" aria-labelledby="delete-title">
+  <h2 id="delete-title"></h2>
+  <p id="delete-size" class="value"></p>
+  <p id="delete-flows" class="delete-flows"></p>
+  <p id="delete-error" class="error-text" hidden></p>
+  <div class="dialog-actions">
+    <button type="button" class="button secondary" data-close data-i18n="action.cancel"></button>
+    <button type="button" id="delete-confirm" class="button danger"><svg class="icon" aria-hidden="true"><use href="#i-trash-2"></use></svg><span data-i18n="action.delete"></span></button>
+  </div>
+</dialog>
+
+<dialog id="replace-dialog" class="dialog" aria-labelledby="replace-title">
+  <h2 id="replace-title" data-i18n="title.replaceSettings"></h2>
+  <div class="dialog-actions">
+    <button type="button" class="button secondary" data-close data-i18n="action.cancel"></button>
+    <button type="button" id="replace-confirm" class="button danger" data-i18n="action.replace"></button>
+  </div>
+</dialog>
+
+<div id="announce" class="visually-hidden" aria-live="polite"></div>
 </body>
 </html>

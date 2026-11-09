@@ -8,10 +8,14 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 //go:embed ui/*
@@ -28,6 +32,24 @@ func (a *app) handler() http.Handler {
 		}
 		writeJSON(w, devices)
 	})
+	mux.HandleFunc("POST /api/chatbox/preview", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Template string `json:"template"`
+			chatbox.Message
+		}
+		if err := readJSON(w, r, &body); err != nil {
+			apiError(w, err, http.StatusBadRequest)
+			return
+		}
+		pages, err := chatbox.Render(body.Template, body.Message)
+		if err != nil {
+			apiError(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, struct {
+			Pages []string `json:"pages"`
+		}{pages})
+	})
 	mux.HandleFunc("PUT /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		var s config.Settings
 		if err := readJSON(w, r, &s); err != nil {
@@ -36,7 +58,9 @@ func (a *app) handler() http.Handler {
 		}
 		if err := a.saveSettings(s); err != nil {
 			status := http.StatusInternalServerError
-			if errors.Is(err, config.ErrInvalidSettings) {
+			if errcode.Of(err) == errcode.SettingsChanged {
+				status = http.StatusConflict
+			} else if errors.Is(err, config.ErrInvalidSettings) {
 				status = http.StatusBadRequest
 			}
 			apiError(w, err, status)
@@ -70,7 +94,35 @@ func (a *app) handler() http.Handler {
 		}
 		w.WriteHeader(http.StatusAccepted)
 	})
+	mux.HandleFunc("DELETE /api/downloads/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if _, err := catalog.Lookup(id, runtime.GOOS); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if err := a.deleteDownload(id); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, errArtifactInUse) {
+				status = http.StatusConflict
+			}
+			apiError(w, err, status)
+			return
+		}
+		writeJSON(w, a.snapshot())
+	})
 	mux.HandleFunc("GET /api/events", a.streamEvents)
+	mux.HandleFunc("POST /api/open/{target}", func(w http.ResponseWriter, r *http.Request) {
+		target := r.PathValue("target")
+		if target != "data" && target != "settings" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := a.openTarget(target); err != nil {
+			apiError(w, err, http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	files, _ := fs.Sub(ui, "ui")
 	mux.Handle("/", http.FileServerFS(files))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +160,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 func apiError(w http.ResponseWriter, err error, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": withDataDirHint(err).Error()})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": withDataDirHint(err).Error(), "code": string(errcode.Of(err))})
 }
 
 func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {

@@ -13,7 +13,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 // ErrInvalidSettings marks validation failures returned by Save.
@@ -21,9 +23,14 @@ var ErrInvalidSettings = errors.New("invalid settings")
 
 // Settings is the complete settings.yaml document. Saving rewrites it and removes comments.
 type Settings struct {
+	UI               UI                `yaml:"ui"`
 	Flows            Flows             `yaml:"flows"`
 	Chatbox          Chatbox           `yaml:"chatbox"`
 	LicensesAccepted map[string]string `yaml:"licenses_accepted"`
+}
+
+type UI struct {
+	Language string `yaml:"language"`
 }
 
 type Flows struct {
@@ -34,28 +41,60 @@ type Flows struct {
 type SelfFlow struct {
 	Enabled    bool   `yaml:"enabled"`
 	Microphone string `yaml:"microphone"`
+	Spoken     string `yaml:"spoken"`
+	Target     string `yaml:"target"`
 }
 
 type WorldFlow struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled bool   `yaml:"enabled"`
+	Spoken  string `yaml:"spoken"`
+	Target  string `yaml:"target"`
+}
+
+func (f Flows) Languages(name string) (spoken, target string) {
+	if name == "self" {
+		return f.Self.Spoken, f.Self.Target
+	}
+	return f.World.Spoken, f.World.Target
 }
 
 type Chatbox struct {
-	Address string `yaml:"address"`
+	Address  string `yaml:"address"`
+	Template string `yaml:"template"`
 }
 
 // Defaults leaves both flows stopped and uses the local VRChat address.
 func Defaults() Settings {
 	return Settings{
-		Chatbox:          Chatbox{Address: "127.0.0.1:9000"},
+		Flows: Flows{
+			Self:  SelfFlow{Spoken: catalog.Japanese, Target: catalog.English},
+			World: WorldFlow{Spoken: catalog.English, Target: catalog.Japanese},
+		},
+		Chatbox:          Chatbox{Address: "127.0.0.1:9000", Template: chatbox.DefaultTemplate},
 		LicensesAccepted: make(map[string]string),
 	}
 }
 
-// Validate checks the chatbox destination and RFC3339 license acceptance timestamps.
+// Validate rejects unsupported languages, invalid destinations and invalid acceptance timestamps.
 func (s Settings) Validate() error {
+	if s.UI.Language != "" && s.UI.Language != "en" && s.UI.Language != "ja" {
+		return fmt.Errorf("ui.language: unsupported language %q", s.UI.Language)
+	}
+	for _, name := range []string{"self", "world"} {
+		spoken, target := s.Flows.Languages(name)
+		language, ok := catalog.Spoken(spoken)
+		if !ok || (name == "self" && language.Auto) {
+			return fmt.Errorf("flows.%s.spoken: unsupported language %q", name, spoken)
+		}
+		if !catalog.IsTarget(target) {
+			return fmt.Errorf("flows.%s.target: unsupported language %q", name, target)
+		}
+	}
 	if _, err := chatbox.ParseAddress(s.Chatbox.Address); err != nil {
 		return err
+	}
+	if err := chatbox.ValidateTemplate(s.Chatbox.Template); err != nil {
+		return fmt.Errorf("chatbox.template: %w", err)
 	}
 	for key, value := range s.LicensesAccepted {
 		if key == "" {
@@ -110,7 +149,7 @@ func Load(dataDir string) (Settings, error) {
 
 // Save validates settings and atomically replaces settings.yaml.
 // On failure the old settings remain in place.
-func Save(dataDir string, s Settings) error {
+func Save(dataDir string, s Settings) (err error) {
 	if err := s.Validate(); err != nil {
 		return settingsError(dataDir, fmt.Errorf("%w: %w", ErrInvalidSettings, err))
 	}
@@ -118,6 +157,7 @@ func Save(dataDir string, s Settings) error {
 	if err != nil {
 		return settingsError(dataDir, err)
 	}
+	defer func() { err = errcode.With(errcode.DiskWrite, err) }()
 	if err = os.MkdirAll(dataDir, 0o755); err != nil {
 		return settingsError(dataDir, err)
 	}

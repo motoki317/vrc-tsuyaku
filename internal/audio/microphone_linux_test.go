@@ -12,7 +12,58 @@ import (
 	"time"
 
 	"github.com/jfreymuth/pulse/proto"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
+
+func TestUnavailableMicrophoneCode(t *testing.T) {
+	t.Setenv("PULSE_SERVER", "unix:"+filepath.Join(t.TempDir(), "absent.sock"))
+	t.Setenv("PULSE_COOKIE", filepath.Join(t.TempDir(), "absent"))
+	err := Microphone("synthetic-source").Capture(t.Context(), func([]float32) error {
+		t.Fatal("unexpected audio")
+		return nil
+	})
+	if errcode.Of(err) != errcode.MicrophoneUnavailable {
+		t.Fatalf("unavailable microphone: %v (%s)", err, errcode.Of(err))
+	}
+}
+
+func TestMicrophoneCaptureSetupCode(t *testing.T) {
+	for _, failure := range []string{"open", "start", "consumer"} {
+		t.Run(failure, func(t *testing.T) {
+			cause := errors.New("device disappeared")
+			packets := newPulsePackets(errors.New("stream ended"))
+			if err := packets.push([]float32{0}); err != nil {
+				t.Fatal(err)
+			}
+			request := func(args proto.RequestArgs, reply proto.Reply) error {
+				switch args := args.(type) {
+				case *proto.GetSourceInfo:
+					*reply.(*proto.GetSourceInfoReply) = proto.GetSourceInfoReply{SourceIndex: 123, MonitorSourceIndex: proto.Undefined}
+				case *proto.CreateRecordStream:
+					if failure == "open" {
+						return cause
+					}
+					*reply.(*proto.CreateRecordStreamReply) = proto.CreateRecordStreamReply{SampleSpec: args.SampleSpec}
+				case *proto.CorkRecordStream:
+					if failure == "start" {
+						return cause
+					}
+				default:
+					t.Fatalf("unexpected request: %T", args)
+				}
+				return nil
+			}
+			err := (microphone{id: "synthetic-source"}).capturePulse(t.Context(), request, packets, func([]float32) error { return cause })
+			want := errcode.MicrophoneUnavailable
+			if failure == "consumer" {
+				want = errcode.Unknown
+			}
+			if !errors.Is(err, cause) || errcode.Of(err) != want {
+				t.Fatalf("capture error: %v (%s), want %s", err, errcode.Of(err), want)
+			}
+		})
+	}
+}
 
 func TestPulsePackets(t *testing.T) {
 	p := newPulsePackets(errors.New("capture stream ended"))

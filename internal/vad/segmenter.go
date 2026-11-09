@@ -44,6 +44,9 @@ type Segmenter struct {
 	active          bool
 }
 
+// Active includes the silence confirmation and continues across a forced cut.
+func (s *Segmenter) Active() bool { return s.active }
+
 // Push consumes one window and its probability, returning a completed phrase or
 // nil. It rejects a window of the wrong size, non-finite audio, or a probability
 // outside [0,1], without changing state. The segmenter copies input audio,

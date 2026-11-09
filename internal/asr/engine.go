@@ -26,6 +26,13 @@ var processEngine struct {
 	library string
 }
 
+// RuntimeResident reports whether the binding still holds the runtime library.
+func RuntimeResident() bool {
+	processEngine.Lock()
+	defer processEngine.Unlock()
+	return processEngine.library != ""
+}
+
 // Engine owns the process's ORT environment and all loaded model sessions.
 // Sessions run on the CPU: recognizers use four intra-op threads, Silero uses one.
 type Engine struct {
@@ -135,7 +142,7 @@ func (e *Engine) LoadHaas(files catalog.HaasFiles) (*Haas, error) {
 	return model, nil
 }
 
-// LoadParakeet loads Parakeet TDT 0.6B v2 int8 from four file paths.
+// LoadParakeet loads Parakeet TDT 0.6B v2 or v3 int8 from four file paths.
 // It converts paths to absolute paths and uses them as the cache key.
 // Reusing the same cache key returns the cached model.
 func (e *Engine) LoadParakeet(files catalog.ParakeetFiles) (*Parakeet, error) {

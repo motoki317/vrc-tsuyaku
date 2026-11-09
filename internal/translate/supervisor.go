@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 // Supervisor owns one server shared by both flows. Start and Close serialize
@@ -181,7 +182,7 @@ func (p *child) stop() error {
 func (p *child) exitError() error {
 	select {
 	case <-p.done:
-		return fmt.Errorf("llama-server exited (%v): %s", p.err, p.log.String())
+		return errcode.With(errcode.TranslatorExited, fmt.Errorf("llama-server exited (%v): %s", p.err, p.log.String()))
 	default:
 		return nil
 	}

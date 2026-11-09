@@ -62,7 +62,7 @@ func TestOnnxASRText(t *testing.T) {
 
 func loadTestParakeet(t *testing.T, e *Engine, bundle string) *Parakeet {
 	t.Helper()
-	p, err := e.LoadParakeet(catalog.ParakeetBundle(bundle))
+	p, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.Parakeet, bundle))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +99,54 @@ func TestParakeetCPUParity(t *testing.T) {
 		}
 	}
 	t.Logf("Parakeet v2 int8, four threads: %d/%d identical", len(refs), len(refs))
+}
+
+func TestParakeetV3CPUParity(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the reference uses the Linux ONNX Runtime build")
+	}
+	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
+	bundle := requireEnv(t, "VRC_TSUYAKU_TEST_PARAKEET_V3_BUNDLE")
+	wavDir := requireEnv(t, "VRC_TSUYAKU_TEST_PARAKEET_V3_WAV_DIR")
+	refs, err := readReferences(requireEnv(t, "VRC_TSUYAKU_TEST_PARAKEET_V3_REF"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := NewEngine(lib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	p, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.ParakeetV3, bundle))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[string]bool)
+	for _, ref := range refs {
+		if ref.Lang == "" || len(ref.Tokens) == 0 {
+			t.Fatalf("%s: reference must include language and token IDs", ref.ID)
+		}
+		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID))
+		if err != nil {
+			t.Fatalf("%s: %v", ref.ID, err)
+		}
+		if !slices.Equal(tokens, ref.Tokens) {
+			t.Fatalf("%s: tokens %v, want %v", ref.ID, tokens, ref.Tokens)
+		}
+		if got := onnxASRText(p.vocab, tokens); got != ref.Hyp {
+			t.Fatalf("%s: text %q, want %q", ref.ID, got, ref.Hyp)
+		}
+		if got, err := p.vocab.decode(tokens); err != nil || got != ref.Hyp {
+			t.Fatalf("%s: transcript %q, %v, want %q", ref.ID, got, err, ref.Hyp)
+		}
+		seen[ref.Lang] = true
+		t.Logf("%s: identical tokens and text: %s", ref.ID, ref.Hyp)
+	}
+	for _, language := range []string{"en", "de", "fr", "es", "ru"} {
+		if !seen[language] {
+			t.Fatalf("reference has no %s clip", language)
+		}
+	}
 }
 
 func TestParakeetLifecycle(t *testing.T) {
@@ -160,7 +208,7 @@ func TestParakeetLifecycle(t *testing.T) {
 	if _, err := p.Transcribe(t.Context(), audio); err == nil {
 		t.Fatal("transcription succeeded after close")
 	}
-	if _, err := e.LoadParakeet(catalog.ParakeetBundle(bundle)); err == nil {
+	if _, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.Parakeet, bundle)); err == nil {
 		t.Fatal("load succeeded after close")
 	}
 }

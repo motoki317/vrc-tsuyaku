@@ -17,6 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/go-ole/go-ole"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/moutend/go-wca/pkg/wca"
 	"golang.org/x/sys/windows"
 )
@@ -69,7 +70,7 @@ func (a application) captureProcess(ctx context.Context, enqueue func([]float32)
 			return fmt.Errorf("check %s: %w", a.executable, err)
 		}
 		if status == windows.WAIT_OBJECT_0 {
-			return fmt.Errorf("%s exited", a.executable)
+			return errcode.With(errcode.ApplicationEnded, fmt.Errorf("%s exited", a.executable))
 		}
 		return nil
 	}, enqueue)
@@ -89,7 +90,7 @@ func applicationPID(name string) (uint32, error) {
 	for err = windows.Process32First(snapshot, &entry); err == nil; err = windows.Process32Next(snapshot, &entry) {
 		if strings.EqualFold(windows.UTF16ToString(entry.ExeFile[:]), name) {
 			if pid != 0 {
-				return 0, fmt.Errorf("multiple processes named %s are running", name)
+				return 0, errcode.With(errcode.MultipleApplications, fmt.Errorf("multiple processes named %s are running", name))
 			}
 			pid = entry.ProcessID
 		}
@@ -98,7 +99,7 @@ func applicationPID(name string) (uint32, error) {
 		return 0, err
 	}
 	if pid == 0 {
-		return 0, fmt.Errorf("%s is not running", name)
+		return 0, errcode.With(errcode.ApplicationNotRunning, fmt.Errorf("%s is not running", name))
 	}
 	return pid, nil
 }

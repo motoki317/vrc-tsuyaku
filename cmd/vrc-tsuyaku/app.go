@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/download"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
@@ -26,11 +28,17 @@ type artifactState struct {
 	State    string            `json:"state"`
 	Progress download.Progress `json:"progress"`
 	Error    string            `json:"error,omitempty"`
+	Code     errcode.Code      `json:"code,omitempty"`
 }
 
 type flowState struct {
-	State string `json:"state"`
-	Error string `json:"error,omitempty"`
+	State string       `json:"state"`
+	Error string       `json:"error,omitempty"`
+	Code  errcode.Code `json:"code,omitempty"`
+}
+
+func flowError(err error) flowState {
+	return flowState{State: "error", Error: withDataDirHint(err).Error(), Code: errcode.Of(err)}
 }
 
 func (s flowState) active() bool {
@@ -47,24 +55,31 @@ type app struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	dir, token    string
+	info          appInfo
+	update        updateState
 	downloads     *download.Manager
 	mu            sync.Mutex
 	settings      config.Settings
 	settingsError string
+	settingsFile  settingsFileState
 	artifacts     map[string]artifactState
 	flows         map[string]*flowRun
 	events        events
-	// operations serializes startEnabled, saveSettings, changeFlow,
-	// startDownload and close. Callers hold it while calling start or stop.
-	operations   sync.Mutex
-	downloadsWG  sync.WaitGroup
-	modelTurn    chan struct{}
-	engine       *asr.Engine
-	translator   *translate.Supervisor
-	queue        *chatbox.Queue
-	queueAddress string
-	source       func(flowName, microphoneID string) audio.Source
-	prepare      func(ctx context.Context, flowName string, settings config.Settings) (pipeline.Stages, error)
+	// operations serializes settings, flow and storage changes, including close.
+	// Callers hold it while calling start or stop.
+	operations       sync.Mutex
+	settingsWG       sync.WaitGroup
+	downloadsWG      sync.WaitGroup
+	updateWG         sync.WaitGroup
+	modelTurn        chan struct{}
+	engine           *asr.Engine
+	translator       *translate.Supervisor
+	queue            *chatbox.Queue
+	queueAddress     string
+	source           func(flowName, microphoneID string) audio.Source
+	prepare          func(ctx context.Context, flowName string, settings config.Settings) (pipeline.Stages, error)
+	downloadArtifact func(context.Context, string, string, func(download.Progress)) error
+	open             func(string) error
 }
 
 func newApp(ctx context.Context, dir string) (*app, error) {
@@ -73,11 +88,16 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
+	build, _ := debug.ReadBuildInfo()
 	a := &app{ctx: ctx, cancel: cancel, dir: dir, token: rand.Text(), downloads: manager,
+		info:      appBuildInfo(build),
+		update:    updateState{State: "checking"},
 		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
-		source: flowSource,
+		source: flowSource, open: openFile,
 	}
 	a.prepare = a.prepareModels
+	a.downloadArtifact = manager.Download
+	a.settingsFile = a.statSettings()
 	settings, loadErr := config.Load(dir)
 	if loadErr != nil {
 		settings = config.Defaults()
@@ -98,7 +118,8 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		}
 		if err != nil {
 			state.Error = withDataDirHint(err).Error()
-			a.emit("", "error", state.Error)
+			state.Code = errcode.Of(err)
+			a.emitError("", err)
 		}
 		a.artifacts[artifact.ID] = state
 	}
@@ -119,6 +140,10 @@ func (a *app) emit(flow, kind, text string) {
 	a.events.publish(flow, pipeline.Event{Kind: kind, Text: text})
 }
 
+func (a *app) emitError(flow string, err error) {
+	a.events.publish(flow, pipeline.Event{Kind: "error", Code: errcode.Of(err), Text: withDataDirHint(err).Error()})
+}
+
 func cloneSettings(s config.Settings) config.Settings {
 	s.LicensesAccepted = maps.Clone(s.LicensesAccepted)
 	if s.LicensesAccepted == nil {
@@ -134,15 +159,20 @@ func (a *app) snapshot() any {
 	requirements := make(map[string][]string)
 	for name, run := range a.flows {
 		flows[name] = run.status
-		requirements[name] = required(name)
+		spoken, _ := a.settings.Flows.Languages(name)
+		requirements[name], _ = catalog.Required(spoken)
 	}
 	return struct {
-		Settings      config.Settings          `json:"settings"`
-		SettingsError string                   `json:"settingsError,omitempty"`
-		Artifacts     map[string]artifactState `json:"artifacts"`
-		Flows         map[string]flowState     `json:"flows"`
-		Required      map[string][]string      `json:"required"`
-	}{cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements}
+		App             appInfo                  `json:"app"`
+		Update          updateState              `json:"update"`
+		Settings        config.Settings          `json:"settings"`
+		SettingsError   string                   `json:"settingsError,omitempty"`
+		Artifacts       map[string]artifactState `json:"artifacts"`
+		Flows           map[string]flowState     `json:"flows"`
+		Required        map[string][]string      `json:"required"`
+		Languages       catalog.LanguageCatalog  `json:"languages"`
+		DefaultTemplate string                   `json:"defaultTemplate"`
+	}{a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
 }
 
 func (a *app) startEnabled() {
@@ -163,14 +193,6 @@ func (a *app) startEnabled() {
 	}
 }
 
-func required(name string) []string {
-	model := catalog.Haas
-	if name == "world" {
-		model = catalog.Parakeet
-	}
-	return []string{catalog.ONNXRuntime, catalog.Silero, model, catalog.LlamaCPP, catalog.PLaMo}
-}
-
 // Model initialization runs outside operations so stop can cancel a pending start.
 func (a *app) start(name string, s config.Settings) error {
 	a.mu.Lock()
@@ -178,7 +200,7 @@ func (a *app) start(name string, s config.Settings) error {
 		a.mu.Unlock()
 		return nil
 	}
-	if err := a.checkStart(name); err != nil {
+	if err := a.checkStart(name, s); err != nil {
 		a.mu.Unlock()
 		a.refuseStart(name, err)
 		return err
@@ -193,6 +215,12 @@ func (a *app) start(name string, s config.Settings) error {
 		defer cancel()
 		stages, err := a.prepare(ctx, name, s)
 		if err == nil && ctx.Err() == nil {
+			stages.Settings = func() pipeline.PhraseSettings {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				source, target := a.settings.Flows.Languages(name)
+				return pipeline.PhraseSettings{SourceLang: source, TargetLang: target, Template: a.settings.Chatbox.Template}
+			}
 			a.mu.Lock()
 			run.status = flowState{State: "running"}
 			a.mu.Unlock()
@@ -203,12 +231,12 @@ func (a *app) start(name string, s config.Settings) error {
 		a.mu.Lock()
 		run.status = flowState{State: "stopped"}
 		if err != nil && ctx.Err() == nil {
-			run.status = flowState{State: "error", Error: withDataDirHint(err).Error()}
+			run.status = flowError(err)
 		}
 		state := run.status
 		if ctx.Err() == nil {
 			if state.Error != "" {
-				a.emit(name, "error", state.Error)
+				a.events.publish(name, pipeline.Event{Kind: "error", Code: state.Code, Text: state.Error})
 			} else {
 				a.emit(name, "state", state.State)
 			}
@@ -219,24 +247,34 @@ func (a *app) start(name string, s config.Settings) error {
 }
 
 // The caller holds mu while checking artifact state.
-func (a *app) checkStart(name string) error {
+func (a *app) checkStart(name string, s config.Settings) error {
 	if err := a.ctx.Err(); err != nil {
 		return err
 	}
 	var missing []string
-	for _, id := range required(name) {
+	spoken, _ := s.Flows.Languages(name)
+	required, err := catalog.Required(spoken)
+	if err != nil {
+		return err
+	}
+	for _, id := range required {
 		if a.artifacts[id].State != "installed" {
 			missing = append(missing, a.artifacts[id].Artifact.Name)
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("missing downloads: %s", strings.Join(missing, ", "))
+		return errcode.With(errcode.MissingDownloads, fmt.Errorf("missing downloads: %s", strings.Join(missing, ", ")))
 	}
 	return nil
 }
 
 func (a *app) refuseStart(name string, err error) {
-	a.events.publishEvent(event{Flow: name, Operation: "start", Event: pipeline.Event{Kind: "error", Text: err.Error()}})
+	a.mu.Lock()
+	if !a.flows[name].status.active() {
+		a.flows[name].status = flowError(err)
+	}
+	a.mu.Unlock()
+	a.events.publishEvent(event{Flow: name, Operation: "start", Event: pipeline.Event{Kind: "error", Code: errcode.Of(err), Text: err.Error()}})
 }
 
 func (a *app) stop(name string) {
@@ -261,40 +299,72 @@ func (a *app) stop(name string) {
 func (a *app) saveSettings(s config.Settings) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
-	a.mu.Lock()
-	old := cloneSettings(a.settings)
-	a.mu.Unlock()
-	s.LicensesAccepted = old.LicensesAccepted
-	s.Flows.Self.Enabled = old.Flows.Self.Enabled
-	s.Flows.World.Enabled = old.Flows.World.Enabled
-	if err := config.Save(a.dir, s); err != nil {
+	if a.statSettings() != a.settingsFile {
+		a.reloadSettingsLocked()
+		return errcode.With(errcode.SettingsChanged, errors.New("settings changed on disk: reload and retry"))
+	}
+	s = a.preserveControls(s)
+	if err := a.writeSettings(s); err != nil {
 		return err
+	}
+	a.applySettings(s, "saved")
+	return nil
+}
+
+func (a *app) preserveControls(s config.Settings) config.Settings {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	s.LicensesAccepted = maps.Clone(a.settings.LicensesAccepted)
+	s.Flows.Self.Enabled = a.settings.Flows.Self.Enabled
+	s.Flows.World.Enabled = a.settings.Flows.World.Enabled
+	return s
+}
+
+func (a *app) applySettings(s config.Settings, event string) {
+	a.mu.Lock()
+	old := a.settings
+	var restart []string
+	for _, name := range []string{"self", "world"} {
+		oldSpoken, _ := old.Flows.Languages(name)
+		newSpoken, _ := s.Flows.Languages(name)
+		oldLanguage, _ := catalog.Spoken(oldSpoken)
+		newLanguage, _ := catalog.Spoken(newSpoken)
+		changed := oldLanguage.Recognizer != newLanguage.Recognizer
+		if name == "self" {
+			changed = changed || old.Flows.Self.Microphone != s.Flows.Self.Microphone || old.Chatbox.Address != s.Chatbox.Address
+		}
+		if changed && a.flows[name].status.active() {
+			restart = append(restart, name)
+		}
+	}
+	a.mu.Unlock()
+	// Finish old recognition before publishing a language that needs another model.
+	for _, name := range restart {
+		a.stop(name)
 	}
 	a.mu.Lock()
 	a.settings = cloneSettings(s)
 	a.settingsError = ""
-	restartSelf := a.flows["self"].status.active()
 	a.mu.Unlock()
-	if restartSelf && (old.Flows.Self.Microphone != s.Flows.Self.Microphone || old.Chatbox.Address != s.Chatbox.Address) {
-		a.stop("self")
-		_ = a.start("self", s)
+	for _, name := range restart {
+		_ = a.start(name, s)
 	}
-	a.emit("", "settings", "saved")
-	return nil
+	a.emit("", "settings", event)
 }
 
 func (a *app) changeFlow(name, action string) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
+	a.reloadSettingsLocked()
 	a.mu.Lock()
 	s := cloneSettings(a.settings)
 	settingsError := a.settingsError
 	var startErr error
 	if action == "start" {
-		startErr = a.checkStart(name)
+		startErr = a.checkStart(name, s)
 	}
 	a.mu.Unlock()
-	if settingsError != "" {
+	if settingsError != "" && action != "stop" {
 		return fmt.Errorf("save valid settings before changing a flow: %s", settingsError)
 	}
 	if startErr != nil {
@@ -306,14 +376,19 @@ func (a *app) changeFlow(name, action string) error {
 	} else {
 		s.Flows.World.Enabled = action == "start"
 	}
-	if err := config.Save(a.dir, s); err != nil {
-		return err
+	if settingsError == "" {
+		if err := a.writeSettings(s); err != nil {
+			return err
+		}
 	}
 	a.mu.Lock()
 	a.settings = s
-	a.settingsError = ""
 	a.mu.Unlock()
-	a.emit("", "settings", "saved")
+	text := "saved"
+	if settingsError != "" {
+		text = "changed"
+	}
+	a.emit("", "settings", text)
 	if action == "stop" {
 		a.stop(name)
 		return nil
@@ -324,6 +399,7 @@ func (a *app) changeFlow(name, action string) error {
 func (a *app) startDownload(id string, accept bool) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
+	a.reloadSettingsLocked()
 	a.mu.Lock()
 	state, ok := a.artifacts[id]
 	s := cloneSettings(a.settings)
@@ -341,7 +417,7 @@ func (a *app) startDownload(id string, accept bool) error {
 	if key := state.Artifact.AcceptanceKey; key != "" {
 		if accept {
 			s.LicensesAccepted[key] = time.Now().UTC().Format(time.RFC3339)
-			if err := config.Save(a.dir, s); err != nil {
+			if err := a.writeSettings(s); err != nil {
 				return err
 			}
 			a.mu.Lock()
@@ -357,13 +433,14 @@ func (a *app) startDownload(id string, accept bool) error {
 	}
 	state.State = "downloading"
 	state.Error = ""
+	state.Code = ""
 	state.Progress = download.Progress{}
 	a.mu.Lock()
 	a.artifacts[id] = state
 	a.mu.Unlock()
 	a.downloadsWG.Go(func() {
 		last := time.Time{}
-		err := a.downloads.Download(a.ctx, id, runtime.GOOS, func(p download.Progress) {
+		err := a.downloadArtifact(a.ctx, id, runtime.GOOS, func(p download.Progress) {
 			a.mu.Lock()
 			state.Progress = p
 			a.artifacts[id] = state
@@ -373,9 +450,12 @@ func (a *app) startDownload(id string, accept bool) error {
 				last = time.Now()
 			}
 		})
+		a.operations.Lock()
+		defer a.operations.Unlock()
 		state.State = "installed"
 		if err != nil {
 			state.Error = withDataDirHint(err).Error()
+			state.Code = errcode.Of(err)
 			if !errors.Is(err, download.ErrCleanup) {
 				state.State = "missing"
 			}
@@ -384,12 +464,39 @@ func (a *app) startDownload(id string, accept bool) error {
 		a.artifacts[id] = state
 		a.mu.Unlock()
 		if err != nil {
-			a.emit("", "error", state.Error)
+			a.emitError("", err)
 		}
 		a.emit("", "download", id)
+		if state.State == "installed" {
+			a.startWaitingFlows()
+		}
 	})
 	a.emit("", "download", id)
 	return nil
+}
+
+// Callers hold operations to serialize retries with stop and settings changes.
+func (a *app) startWaitingFlows() {
+	a.reloadSettingsLocked()
+	a.mu.Lock()
+	s := cloneSettings(a.settings)
+	var waiting []string
+	if a.settingsError == "" && a.ctx.Err() == nil {
+		for _, name := range []string{"self", "world"} {
+			enabled := s.Flows.Self.Enabled
+			if name == "world" {
+				enabled = s.Flows.World.Enabled
+			}
+			status := a.flows[name].status
+			if enabled && !status.active() && status.Code == errcode.MissingDownloads && a.checkStart(name, s) == nil {
+				waiting = append(waiting, name)
+			}
+		}
+	}
+	a.mu.Unlock()
+	for _, name := range waiting {
+		_ = a.start(name, s)
+	}
 }
 
 func (a *app) artifactDir(id string) string {
@@ -419,12 +526,18 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 		return pipeline.Stages{}, err
 	}
 	var recognizer asr.Recognizer
-	direction := translate.JapaneseToEnglish
-	if name == "self" {
+	spoken, _ := s.Flows.Languages(name)
+	language, ok := catalog.Spoken(spoken)
+	if !ok {
+		return pipeline.Stages{}, fmt.Errorf("unsupported spoken language %q", spoken)
+	}
+	switch language.Recognizer {
+	case catalog.Haas:
 		recognizer, err = a.engine.LoadHaas(catalog.HaasBundle(a.artifactDir(catalog.Haas), true))
-	} else {
-		recognizer, err = a.engine.LoadParakeet(catalog.ParakeetBundle(a.artifactDir(catalog.Parakeet)))
-		direction = translate.EnglishToJapanese
+	case catalog.Parakeet, catalog.ParakeetV3:
+		recognizer, err = a.engine.LoadParakeet(catalog.ParakeetBundle(language.Recognizer, a.artifactDir(language.Recognizer)))
+	default:
+		return pipeline.Stages{}, fmt.Errorf("unsupported recognizer %q", language.Recognizer)
 	}
 	if err != nil {
 		return pipeline.Stages{}, err
@@ -439,9 +552,7 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 		return pipeline.Stages{}, err
 	}
 	stages := pipeline.Stages{Source: a.source(name, s.Flows.Self.Microphone), Probability: silero.NewStream().Probability, Recognize: recognizer.Transcribe,
-		Translate: func(ctx context.Context, text string) (string, error) {
-			return a.translator.Translate(ctx, direction, text)
-		}}
+		Translate: a.translator.Translate}
 	if name == "self" {
 		if a.queue == nil || a.queueAddress != s.Chatbox.Address {
 			if a.queue != nil {
@@ -454,19 +565,24 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 			}
 			a.queueAddress = s.Chatbox.Address
 		}
-		stages.Send = a.queue.SendPages
+		stages.Send = a.queue.Send
 	}
 	return stages, nil
 }
 
 func (a *app) close() error {
 	a.cancel()
+	a.updateWG.Wait()
+	a.settingsWG.Wait()
 	a.operations.Lock()
-	defer a.operations.Unlock()
 	for _, name := range []string{"self", "world"} {
 		a.stop(name)
 	}
+	// Download completion takes operations; cancellation and this barrier prevent new downloads.
+	a.operations.Unlock()
 	a.downloadsWG.Wait()
+	a.operations.Lock()
+	defer a.operations.Unlock()
 	if a.engine != nil {
 		a.engine.Close()
 	}
