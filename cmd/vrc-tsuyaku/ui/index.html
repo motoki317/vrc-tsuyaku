@@ -135,12 +135,13 @@
       <p class="about-description" data-i18n="value.description"></p>
       <p id="app-version" class="about-version"></p>
       <p id="app-update" class="about-update" role="status"></p>
-      <!-- Each link is app.repository from /api/state plus its data-path. -->
+      <!-- A link with a data-path goes to app.repository from /api/state plus that path. The app serves the notices
+           from the license texts that the executable carries. -->
       <p class="about-links">
         <a data-path="" target="_blank" rel="noreferrer"><span data-i18n="label.sourceCode"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
         <a data-path="/releases" target="_blank" rel="noreferrer"><span data-i18n="label.releases"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
         <a data-path="/blob/main/LICENSE" target="_blank" rel="noreferrer"><span data-i18n="label.appLicense"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
-        <a data-path="/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noreferrer"><span data-i18n="label.thirdPartyNotices"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
+        <a href="/notices.txt" target="_blank" rel="noreferrer"><span data-i18n="label.thirdPartyNotices"></span><svg class="icon small" aria-hidden="true"><use href="#i-arrow-up-right"></use></svg></a>
       </p>
       <h3 class="field-label" id="licenses-label" data-i18n="label.softwareUsed"></h3>
       <ul id="licenses" class="license-list" aria-labelledby="licenses-label"></ul>
