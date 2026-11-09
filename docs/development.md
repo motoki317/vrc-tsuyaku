@@ -47,6 +47,8 @@ CI also runs the tests with `-race`. [cmd/vrc-tsuyaku/README.md](../cmd/vrc-tsuy
 
 Pushing a `v*` tag publishes a release with no draft step. `.github/workflows/release.yml` runs `just release` with the tag, which builds `vrc-tsuyaku-windows.zip`, `vrc-tsuyaku-linux.tar.gz` and `SHA256SUMS` into `dist/`. The release notes are [install.md](install.md) and [install.ja.md](install.ja.md), followed by the notes that GitHub generates.
 
+CI and the release workflow build with the Go version in the `toolchain` line of `go.mod`. Before a release, set that line to the latest Go patch release, so that the executables carry its security fixes. `govulncheck -mode=binary` on a built executable lists the Go vulnerabilities that it can reach.
+
 `just release` stops in two cases:
 
 - HEAD does not carry the tag: "Expected HEAD to be tagged v0.1.0."
