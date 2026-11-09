@@ -25,17 +25,17 @@ func HaasBundle(dir string, int8Encoder bool) HaasFiles {
 	}
 }
 
-// ParakeetFiles names the local files consumed by a Parakeet v2 int8 recognizer.
+// ParakeetFiles names the local files consumed by a Parakeet int8 recognizer.
 type ParakeetFiles struct {
 	Features, Encoder, DecoderJoint, Vocabulary string
 }
 
-// ParakeetBundle names the v2 int8 files in the artifact directory returned by
-// Manager.Directory in internal/download.
-func ParakeetBundle(dir string) ParakeetFiles {
+// ParakeetBundle names the int8 files for the recognizer artifact id in the
+// directory returned by Manager.Directory in internal/download.
+func ParakeetBundle(id, dir string) ParakeetFiles {
 	return ParakeetFiles{
-		Features: modelPath(Parakeet, dir, "features"), Encoder: modelPath(Parakeet, dir, "encoder"),
-		DecoderJoint: modelPath(Parakeet, dir, "decoder_joint"), Vocabulary: modelPath(Parakeet, dir, "vocabulary"),
+		Features: modelPath(id, dir, "features"), Encoder: modelPath(id, dir, "encoder"),
+		DecoderJoint: modelPath(id, dir, "decoder_joint"), Vocabulary: modelPath(id, dir, "vocabulary"),
 	}
 }
 

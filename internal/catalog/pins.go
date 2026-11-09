@@ -4,9 +4,10 @@
 package catalog
 
 const (
-	haasBase     = "https://huggingface.co/motoki317/Haas-ja-v1.0-onnx/resolve/1cd4824d0f733b67bb4820adfdd0a38a0f17a55b/"
-	parakeetBase = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/0bbb45a3365852604aef28b538a8f066f4ccaa85/"
-	plamoBase    = "https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/resolve/" + plamoRevision + "/"
+	haasBase       = "https://huggingface.co/motoki317/Haas-ja-v1.0-onnx/resolve/1cd4824d0f733b67bb4820adfdd0a38a0f17a55b/"
+	parakeetBase   = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/0bbb45a3365852604aef28b538a8f066f4ccaa85/"
+	parakeetV3Base = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/"
+	plamoBase      = "https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/resolve/" + plamoRevision + "/"
 )
 
 var artifacts = map[string]entry{
@@ -29,6 +30,14 @@ var artifacts = map[string]entry{
 			{URL: "https://files.pythonhosted.org/packages/6a/60/2fa469a2ee674c35ab48821a1039762ae7b9d0b88188ac1012e779477f76/onnx_asr-0.12.0-py3-none-any.whl", Format: "zip", Size: 3980006, SHA256: "5e7ceca454609819ea7833f61e2302e0c8f6ece4f8a78b66c5daba53cb51de4a", Files: []File{
 				{Path: "nemo128.onnx", Role: "features", Member: "onnx_asr/preprocessors/data/nemo128.onnx", Size: 138824, SHA256: "5b4a84c52eeaa615dc46d781cc7e4598f9b432184831d57493c48adcd01371a9"},
 			}},
+		}}},
+	ParakeetV3: {Artifact: Artifact{Name: "Parakeet TDT 0.6B v3 int8", Languages: recognizerLanguages(ParakeetV3),
+		Licenses: []License{{Name: "CC-BY-4.0", URL: "https://creativecommons.org/licenses/by/4.0/", Covers: "NVIDIA weights and ONNX conversion"}, {Name: "MIT", URL: "https://github.com/istupakov/onnx-asr/blob/v0.12.0/LICENSE", Covers: "onnx-asr feature extractor"}},
+		Sources: []Source{
+			plain(parakeetV3Base, "encoder-model.int8.onnx", "encoder", 652183999, "6139d2fa7e1b086097b277c7149725edbab89cc7c7ae64b23c741be4055aff09"),
+			plain(parakeetV3Base, "decoder_joint-model.int8.onnx", "decoder_joint", 18202004, "eea7483ee3d1a30375daedc8ed83e3960c91b098812127a0d99d1c8977667a70"),
+			plain(parakeetV3Base, "vocab.txt", "vocabulary", 93939, "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"),
+			plain(parakeetV3Base, "nemo128.onnx", "features", 139764, "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f"),
 		}}},
 	Silero: {Artifact: Artifact{Name: "Silero VAD v6.2.3", Licenses: []License{{Name: "MIT", URL: "https://github.com/snakers4/silero-vad/blob/5cd7945676eb32225748052e2e6a0580e4686a08/LICENSE", Covers: "Silero graph"}}, Sources: []Source{
 		plain("https://raw.githubusercontent.com/snakers4/silero-vad/5cd7945676eb32225748052e2e6a0580e4686a08/src/silero_vad/data/", "silero_vad.onnx", "model", 2327524, "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"),

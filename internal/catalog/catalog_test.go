@@ -14,7 +14,7 @@ import (
 func TestPins(t *testing.T) {
 	for _, goos := range []string{"linux", "windows"} {
 		list, err := List(goos)
-		if err != nil || len(list) != 6 {
+		if err != nil || len(list) != 7 {
 			t.Fatalf("catalog: %v, %v", list, err)
 		}
 		for _, a := range list {
@@ -102,10 +102,12 @@ func TestCopiesAndPaths(t *testing.T) {
 	if fp.Encoder == h.Encoder {
 		t.Fatal("fp32 encoder missing")
 	}
-	p := ParakeetBundle(dir)
+	p := ParakeetBundle(Parakeet, dir)
+	v3 := ParakeetBundle(ParakeetV3, dir)
 	for _, tc := range []struct{ id, role, path string }{
 		{Haas, "features", h.Features}, {Haas, "encoder", h.Encoder}, {Haas, "decoder", h.Decoder}, {Haas, "joint", h.Joint}, {Haas, "vocabulary", h.Vocabulary},
 		{Parakeet, "features", p.Features}, {Parakeet, "encoder", p.Encoder}, {Parakeet, "decoder_joint", p.DecoderJoint}, {Parakeet, "vocabulary", p.Vocabulary},
+		{ParakeetV3, "features", v3.Features}, {ParakeetV3, "encoder", v3.Encoder}, {ParakeetV3, "decoder_joint", v3.DecoderJoint}, {ParakeetV3, "vocabulary", v3.Vocabulary},
 		{Silero, "model", SileroModel(dir)}, {PLaMo, "model", PLaMoModel(dir)},
 	} {
 		a, _ := Lookup(tc.id, "linux")

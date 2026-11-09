@@ -6,7 +6,7 @@ The path names the ONNX Runtime shared library: `onnxruntime.dll` on Windows or 
 
 For Japanese, `files := catalog.HaasBundle(directory, int8Encoder)` names the [Haas files](../../tools/haas-export/README.md#files-and-runtime-contract) in `directory` and picks the encoder.
 Load them with `Engine.LoadHaas(files)`.
-For English, `files := catalog.ParakeetBundle(directory)` names the [Parakeet TDT 0.6B v2 int8 files](../catalog/pins.go).
+For English, `files := catalog.ParakeetBundle(catalog.Parakeet, directory)` names the [Parakeet TDT 0.6B v2 int8 files](../catalog/pins.go).
 Load them with `Engine.LoadParakeet(files)`.
 
 Call `Transcribe(ctx, audio)` for each phrase of 16 kHz mono `float32` audio produced by [vad.Segmenter](../vad/segmenter.go).

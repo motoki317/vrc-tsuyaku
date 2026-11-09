@@ -14,12 +14,11 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 )
 
-const parakeetBlank = 1024
-
-// Parakeet recognizes English with the int8 Parakeet TDT 0.6B v2 networks.
+// Parakeet recognizes speech with the int8 Parakeet TDT 0.6B v2 or v3 networks.
 type Parakeet struct {
 	engine                          *Engine
 	vocab                           vocabulary
+	blank                           int
 	features, encoder, decoderJoint *ort.Session
 }
 
@@ -33,10 +32,10 @@ func newParakeet(engine *Engine, files catalog.ParakeetFiles) (*Parakeet, error)
 	if err != nil {
 		return nil, err
 	}
-	if len(vocab) != parakeetBlank+1 || vocab[parakeetBlank] != "<blk>" {
-		return nil, fmt.Errorf("Parakeet v2 vocabulary must have %d entries ending with <blk>", parakeetBlank+1)
+	if (len(vocab) != 1025 && len(vocab) != 8193) || vocab[len(vocab)-1] != "<blk>" {
+		return nil, fmt.Errorf("Parakeet vocabulary must have 1025 (v2) or 8193 (v3) entries ending with <blk>")
 	}
-	p := &Parakeet{engine: engine, vocab: vocab}
+	p := &Parakeet{engine: engine, vocab: vocab, blank: len(vocab) - 1}
 	for _, spec := range []struct {
 		name, path string
 		session    **ort.Session
@@ -87,7 +86,7 @@ func (p *Parakeet) tokens(ctx context.Context, audio []float32) ([]int, error) {
 	}
 	defer d.close()
 	return greedyTDT(ctx, len(encoded)/1024, tdtConfig{
-		blank: parakeetBlank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10,
+		blank: p.blank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10,
 	}, d)
 }
 
@@ -132,7 +131,7 @@ type parakeetDecoder struct {
 }
 
 func (p *Parakeet) decoder(encoded []float32) (*parakeetDecoder, error) {
-	d := &parakeetDecoder{p: p, encoded: encoded, last: parakeetBlank, state: make(map[string]*ort.Value)}
+	d := &parakeetDecoder{p: p, encoded: encoded, last: int32(p.blank), state: make(map[string]*ort.Value)}
 	for _, name := range []string{"output_states_1", "output_states_2"} {
 		value, err := ort.NewTensor([]int64{2, 1, 640}, make([]float32, 2*640))
 		if err != nil {
@@ -181,7 +180,7 @@ func (d *parakeetDecoder) Scores(frame int) ([]float32, error) {
 			return nil, err
 		}
 	}
-	logits, _, err := tensorData[float32](d.next, "outputs", []int64{1, 1, 1, parakeetBlank + 1 + 5})
+	logits, _, err := tensorData[float32](d.next, "outputs", []int64{1, 1, 1, int64(d.p.blank + 1 + 5)})
 	return logits, err
 }
 

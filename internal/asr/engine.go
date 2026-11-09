@@ -142,7 +142,7 @@ func (e *Engine) LoadHaas(files catalog.HaasFiles) (*Haas, error) {
 	return model, nil
 }
 
-// LoadParakeet loads Parakeet TDT 0.6B v2 int8 from four file paths.
+// LoadParakeet loads Parakeet TDT 0.6B v2 or v3 int8 from four file paths.
 // It converts paths to absolute paths and uses them as the cache key.
 // Reusing the same cache key returns the cached model.
 func (e *Engine) LoadParakeet(files catalog.ParakeetFiles) (*Parakeet, error) {

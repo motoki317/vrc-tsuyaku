@@ -8,10 +8,11 @@ import (
 	"slices"
 )
 
-// Haas, Parakeet, Silero, PLaMo, LlamaCPP and ONNXRuntime identify the downloadable artifacts.
+// These constants identify the downloadable artifacts.
 const (
 	Haas          = "haas-ja-v1.0-int8"
 	Parakeet      = "parakeet-tdt-0.6b-v2-int8"
+	ParakeetV3    = "parakeet-tdt-0.6b-v3-int8"
 	Silero        = "silero-vad-v6.2.3"
 	PLaMo         = "plamo-3-translate-2b-q4_k_m"
 	LlamaCPP      = "llama.cpp-b12201-cpu"

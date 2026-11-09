@@ -94,8 +94,8 @@ Source: [istupakov/onnx-asr](https://github.com/istupakov/onnx-asr), version 0.1
 `tools/haas-export/export_vocab.py` writes onnx-asr's `<piece> <id>` vocabulary format, and `internal/asr/vocab.go` reads it.
 `internal/catalog/pins.go` uses onnx-asr's Parakeet file names.
 `internal/asr/parakeet.go` reimplements the combined prediction/joint step from `models/nemo.py`.
-The app runs the `onnx_asr/preprocessors/data/nemo128.onnx` feature extractor from the onnx-asr 0.12.0 wheel.
-The app downloads the wheel from [PyPI](https://pypi.org/project/onnx-asr/0.12.0/) and extracts this feature extractor.
+For Parakeet v2, the app downloads the onnx-asr 0.12.0 wheel from [PyPI](https://pypi.org/project/onnx-asr/0.12.0/) and extracts `onnx_asr/preprocessors/data/nemo128.onnx`.
+For v3, it uses the feature extractor published with the pinned ONNX conversion.
 `internal/asr/parakeet_test.go` reimplements onnx-asr's text rule from `asr.py` only for parity comparisons.
 It joins vocabulary pieces and replaces `▁` with spaces.
 It removes the first leading whitespace character and whitespace not followed by a Unicode word character.
@@ -105,6 +105,9 @@ No onnx-asr source code is copied.
 
 Model: [nvidia/parakeet-tdt-0.6b-v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2), by NVIDIA. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
 ONNX conversion: [istupakov/parakeet-tdt-0.6b-v2-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/tree/0bbb45a3365852604aef28b538a8f066f4ccaa85), revision `0bbb45a3365852604aef28b538a8f066f4ccaa85`. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+
+Model: [nvidia/parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), by NVIDIA. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+ONNX conversion: [istupakov/parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce), revision `8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce`. License: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
 
 `internal/asr/parakeet.go` runs the converted int8 encoder and decoder/joint weights.
 The app downloads these weights from the ONNX conversion repository.
