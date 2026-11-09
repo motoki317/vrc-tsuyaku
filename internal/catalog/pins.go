@@ -43,7 +43,7 @@ var artifacts = map[string]entry{
 		plain("https://raw.githubusercontent.com/snakers4/silero-vad/5cd7945676eb32225748052e2e6a0580e4686a08/src/silero_vad/data/", "silero_vad.onnx", "model", 2327524, "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"),
 	}}},
 	PLaMo: {Artifact: Artifact{Name: "PLaMo 3 Translate 2B Q4_K_M", Languages: targetCodes, AcceptanceKey: PLaMoAcceptanceKey,
-		Licenses: []License{{Name: "PLaMo Community License", URL: plamoBase + "LICENSE/en", Covers: "PLaMo model", Text: plamoLicense}}, Sources: []Source{
+		Licenses: []License{{Name: "PLaMo Community License", URL: plamoBase + "LICENSE/en", Covers: "PLaMo model", Text: plamoLicense, Credit: "Built with PLaMo"}}, Sources: []Source{
 			plain(plamoBase, "plamo-3-translate-2b-Q4_K_M.gguf", "model", 1807203040, "1ffd9073afcc70e35ccc942428aa2b73d7aa2b9ea779bf504b775369e0276c13"),
 		}}},
 	LlamaCPP: {Artifact: Artifact{Name: "llama.cpp b12201 CPU", Licenses: []License{{Name: "MIT", URL: "https://github.com/ggml-org/llama.cpp/blob/b12201/LICENSE", Covers: "llama.cpp runtime"}}}, platforms: map[string]platform{

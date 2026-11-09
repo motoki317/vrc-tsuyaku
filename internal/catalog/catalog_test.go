@@ -27,6 +27,9 @@ func TestPins(t *testing.T) {
 					if l.Name == "" || l.Covers == "" {
 						t.Fatal("incomplete license")
 					}
+					if a.ID != PLaMo && l.Credit != "" {
+						t.Fatalf("unexpected required credit %q", l.Credit)
+					}
 					checkHTTPS(t, l.URL)
 				}
 				for _, s := range a.Sources {
@@ -136,6 +139,9 @@ func TestPLaMoLicenseAvailableOffline(t *testing.T) {
 	}
 	if len(a.Licenses) != 1 || !strings.Contains(a.Licenses[0].Text, "legal guardian") {
 		t.Fatal("full license unavailable before network")
+	}
+	if a.Licenses[0].Credit != "Built with PLaMo" {
+		t.Fatalf("required credit = %q, want Built with PLaMo", a.Licenses[0].Credit)
 	}
 	sum := sha256.Sum256([]byte(a.Licenses[0].Text))
 	if hex.EncodeToString(sum[:]) != "d9979039b8f1a96fa81e1be61c4550d06f8542b25119e3f765c7c011a68597fb" {

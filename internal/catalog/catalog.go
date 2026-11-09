@@ -29,7 +29,7 @@ var plamoLicense string
 // License names a license and identifies the material it covers in Covers.
 // Text, when nonempty, holds the complete license for display before a download starts.
 type License struct {
-	Name, URL, Covers, Text string
+	Name, URL, Covers, Text, Credit string
 }
 
 // File is one installed regular file. Member is its exact archive path, or empty
