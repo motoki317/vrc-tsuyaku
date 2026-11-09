@@ -43,7 +43,10 @@
 <main id="main">
   <section id="screen-setup" class="screen setup" hidden>
     <div class="setup-column">
-      <div class="plan-slot"></div>
+      <div class="plan">
+        <div class="plan-slot"></div>
+        <div class="plan-foot"></div>
+      </div>
       <div class="setup-next">
         <button type="button" id="next" class="button"><span data-i18n="action.next"></span><svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
       </div>
@@ -72,25 +75,51 @@
 
   <section id="screen-settings" class="screen settings" hidden>
     <nav class="rail" data-i18n-aria-label="label.settingsSections">
-      <button type="button" class="rail-item" data-sub="languages"><svg class="icon" aria-hidden="true"><use href="#i-languages"></use></svg><span data-i18n="label.languages"></span></button>
-      <button type="button" class="rail-item" data-sub="translator"><svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg><span data-i18n="label.translator"></span></button>
+      <button type="button" class="rail-item" data-sub="models"><svg class="icon" aria-hidden="true"><use href="#i-languages"></use></svg><span data-i18n="label.languagesModels"></span></button>
+      <button type="button" class="rail-item" data-sub="downloads"><svg class="icon" aria-hidden="true"><use href="#i-hard-drive-download"></use></svg><span data-i18n="label.downloads"></span></button>
       <button type="button" class="rail-item" data-sub="microphone"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="label.microphone"></span></button>
       <button type="button" class="rail-item" data-sub="chatbox"><svg class="icon" aria-hidden="true"><use href="#i-message-square-text"></use></svg><span data-i18n="label.chatbox"></span></button>
-      <button type="button" class="rail-item" data-sub="downloads"><svg class="icon" aria-hidden="true"><use href="#i-hard-drive-download"></use></svg><span data-i18n="label.downloads"></span></button>
       <button type="button" class="rail-item" data-sub="about"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span data-i18n="label.about"></span><span class="update-dot" aria-hidden="true" hidden></span></button>
     </nav>
 
-    <div id="sub-languages" class="sub" hidden>
-      <h2 class="sub-title" tabindex="-1" data-i18n="label.languages"></h2>
-      <div class="plan-slot"></div>
+    <!-- The language plan fills the two slots: the flows' rows, then Download all and the downloads list. -->
+    <div id="sub-models" class="sub" hidden>
+      <h2 class="sub-title" tabindex="-1" data-i18n="label.languagesModels"></h2>
+      <div class="plan">
+        <div class="plan-slot"></div>
+        <div class="translator">
+          <div class="label-row">
+            <h3 class="field-label" id="translator-label" data-i18n="label.translator"></h3>
+            <span class="shared" aria-hidden="true"><svg class="icon"><use href="#i-mic"></use></svg><svg class="icon"><use href="#i-users"></use></svg></span>
+            <span class="saved" id="translator-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span>
+          </div>
+          <div id="translators" class="options" role="radiogroup" aria-labelledby="translator-label" aria-describedby="translator-hint"></div>
+          <p id="translator-error" class="error-text" hidden></p>
+          <p id="translator-hint" class="hint" data-i18n="note.translatorHint"></p>
+        </div>
+        <p class="memory-total"><svg class="icon" aria-hidden="true"><use href="#i-memory-stick"></use></svg><span data-i18n="label.memoryTotal"></span><span id="memory-total" class="value"></span></p>
+        <div class="plan-foot"></div>
+      </div>
     </div>
 
-    <div id="sub-translator" class="sub" hidden>
-      <div class="sub-head"><h2 class="sub-title" id="translator-label" tabindex="-1" data-i18n="label.translator"></h2><span class="saved" id="translator-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
-      <div id="translators" class="options" role="radiogroup" aria-labelledby="translator-label" aria-describedby="translator-hint"></div>
-      <p id="translator-error" class="error-text" hidden></p>
-      <p id="translator-hint" class="hint" data-i18n="note.translatorHint"></p>
-      <ul id="translator-download" class="download-list" hidden></ul>
+    <!-- Every catalog file shows once, in the first group that holds it. -->
+    <div id="sub-downloads" class="sub" hidden>
+      <h2 class="sub-title" tabindex="-1" data-i18n="label.downloads"></h2>
+      <p class="installed-total"><span data-i18n="label.installed"></span> <span id="installed-size" class="value"></span></p>
+      <div class="download-groups">
+        <div id="downloads-needed" class="download-group">
+          <h3 class="field-label" id="downloads-needed-label" data-i18n="label.neededDownloads"></h3>
+          <ul class="download-list" aria-labelledby="downloads-needed-label"></ul>
+        </div>
+        <div id="downloads-unneeded" class="download-group">
+          <h3 class="field-label" id="downloads-unneeded-label" data-i18n="label.unneededDownloads"></h3>
+          <ul class="download-list" aria-labelledby="downloads-unneeded-label"></ul>
+        </div>
+        <div id="downloads-missing" class="download-group">
+          <h3 class="field-label" id="downloads-missing-label" data-i18n="label.missingDownloads"></h3>
+          <ul class="download-list" aria-labelledby="downloads-missing-label"></ul>
+        </div>
+      </div>
     </div>
 
     <div id="sub-microphone" class="sub" hidden>
@@ -122,12 +151,6 @@
         <div id="template-error" class="error-text" hidden></div>
         <div id="preview" class="preview" role="group" data-i18n-aria-label="label.preview"></div>
       </div>
-    </div>
-
-    <div id="sub-downloads" class="sub" hidden>
-      <h2 class="sub-title" tabindex="-1" data-i18n="label.downloads"></h2>
-      <p class="installed-total"><span data-i18n="label.installed"></span> <span id="installed-size" class="value"></span></p>
-      <ul id="all-downloads" class="download-list"></ul>
     </div>
 
     <div id="sub-about" class="sub" hidden>

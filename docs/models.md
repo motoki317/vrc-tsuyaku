@@ -13,7 +13,7 @@ The spoken language picks the speech recognition model:
 
 ## Translation
 
-[PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) or [0.8B](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF) translates into 54 targets, Easy Japanese (やさしい日本語) among them. The app downloads only the one that Settings → Translator selects, and [Usage](usage.md#translation-model) compares the two.
+[PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) or [0.8B](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF) translates into 54 targets, Easy Japanese (やさしい日本語) among them. "Download all" fetches only the one that Settings → Languages and models selects, and [Usage](usage.md#translation-model) compares the two.
 
 Both models are under the same [PLaMo Community License](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/blob/4f672106b847200bfdc0f6af6c321cd94eba1aed/LICENSE/en). Article 2 states:
 
@@ -26,6 +26,8 @@ Article 5(4) applies to you when other players read your translations in the cha
 ## Downloads, storage and network
 
 The app downloads nothing until you press a download button on its page. Besides the models, every language choice needs ONNX Runtime, Silero VAD and llama.cpp. [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) lists where each download comes from.
+
+Settings → Downloads lists every file that the app can download, in three groups: what your current languages and translator need, what else is downloaded, and what is not. There you can download or delete each file, and see how much disk space the downloaded files take.
 
 Apart from downloads, the app's only internet request asks GitHub for the latest release, once each time the app starts, so that Settings → About can show whether a newer version exists. On your PC, the app also sends chatbox messages over OSC to the address in Settings → Chatbox, `127.0.0.1:9000` by default, and serves its page and runs `llama-server` on `127.0.0.1`.
 

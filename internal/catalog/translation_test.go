@@ -75,7 +75,7 @@ func TestTranslators(t *testing.T) {
 	defaults := 0
 	seen := make(map[string]bool)
 	for _, choice := range choices {
-		if seen[choice.ID] || choice.MemoryBytes <= 0 || choice.Speed <= 0 {
+		if seen[choice.ID] || choice.Speed <= 0 {
 			t.Fatalf("invalid or duplicate translator: %+v", choice)
 		}
 		seen[choice.ID] = true
@@ -93,7 +93,9 @@ func TestTranslators(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if defaults != 1 || choices[0].MemoryBytes <= choices[1].MemoryBytes || choices[1].Speed <= choices[0].Speed {
+	defaultModel, _ := Lookup(choices[0].Artifact, "linux")
+	smallModel, _ := Lookup(choices[1].Artifact, "linux")
+	if defaults != 1 || defaultModel.MemoryBytes <= smallModel.MemoryBytes || choices[1].Speed <= choices[0].Speed {
 		t.Fatalf("translator costs or defaults: %+v", choices)
 	}
 	for _, invalid := range []string{"", "unknown", PLaMo, PLaMo08B} {

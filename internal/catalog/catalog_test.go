@@ -7,9 +7,39 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestModelMemory(t *testing.T) {
+	models := make(map[string]bool)
+	for _, language := range Languages().Spoken {
+		models[language.Recognizer] = true
+	}
+	translators := Translators()
+	for _, id := range []string{PLaMo, PLaMo08B} {
+		if !slices.ContainsFunc(translators, func(choice Translator) bool { return choice.Artifact == id }) {
+			t.Fatalf("translator choices omit model %s", id)
+		}
+	}
+	for _, choice := range translators {
+		models[choice.Artifact] = true
+	}
+	for _, goos := range []string{"linux", "windows"} {
+		for id := range models {
+			t.Run(goos+"/"+id, func(t *testing.T) {
+				model, err := Lookup(id, goos)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if model.MemoryBytes <= 0 {
+					t.Fatalf("model %s has no measured RAM figure: %d", id, model.MemoryBytes)
+				}
+			})
+		}
+	}
+}
 
 func TestPins(t *testing.T) {
 	for _, goos := range []string{"linux", "windows"} {

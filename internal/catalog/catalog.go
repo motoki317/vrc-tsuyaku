@@ -54,6 +54,7 @@ type Source struct {
 // present in saved settings before download. Languages uses the codes in translation.go.
 type Artifact struct {
 	ID, Name, AcceptanceKey string
+	MemoryBytes             int64
 	Languages               []string
 	Licenses                []License
 	Sources                 []Source
