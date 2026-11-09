@@ -148,6 +148,29 @@ Article 4(1) states: "When providing the MODEL MATERIALS to third parties, the U
 
 The app shows "Built with PLaMo" in its UI and documentation.
 
+## go.yaml.in/yaml/v3
+
+Source: [yaml/go-yaml](https://github.com/yaml/go-yaml/tree/v3.0.6), version v3.0.6. Licenses: MIT and Apache-2.0.
+
+`internal/config` reads and writes YAML through this Go module, which is compiled into the executable.
+The module's `NOTICE` follows verbatim:
+
+```text
+Copyright 2011-2016 Canonical Ltd.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
 ## Go dependencies
 
 Go module dependencies retain their own licenses and notices, which are not vendored here.

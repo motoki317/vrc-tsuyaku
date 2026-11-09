@@ -4,5 +4,7 @@ github.com/getcharzp/onnxruntime_purego v1.28.0 h1:WyIcupaLtnwB0rJNHAwGV2pRCSTyn
 github.com/getcharzp/onnxruntime_purego v1.28.0/go.mod h1:JxWrTrdNfR1D0HBxOQixFeC1vkLoz8HPxfBwJ2gF/rw=
 github.com/up-zero/gotool v0.0.0-20260105010850-4a05e8fadd54 h1:am0pSei7ialD/EsBcWDo+gu2yVcCZz0Hv7ksOKJQll0=
 github.com/up-zero/gotool v0.0.0-20260105010850-4a05e8fadd54/go.mod h1:+jwIpLHojqHUvbEmNXv/F5acdHSEkJIbNXRqT1IE78I=
+go.yaml.in/yaml/v3 v3.0.6 h1:zcDfvjXEqTQmpjniUBLc91xYJMB2c4QOFxEF/LCEckM=
+go.yaml.in/yaml/v3 v3.0.6/go.mod h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg=
 golang.org/x/sys v0.49.0 h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=
 golang.org/x/sys v0.49.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=

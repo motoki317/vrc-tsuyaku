@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/getcharzp/onnxruntime_purego v1.28.0
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/sys v0.49.0
 )
 
