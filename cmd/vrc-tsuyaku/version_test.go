@@ -41,7 +41,7 @@ func TestAppBuildInfo(t *testing.T) {
 			}
 			a := testApp(t)
 			a.info = appBuildInfo(build)
-			w := request(a, "GET", "/api/state", "", a.token)
+			w := request(a, "GET", "/api/state", "")
 			if w.Code != http.StatusOK {
 				t.Fatal(w.Code)
 			}

@@ -85,7 +85,6 @@ func TestEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.Header.Set("Authorization", "Bearer "+a.token)
 		response, err := server.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)

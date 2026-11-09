@@ -33,7 +33,7 @@ func TestFlowErrorCodeInStateAndEvents(t *testing.T) {
 				}
 				return pipeline.Stages{}, errcode.With(code, failure)
 			}
-			if w := request(a, "POST", "/api/flows/self/start", "", a.token); w.Code != http.StatusOK {
+			if w := request(a, "POST", "/api/flows/self/start", ""); w.Code != http.StatusOK {
 				t.Fatal(w.Code, w.Body.String())
 			}
 			waitFor(t, func() bool {
@@ -42,7 +42,7 @@ func TestFlowErrorCodeInStateAndEvents(t *testing.T) {
 				return a.flows["self"].status.State == "error"
 			})
 			var state struct{ Flows map[string]flowState }
-			w := request(a, "GET", "/api/state", "", a.token)
+			w := request(a, "GET", "/api/state", "")
 			if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
 				t.Fatal(err)
 			}

@@ -165,7 +165,7 @@ func TestMissingTranslatorWaitsForExplicitDownload(t *testing.T) {
 	s := cloneSettings(a.settings)
 	s.Translator = catalog.Translator08B
 	body, _ := json.Marshal(s)
-	if w := request(a, "PUT", "/api/settings", string(body), a.token); w.Code != http.StatusOK {
+	if w := request(a, "PUT", "/api/settings", string(body)); w.Code != http.StatusOK {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	for _, flow := range []string{"self", "world"} {
@@ -188,7 +188,7 @@ func TestMissingTranslatorWaitsForExplicitDownload(t *testing.T) {
 	if starts.Load() != 4 || downloads.Load() != 0 {
 		t.Fatal("switching back to missing translator started work")
 	}
-	if w := request(a, "POST", "/api/downloads/"+catalog.PLaMo08B, `{"acceptLicense":false}`, a.token); w.Code != http.StatusAccepted {
+	if w := request(a, "POST", "/api/downloads/"+catalog.PLaMo08B, `{"acceptLicense":false}`); w.Code != http.StatusAccepted {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	waitFor(t, func() bool { return starts.Load() == 6 })
@@ -210,7 +210,7 @@ func TestTranslatorStateAndDeletion(t *testing.T) {
 						Required  map[string][]string     `json:"required"`
 						Languages catalog.LanguageCatalog `json:"languages"`
 					}
-					w := request(a, "GET", "/api/state", "", a.token)
+					w := request(a, "GET", "/api/state", "")
 					if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
 						t.Fatal(err)
 					}
@@ -230,7 +230,7 @@ func TestTranslatorStateAndDeletion(t *testing.T) {
 						if err := os.WriteFile(filepath.Join(dir, "fixture"), []byte("fixture"), 0o600); err != nil {
 							t.Fatal(err)
 						}
-						w := request(a, "DELETE", "/api/downloads/"+candidate.Artifact, "", a.token)
+						w := request(a, "DELETE", "/api/downloads/"+candidate.Artifact, "")
 						if candidate.ID == choice.ID {
 							if w.Code != http.StatusConflict {
 								t.Fatal(w.Code, w.Body.String())

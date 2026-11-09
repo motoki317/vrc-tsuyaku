@@ -64,11 +64,8 @@ func testApp(t *testing.T) *app {
 	return a
 }
 
-func request(a *app, method, path, body, token string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(method, path, strings.NewReader(body))
-	if token != "" {
-		r.Header.Set("Authorization", "Bearer "+token)
-	}
+func request(a *app, method, path, body string) *httptest.ResponseRecorder {
+	r := localRequest(method, path, body)
 	w := httptest.NewRecorder()
 	a.handler().ServeHTTP(w, r)
 	return w
@@ -82,7 +79,7 @@ func TestRequiredArtifactsInState(t *testing.T) {
 		Languages       catalog.LanguageCatalog `json:"languages"`
 		DefaultTemplate string                  `json:"defaultTemplate"`
 	}
-	w := request(a, "GET", "/api/state", "", a.token)
+	w := request(a, "GET", "/api/state", "")
 	if w.Code != http.StatusOK {
 		t.Fatal(w.Code)
 	}
@@ -106,7 +103,7 @@ func TestRequiredArtifactsInState(t *testing.T) {
 	s.Flows.Self.Spoken, s.Flows.World.Spoken = "en", "ja"
 	s.Flows.Self.Target, s.Flows.World.Target = "ko", "ja-easy"
 	body, _ := json.Marshal(s)
-	w = request(a, "PUT", "/api/settings", string(body), a.token)
+	w = request(a, "PUT", "/api/settings", string(body))
 	if w.Code != http.StatusOK {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -137,7 +134,7 @@ func TestMissingDownloadsRejectStartWithoutEnabling(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			response := request(a, "POST", "/api/flows/"+flow+"/start", "", a.token)
+			response := request(a, "POST", "/api/flows/"+flow+"/start", "")
 			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "missing downloads:") {
 				t.Fatal(response.Code, response.Body.String())
 			}
@@ -191,7 +188,7 @@ func TestStartKeepsActiveRun(t *testing.T) {
 			before, _ := a.events.after(0)
 			results := make(chan *httptest.ResponseRecorder, 2)
 			for range 2 {
-				go func() { results <- request(a, "POST", "/api/flows/self/start", "", a.token) }()
+				go func() { results <- request(a, "POST", "/api/flows/self/start", "") }()
 			}
 			for range 2 {
 				if response := <-results; response.Code != http.StatusOK {
@@ -363,26 +360,6 @@ func TestStopRacesNormalCompletion(t *testing.T) {
 	}
 }
 
-func TestTokenOnEveryAPI(t *testing.T) {
-	a := testApp(t)
-	for _, path := range []string{"/api/state", "/api/events", "/api/settings", "/api/microphones", "/api/downloads/unknown", "/api/flows/self/start", "/api/unknown"} {
-		for _, token := range []string{"", "wrong", a.token + "x"} {
-			if got := request(a, "GET", path+"?token="+a.token, "", token).Code; got != http.StatusUnauthorized {
-				t.Fatalf("%s: %d", path, got)
-			}
-		}
-	}
-	if got := request(a, "GET", "/api/state", "", a.token).Code; got != 200 {
-		t.Fatal(got)
-	}
-	for _, path := range []string{"/", "/app.js", "/style.css"} {
-		w := request(a, "GET", path, "", "")
-		if w.Code != 200 || strings.Contains(w.Body.String(), a.token) {
-			t.Fatalf("%s: %d", path, w.Code)
-		}
-	}
-}
-
 func TestAppConstructionAndUIStayOffline(t *testing.T) {
 	var calls atomic.Int32
 	old := http.DefaultTransport
@@ -397,22 +374,22 @@ func TestAppConstructionAndUIStayOffline(t *testing.T) {
 	a := testApp(t)
 	a.startEnabled()
 	for _, path := range []string{"/", "/app.js", "/style.css", "/api/state"} {
-		if w := request(a, "GET", path, "", a.token); w.Code != 200 {
+		if w := request(a, "GET", path, ""); w.Code != 200 {
 			t.Fatal(w.Code)
 		}
 	}
-	w := request(a, "POST", "/api/flows/self/start", "", a.token)
+	w := request(a, "POST", "/api/flows/self/start", "")
 	if w.Code != 409 || !strings.Contains(w.Body.String(), a.artifacts[catalog.Haas].Artifact.Name) || strings.Contains(w.Body.String(), catalog.Haas) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if calls.Load() != 0 {
 		t.Fatal("startup or UI made a request")
 	}
-	w = request(a, "POST", "/api/downloads/"+catalog.PLaMo, `{}`, a.token)
+	w = request(a, "POST", "/api/downloads/"+catalog.PLaMo, `{}`)
 	if w.Code != 409 || calls.Load() != 0 {
 		t.Fatal("license gate did not reject before network")
 	}
-	w = request(a, "POST", "/api/downloads/"+catalog.Silero, `{}`, a.token)
+	w = request(a, "POST", "/api/downloads/"+catalog.Silero, `{}`)
 	if w.Code != 202 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -426,7 +403,7 @@ func TestAppConstructionAndUIStayOffline(t *testing.T) {
 	a.artifacts[catalog.Silero] = state
 	a.mu.Unlock()
 	count := calls.Load()
-	if w = request(a, "POST", "/api/downloads/"+catalog.Silero, `{}`, a.token); w.Code != 409 {
+	if w = request(a, "POST", "/api/downloads/"+catalog.Silero, `{}`); w.Code != 409 {
 		t.Fatal("installed artifact can be replaced")
 	}
 	if calls.Load() != count {
@@ -454,11 +431,11 @@ func TestSettingsAndFlowLifecycle(t *testing.T) {
 	s := cloneSettings(a.settings)
 	s.Flows.Self.Microphone = "other"
 	body, _ := json.Marshal(s)
-	if w := request(a, "PUT", "/api/settings", string(body), a.token); w.Code != 200 {
+	if w := request(a, "PUT", "/api/settings", string(body)); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	waitFor(t, func() bool { return starts.Load() == 2 })
-	if w := request(a, "POST", "/api/flows/self/stop", "", a.token); w.Code != 200 {
+	if w := request(a, "POST", "/api/flows/self/stop", ""); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	saved, err := config.Load(a.dir)
@@ -466,7 +443,7 @@ func TestSettingsAndFlowLifecycle(t *testing.T) {
 		t.Fatal(saved, err)
 	}
 	for _, body := range []string{`{"unknown":true}`, `{} {}`, `{"Chatbox":{"Address":"hostname:9000"}}`} {
-		if w := request(a, "PUT", "/api/settings", body, a.token); w.Code != 400 {
+		if w := request(a, "PUT", "/api/settings", body); w.Code != 400 {
 			t.Fatal(w.Code)
 		}
 	}
@@ -478,7 +455,7 @@ func TestSettingsValidationAndWriteStatus(t *testing.T) {
 	s := cloneSettings(before)
 	s.Chatbox.Address = "invalid"
 	body, _ := json.Marshal(s)
-	if response := request(a, "PUT", "/api/settings", string(body), a.token); response.Code != http.StatusBadRequest {
+	if response := request(a, "PUT", "/api/settings", string(body)); response.Code != http.StatusBadRequest {
 		t.Fatal(response.Code, response.Body.String())
 	}
 	// A directory at the destination prevents replacement even for a privileged test process.
@@ -488,7 +465,7 @@ func TestSettingsValidationAndWriteStatus(t *testing.T) {
 	pollSettings(a)
 	s.Chatbox.Address = "127.0.0.1:47123"
 	body, _ = json.Marshal(s)
-	response := request(a, "PUT", "/api/settings", string(body), a.token)
+	response := request(a, "PUT", "/api/settings", string(body))
 	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "settings.yaml") {
 		t.Fatal(response.Code, response.Body.String())
 	}
@@ -558,7 +535,7 @@ func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 						}
 					}
 					body, _ := json.Marshal(s)
-					if response := request(a, "PUT", "/api/settings", string(body), a.token); response.Code != http.StatusOK {
+					if response := request(a, "PUT", "/api/settings", string(body)); response.Code != http.StatusOK {
 						t.Fatal(response.Code, response.Body.String())
 					}
 					restart := active && (change == "spoken" || (flow == "self" && (change == "microphone" || change == "address")))
@@ -595,13 +572,13 @@ func TestSettingsCannotUndoStop(t *testing.T) {
 	a.settings.Flows.World.Enabled = true
 	stale := cloneSettings(a.settings)
 	for _, flow := range []string{"self", "world"} {
-		if response := request(a, "POST", "/api/flows/"+flow+"/stop", "", a.token); response.Code != http.StatusOK {
+		if response := request(a, "POST", "/api/flows/"+flow+"/stop", ""); response.Code != http.StatusOK {
 			t.Fatal(response.Code, response.Body.String())
 		}
 	}
 	stale.Flows.Self.Microphone = "other"
 	body, _ := json.Marshal(stale)
-	if response := request(a, "PUT", "/api/settings", string(body), a.token); response.Code != http.StatusOK {
+	if response := request(a, "PUT", "/api/settings", string(body)); response.Code != http.StatusOK {
 		t.Fatal(response.Code, response.Body.String())
 	}
 	saved, err := config.Load(a.dir)
@@ -631,7 +608,6 @@ func TestEventStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	r, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/api/events", nil)
-	r.Header.Set("Authorization", "Bearer "+a.token)
 	response, err := server.Client().Do(r)
 	if err != nil {
 		t.Fatal(err)
@@ -709,7 +685,7 @@ func TestSettingsPreserveLicenseAcceptance(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if response := request(a, "PUT", "/api/settings", string(body), a.token); response.Code != 200 {
+		if response := request(a, "PUT", "/api/settings", string(body)); response.Code != 200 {
 			t.Fatal(response.Code, response.Body.String())
 		}
 		saved, err := config.Load(a.dir)
@@ -777,7 +753,7 @@ func TestInvalidSettingsAreNotReplacedByOtherActions(t *testing.T) {
 	}
 	defer a.close()
 	for _, path := range []string{"/api/flows/self/start", "/api/downloads/" + catalog.PLaMo} {
-		if response := request(a, "POST", path, `{"acceptLicense":true}`, a.token); response.Code != 409 {
+		if response := request(a, "POST", path, `{"acceptLicense":true}`); response.Code != 409 {
 			t.Fatal(response.Code, response.Body.String())
 		}
 	}

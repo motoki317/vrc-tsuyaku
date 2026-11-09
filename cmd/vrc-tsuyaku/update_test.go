@@ -203,7 +203,7 @@ func (f updateTransport) RoundTrip(r *http.Request) (*http.Response, error) { re
 
 func updateFromState(t *testing.T, a *app) updateState {
 	t.Helper()
-	w := request(a, "GET", "/api/state", "", a.token)
+	w := request(a, "GET", "/api/state", "")
 	if w.Code != http.StatusOK {
 		t.Fatal(w.Code)
 	}

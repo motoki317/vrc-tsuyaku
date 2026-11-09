@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"maps"
@@ -54,7 +53,7 @@ type flowRun struct {
 type app struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
-	dir, token    string
+	dir           string
 	info          appInfo
 	update        updateState
 	downloads     *download.Manager
@@ -89,7 +88,7 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	build, _ := debug.ReadBuildInfo()
-	a := &app{ctx: ctx, cancel: cancel, dir: dir, token: rand.Text(), downloads: manager,
+	a := &app{ctx: ctx, cancel: cancel, dir: dir, downloads: manager,
 		info:      appBuildInfo(build),
 		update:    updateState{State: "checking"},
 		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
