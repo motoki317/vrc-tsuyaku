@@ -55,6 +55,7 @@ type app struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	dir           string
+	launch        string
 	info          appInfo
 	update        updateState
 	downloads     *download.Manager
@@ -90,12 +91,12 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	build, _ := debug.ReadBuildInfo()
 	a := &app{ctx: ctx, cancel: cancel, dir: dir, downloads: manager,
+		launch:    rand.Text(),
 		info:      appBuildInfo(build),
 		update:    updateState{State: "checking"},
 		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
 		source: flowSource, open: openFile,
 	}
-	a.info.Launch = rand.Text()
 	a.prepare = a.prepareModels
 	a.downloadArtifact = manager.Download
 	a.settingsFile = a.statSettings()
@@ -164,6 +165,7 @@ func (a *app) snapshot() any {
 		requirements[name], _ = catalog.Required(spoken, a.settings.Translator)
 	}
 	return struct {
+		Launch          string                   `json:"launch"`
 		App             appInfo                  `json:"app"`
 		Update          updateState              `json:"update"`
 		Settings        config.Settings          `json:"settings"`
@@ -173,7 +175,7 @@ func (a *app) snapshot() any {
 		Required        map[string][]string      `json:"required"`
 		Languages       catalog.LanguageCatalog  `json:"languages"`
 		DefaultTemplate string                   `json:"defaultTemplate"`
-	}{a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
+	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
 }
 
 func (a *app) startEnabled() {

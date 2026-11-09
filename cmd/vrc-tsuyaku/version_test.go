@@ -40,9 +40,7 @@ func TestAppBuildInfo(t *testing.T) {
 				t.Fatalf("build info = %+v, want %+v", got, want)
 			}
 			a := testApp(t)
-			launch := a.info.Launch
 			a.info = appBuildInfo(build)
-			a.info.Launch = launch
 			w := request(a, "GET", "/api/state", "")
 			if w.Code != http.StatusOK {
 				t.Fatal(w.Code)
@@ -53,7 +51,7 @@ func TestAppBuildInfo(t *testing.T) {
 			if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
 				t.Fatal(err)
 			}
-			if len(state.App) != 6 || state.App["launch"] != launch || state.App["repository"] != want.Repository || state.App["version"] != want.Version || state.App["revision"] != want.Revision || state.App["time"] != want.Time || state.App["modified"] != want.Modified {
+			if len(state.App) != 5 || state.App["repository"] != want.Repository || state.App["version"] != want.Version || state.App["revision"] != want.Revision || state.App["time"] != want.Time || state.App["modified"] != want.Modified {
 				t.Fatalf("app state = %+v, want %+v", state.App, want)
 			}
 		})
@@ -67,19 +65,18 @@ func TestAppLaunch(t *testing.T) {
 	first, second := testApp(t), testApp(t)
 	var launches []string
 	for _, a := range []*app{first, first, second} {
+		a.info = appBuildInfo(nil)
 		w := request(a, "GET", "/api/state", "")
 		if w.Code != http.StatusOK {
 			t.Fatal(w.Code)
 		}
 		var state struct {
-			App struct {
-				Launch string `json:"launch"`
-			} `json:"app"`
+			Launch string `json:"launch"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
 			t.Fatal(err)
 		}
-		launches = append(launches, state.App.Launch)
+		launches = append(launches, state.Launch)
 	}
 	if launches[0] == "" || launches[2] == "" || launches[0] != launches[1] || launches[0] == launches[2] {
 		t.Fatalf("launch values must stay stable within an app and differ between apps: %q", launches)
