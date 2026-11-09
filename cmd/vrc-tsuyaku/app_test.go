@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
@@ -75,9 +76,11 @@ func request(a *app, method, path, body, token string) *httptest.ResponseRecorde
 
 func TestRequiredArtifactsInState(t *testing.T) {
 	a := testApp(t)
+	a.settings.Chatbox.Template = "{{.Translation}}"
 	var state struct {
-		Required  map[string][]string     `json:"required"`
-		Languages catalog.LanguageCatalog `json:"languages"`
+		Required        map[string][]string     `json:"required"`
+		Languages       catalog.LanguageCatalog `json:"languages"`
+		DefaultTemplate string                  `json:"defaultTemplate"`
 	}
 	w := request(a, "GET", "/api/state", "", a.token)
 	if w.Code != http.StatusOK {
@@ -95,6 +98,9 @@ func TestRequiredArtifactsInState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(state.Languages, catalog.Languages()) {
 		t.Fatal("language choices missing from state", state.Languages)
+	}
+	if state.DefaultTemplate != chatbox.DefaultTemplate {
+		t.Fatalf("default template = %q, want %q", state.DefaultTemplate, chatbox.DefaultTemplate)
 	}
 	s := cloneSettings(a.settings)
 	s.Flows.Self.Spoken, s.Flows.World.Spoken = "en", "ja"

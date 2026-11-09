@@ -156,13 +156,14 @@ func (a *app) snapshot() any {
 		requirements[name], _ = catalog.Required(spoken)
 	}
 	return struct {
-		Settings      config.Settings          `json:"settings"`
-		SettingsError string                   `json:"settingsError,omitempty"`
-		Artifacts     map[string]artifactState `json:"artifacts"`
-		Flows         map[string]flowState     `json:"flows"`
-		Required      map[string][]string      `json:"required"`
-		Languages     catalog.LanguageCatalog  `json:"languages"`
-	}{cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages()}
+		Settings        config.Settings          `json:"settings"`
+		SettingsError   string                   `json:"settingsError,omitempty"`
+		Artifacts       map[string]artifactState `json:"artifacts"`
+		Flows           map[string]flowState     `json:"flows"`
+		Required        map[string][]string      `json:"required"`
+		Languages       catalog.LanguageCatalog  `json:"languages"`
+		DefaultTemplate string                   `json:"defaultTemplate"`
+	}{cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
 }
 
 func (a *app) startEnabled() {
