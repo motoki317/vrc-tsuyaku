@@ -4,7 +4,7 @@ The [README](../../README.md) covers using the app.
 
 `main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It also prints the page's URL, with the API token in its fragment, to standard output.
 The page is embedded in the executable, so rebuild after you change `ui/`.
-Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits.
+Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits. `POST /api/exit`, which the page's Exit button sends, does the same.
 
 Turning a flow's switch on saves the flow as enabled, and `main` starts every enabled flow at launch. Turning the switch off saves the flow as disabled.
 A flow saved as enabled that cannot start because its downloads are missing, for example after a language change, starts when the last of them finishes.
@@ -43,6 +43,7 @@ The server rejects a token supplied only in the query string.
 | `POST /api/downloads/{id}` | Start a missing artifact's download with a required JSON body, such as `{"acceptLicense": false}` |
 | `DELETE /api/downloads/{id}` | Delete an installed artifact's files. Returns 409 while the artifact downloads or a starting or running flow needs it. On Windows, ONNX Runtime stays loaded after a flow first uses it, so its deletion returns 500 until the app restarts |
 | `POST /api/open/{target}` | Open the data folder (`data`) or `settings.yaml` (`settings`) in the OS's file manager or default app. If `settings.yaml` is missing, the app first writes the current settings to it. Returns 204 |
+| `POST /api/exit` | Exit the app as Ctrl+C does. Returns 202 before the app shuts down |
 | `GET /api/events` | Newline-delimited JSON events: the latest 256 events, then new ones as they happen. While idle, the server sends an empty line every 5 s, which readers skip |
 
 `{flow}` is `self` or `world`, `{action}` is `start` or `stop`, and `{id}` is a catalog artifact ID.
