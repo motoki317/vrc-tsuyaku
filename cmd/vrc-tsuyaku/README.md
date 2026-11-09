@@ -2,7 +2,7 @@
 
 The [README](../../README.md) covers using the app.
 
-`main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It also prints the page's URL, with the API token in its fragment, to standard output.
+`main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It also prints the page's URL to standard output.
 The page is embedded in the executable, so rebuild after you change `ui/`.
 Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits. `POST /api/exit`, which the page's Exit button sends, does the same.
 
@@ -30,8 +30,8 @@ The check compares the release tag with the module version that Go stamped into 
 
 ## API
 
-Every `/api/` request requires `Authorization: Bearer TOKEN`, using the token from the URL fragment.
-The server rejects a token supplied only in the query string.
+The API needs no token. The server returns 403 for a request whose `Host` is neither its own address, such as `127.0.0.1:54321`, nor `localhost` with its port, which stops DNS rebinding.
+It also returns 403 for a POST, PUT or DELETE whose `Origin` header names another origin, `null` included, so another web page in the browser cannot change anything. A request without `Origin`, such as one from `curl`, passes.
 
 | Method and path | Purpose |
 | --- | --- |
@@ -48,7 +48,7 @@ The server rejects a token supplied only in the query string.
 
 `{flow}` is `self` or `world`, `{action}` is `start` or `stop`, and `{id}` is a catalog artifact ID.
 The app checks artifact files once at startup and updates their state after each download or deletion.
-Apart from 401 and 404, which have plain-text bodies, an error response is a JSON object with the diagnostic text in `error` and an [`errcode`](../../internal/errcode/errcode.go) value in `code`.
+Apart from 403 and 404, which have plain-text bodies, an error response is a JSON object with the diagnostic text in `error` and an [`errcode`](../../internal/errcode/errcode.go) value in `code`.
 Each code names the user's next step, so the page shows its own message for a known code and the diagnostic text for `unknown`.
 Artifact and flow states and `error` events carry the same `code` field.
 
