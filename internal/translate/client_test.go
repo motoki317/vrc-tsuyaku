@@ -34,8 +34,8 @@ func (r responseTransport) RoundTrip(*http.Request) (*http.Response, error) {
 }
 
 func TestTranslatorExitWhileReadingResponse(t *testing.T) {
-	process := &child{done: make(chan struct{})}
-	s := &Supervisor{run: &serverRun{child: process, url: "http://127.0.0.1", client: &http.Client{Transport: responseTransport{exitResponse{process}}}}}
+	process := &child{done: make(chan struct{}), log: logTail{url: "http://127.0.0.1"}}
+	s := &Supervisor{run: &serverRun{child: process, client: &http.Client{Transport: responseTransport{exitResponse{process}}}}}
 	_, err := s.Translate(t.Context(), "en", "ja", "synthetic phrase")
 	if errcode.Of(err) != errcode.TranslatorExited || !errors.Is(err, io.ErrUnexpectedEOF) || !strings.Contains(err.Error(), "llama-server exited") {
 		t.Fatalf("response failure lost exit cause: %v (%s)", err, errcode.Of(err))

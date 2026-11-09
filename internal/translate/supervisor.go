@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,7 +29,6 @@ type Supervisor struct {
 
 type serverRun struct {
 	child  *child
-	url    string
 	client *http.Client
 }
 
@@ -62,18 +61,14 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	if run := s.currentRun(); run != nil && run.child.exitError() == nil {
 		return nil
 	}
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		return fmt.Errorf("choose llama-server port: %w", err)
-	}
-	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-	if err := listener.Close(); err != nil {
-		return err
-	}
+	// Let the child bind its own port so no other process can take it during a handoff.
+	// Endpoint discovery needs plain INFO logging regardless of inherited logging settings.
 	p, err := launch(s.serverPath, []string{
 		"-m", s.modelPath, "--alias", catalog.TranslationAlias,
 		"--jinja", "--no-prefill-assistant", "-c", "4096", "-np", "2",
-		"--cache-ram", "0", "-t", "8", "--host", "127.0.0.1", "--port", port,
+		"--cache-ram", "0", "-t", "8",
+		"--no-log-jsonl", "--log-colors", "off", "--log-verbosity", "3",
+		"--host", "127.0.0.1", "--port", "0",
 	})
 	if err != nil {
 		return fmt.Errorf("start llama-server: %w", err)
@@ -81,7 +76,7 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	// Neither proxy settings nor redirects may send a phrase off this address.
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	run := &serverRun{child: p, url: "http://127.0.0.1:" + port, client: &http.Client{
+	run := &serverRun{child: p, client: &http.Client{
 		Transport:     transport,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}
@@ -105,22 +100,24 @@ func (r *serverRun) waitHealthy(ctx context.Context) error {
 		if err := r.child.exitError(); err != nil {
 			return err
 		}
-		probeCtx, cancel := context.WithTimeout(ctx, time.Second)
-		req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, r.url+"/health", nil)
-		if err != nil {
+		if address := r.child.log.URL(); address != "" {
+			probeCtx, cancel := context.WithTimeout(ctx, time.Second)
+			req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, address+"/health", nil)
+			if err != nil {
+				cancel()
+				return err
+			}
+			resp, err := r.client.Do(req)
+			ready := false
+			if err == nil {
+				ready = resp.StatusCode == http.StatusOK
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+				resp.Body.Close()
+			}
 			cancel()
-			return err
-		}
-		resp, err := r.client.Do(req)
-		ready := false
-		if err == nil {
-			ready = resp.StatusCode == http.StatusOK
-			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-			resp.Body.Close()
-		}
-		cancel()
-		if ready {
-			return r.child.exitError()
+			if ready {
+				return r.child.exitError()
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -193,12 +190,29 @@ func (p *child) exitError() error {
 type logTail struct {
 	mu   sync.Mutex
 	data []byte
+	url  string
 }
 
 func (b *logTail) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	n := len(p)
+	if b.url == "" {
+		// Capture the endpoint before truncation, even when a write splits the announcement.
+		remaining := string(append(b.data, p...))
+		for {
+			line, rest, complete := strings.Cut(remaining, "\n")
+			if !complete {
+				break
+			}
+			remaining = rest
+			_, value, found := strings.Cut(line, "listening on http://127.0.0.1:")
+			if port, err := strconv.Atoi(strings.TrimSpace(value)); found && err == nil && port > 0 && port <= 65535 {
+				b.url = "http://127.0.0.1:" + strconv.Itoa(port)
+				break
+			}
+		}
+	}
 	const limit = 8192
 	if len(p) >= limit {
 		b.data = append(b.data[:0], p[len(p)-limit:]...)
@@ -215,6 +229,12 @@ func (b *logTail) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return string(b.data)
+}
+
+func (b *logTail) URL() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.url
 }
 
 // Wait reports the current server's exit, even while no translation is pending.

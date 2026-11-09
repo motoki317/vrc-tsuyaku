@@ -31,15 +31,21 @@ func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "-m" {
 		for i, arg := range os.Args {
 			if arg == "--port" && i+1 < len(os.Args) {
+				listener, err := net.Listen("tcp4", "127.0.0.1:"+os.Args[i+1])
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(1)
+				}
+				fmt.Fprintf(os.Stderr, "srv  server_on_li: listening on http://%s\n", listener.Addr())
 				server := &http.Server{
-					Addr: "127.0.0.1:" + os.Args[i+1], ReadHeaderTimeout: time.Second,
+					ReadHeaderTimeout: time.Second,
 					Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						if r.URL.Path != "/health" {
 							http.NotFound(w, r)
 						}
 					}),
 				}
-				if err := server.ListenAndServe(); err != nil {
+				if err := server.Serve(listener); err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					os.Exit(1)
 				}

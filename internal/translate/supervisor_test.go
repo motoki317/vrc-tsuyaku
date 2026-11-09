@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +25,8 @@ type fakeConfig struct {
 	Directory  string
 	Fail       bool
 	Concurrent bool
+	TakePort   bool
+	NoAddress  bool
 }
 
 type fakeReply struct {
@@ -39,9 +42,10 @@ type recordedRequest struct {
 }
 
 type fakeRecord struct {
-	PID     int
-	Address string
-	Args    []string
+	PID          int
+	Address      string
+	Args         []string
+	TakenAddress string
 }
 
 func TestMain(m *testing.M) {
@@ -89,11 +93,25 @@ func fakeServer() error {
 		return errors.New("missing server arguments")
 	}
 	addr := "127.0.0.1:" + args[len(args)-1]
+	var takenAddress string
+	if cfg.TakePort {
+		taken, err := net.Listen("tcp4", addr)
+		if err != nil {
+			return err
+		}
+		defer taken.Close()
+		takenAddress = "http://" + taken.Addr().String()
+	}
 	l, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
-	record, _ := json.Marshal(fakeRecord{os.Getpid(), "http://" + addr, args})
+	defer l.Close()
+	addr = l.Addr().String()
+	if !cfg.NoAddress {
+		fmt.Fprintf(os.Stderr, "srv  server_on_li: listening on http://%s\n", addr)
+	}
+	record, _ := json.Marshal(fakeRecord{PID: os.Getpid(), Address: "http://" + addr, Args: args, TakenAddress: takenAddress})
 	if err := os.WriteFile(filepath.Join(cfg.Directory, "record.json"), record, 0600); err != nil {
 		return err
 	}
@@ -245,7 +263,10 @@ func TestSupervisorLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"-m", s.modelPath, "--alias", "plamo-3-translate", "--jinja", "--no-prefill-assistant", "-c", "4096", "-np", "2", "--cache-ram", "0", "-t", "8", "--host", "127.0.0.1", "--port", port}
+	if boundPort, err := strconv.Atoi(port); err != nil || boundPort == 0 {
+		t.Fatalf("server did not report its bound port: %q (%v)", port, err)
+	}
+	want := []string{"-m", s.modelPath, "--alias", "plamo-3-translate", "--jinja", "--no-prefill-assistant", "-c", "4096", "-np", "2", "--cache-ram", "0", "-t", "8", "--no-log-jsonl", "--log-colors", "off", "--log-verbosity", "3", "--host", "127.0.0.1", "--port", "0"}
 	if !reflect.DeepEqual(record.Args, want) {
 		t.Fatalf("args = %q, want %q", record.Args, want)
 	}
@@ -286,6 +307,26 @@ func TestSupervisorLifecycle(t *testing.T) {
 	}
 }
 
+func TestStartupWithTakenPort(t *testing.T) {
+	s, dir := fixture(t, true, false)
+	data, _ := json.Marshal(fakeConfig{Directory: dir, TakePort: true})
+	if err := os.WriteFile(s.modelPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("start after another listener takes the selected port: %v", err)
+	}
+	record := readRecord(t, dir)
+	if record.TakenAddress == "" || record.TakenAddress == record.Address {
+		t.Fatalf("server did not avoid the occupied port: %+v", record)
+	}
+	if _, err := s.Translate(ctx, "ja", "en", "hello"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStartupFailureAndCancellation(t *testing.T) {
 	t.Run("model error", func(t *testing.T) {
 		s, _ := fixture(t, true, true)
@@ -295,22 +336,34 @@ func TestStartupFailureAndCancellation(t *testing.T) {
 			t.Fatalf("startup error = %v", err)
 		}
 	})
-	t.Run("cancel loading", func(t *testing.T) {
-		s, dir := fixture(t, false, false)
-		ctx, cancel := context.WithCancel(t.Context())
-		started := make(chan error, 1)
-		go func() { started <- s.Start(ctx) }()
-		readRecord(t, dir)
-		cancel()
-		if err := <-started; !errors.Is(err, context.Canceled) {
-			t.Fatalf("cancel startup: %v", err)
-		}
-		select {
-		case <-s.run.child.done:
-		default:
-			t.Fatal("cancelled startup left child running")
-		}
-	})
+	for _, noAddress := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cancel loading/no_address=%t", noAddress), func(t *testing.T) {
+			s, dir := fixture(t, false, false)
+			data, _ := json.Marshal(fakeConfig{Directory: dir, NoAddress: noAddress})
+			if err := os.WriteFile(s.modelPath, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			started := make(chan error, 1)
+			go func() { started <- s.Start(ctx) }()
+			readRecord(t, dir)
+			if noAddress {
+				if _, err := s.Translate(ctx, "ja", "en", "hello"); err == nil || !strings.Contains(err.Error(), "listening address") {
+					t.Fatalf("translated before the address arrived: %v", err)
+				}
+			}
+			cancel()
+			if err := <-started; !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancel startup: %v", err)
+			}
+			select {
+			case <-s.run.child.done:
+			default:
+				t.Fatal("cancelled startup left child running")
+			}
+		})
+	}
 }
 
 func TestParentDeath(t *testing.T) {
@@ -336,6 +389,38 @@ func TestLogTailBound(t *testing.T) {
 	_, _ = log.Write([]byte("diagnostic"))
 	if got := log.String(); len(got) != 8192 || !strings.HasSuffix(got, "diagnostic") {
 		t.Fatal("log did not retain its bounded tail")
+	}
+}
+
+func TestListeningAddress(t *testing.T) {
+	for _, prefix := range []string{"", "srv  server_on_li: ", "srv  server_on_listening: "} {
+		announcement := prefix + "listening on http://127.0.0.1:54321\n"
+		for split := 0; split <= len(announcement); split++ {
+			var log logTail
+			_, _ = log.Write([]byte(announcement[:split]))
+			if split < len(announcement) && log.URL() != "" {
+				t.Fatalf("accepted an incomplete announcement at byte %d", split)
+			}
+			_, _ = log.Write([]byte(announcement[split:] + strings.Repeat("diagnostic\n", 2000)))
+			_, _ = log.Write([]byte("srv  server_on_li: listening on http://127.0.0.1:12345\n"))
+			if log.URL() != "http://127.0.0.1:54321" {
+				t.Fatalf("lost the first bound address at byte %d: %q", split, log.URL())
+			}
+			if len(log.String()) != 8192 {
+				t.Fatal("endpoint capture changed the diagnostic log bound")
+			}
+		}
+	}
+	for _, address := range []string{
+		"http://evil.example:54321", "http://localhost:54321", "http://127.0.0.2:54321",
+		"https://127.0.0.1:54321", "http://127.0.0.1:0", "http://127.0.0.1:-1",
+		"http://127.0.0.1:65536", "http://127.0.0.1:54321/path", "http://127.0.0.1:54321@evil.example",
+	} {
+		var log logTail
+		_, _ = log.Write([]byte("srv  server_on_listening: listening on " + address + "\n"))
+		if log.URL() != "" {
+			t.Fatalf("accepted invalid listening address %q", address)
+		}
 	}
 }
 
