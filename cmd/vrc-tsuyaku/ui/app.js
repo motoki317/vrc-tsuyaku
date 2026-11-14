@@ -641,23 +641,29 @@ const usedByHead = () => h('li', {className: 'download download-head', 'aria-hid
 
 const plan = {rows: {}, cache: new Map(), settingsCache: new Map(), head: usedByHead()};
 
-// A select, or a radio group whose value is its checked radio's.
 function commitOnSettle(field, commit, read = () => field.value) {
-  let timer = 0;
+  let timer = 0, revision = 0;
+  const changed = () => {
+    clearTimeout(timer);
+    revision++;
+    field.dataset.dirty = 'changed';
+  };
   const settle = () => {
     clearTimeout(timer);
     if (field.dataset.dirty !== 'changed') return;
+    const saving = revision;
     field.dataset.dirty = 'saving';
     commit(read()).finally(() => {
-      if (field.dataset.dirty === 'saving') delete field.dataset.dirty;
+      if (revision === saving && field.dataset.dirty === 'saving') delete field.dataset.dirty;
       render();
     });
   };
+  // State refreshes must not replace a slider's value during a drag.
+  field.addEventListener('input', changed);
   // Keyboard steps through a closed select or a radio group fire change. Committing each step would restart the
   // flows each time.
   field.addEventListener('change', () => {
-    field.dataset.dirty = 'changed';
-    clearTimeout(timer);
+    changed();
     timer = setTimeout(settle, 500);
   });
   // Arrow keys move focus between a group's radios, so only focus that leaves the field commits.
