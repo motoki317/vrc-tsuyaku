@@ -43,6 +43,7 @@ A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, p
 | `GET /api/state` | `launch` (a value that differs between launches), `app` (build information), `update` (the update check: `state`, `version` and `url`), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators) and `defaultTemplate` |
 | `PUT /api/settings` | Save a complete `config.Settings` JSON object. Invalid input returns 400. A failed write returns 500. If another program changed `settings.yaml` after the app last read it, the app reads the file again, writes nothing and returns 409 with code `settings_changed`. The page then fetches the state and repeats the player's change once |
 | `GET /api/microphones` | Microphone IDs and names |
+| `GET /api/levels` | Each running flow's input level in dBFS, such as `{"self": -41.5, "world": -30.2}`. The level is the RMS of a 32 ms window of captured audio. A flow has an entry from its first window until its pipeline ends. The value jumps to a louder window's level at once and falls by at most 1.5 dB per window, so the page, which polls every 100 ms, still shows a short sound. The levels are not `/api/events` events: 31 windows per second for each flow would push phrases out of the 256 events that the stream keeps |
 | `POST /api/chatbox/preview` | Render a template with a sample message, such as `{"template": "{{.Translation}}", "original": "こんにちは", "translation": "Hello", "sourceLang": "ja", "targetLang": "en"}`. Returns `{"pages": [...]}`, the chatbox pages that VRChat receives, or 400 for an invalid template |
 | `POST /api/flows/{flow}/{action}` | Save the flow's enabled state and start or stop it. A start on a starting or running flow leaves the run as it is. A start refused for missing downloads returns 409 without changing settings |
 | `POST /api/downloads/{id}` | Start a missing artifact's download with a required JSON body, such as `{"acceptLicense": false}` |
@@ -60,7 +61,7 @@ Artifact and flow states and `error` events carry the same `code` field.
 A settings save restarts a starting or running flow when the change needs another recognizer, for example from Japanese to English.
 A changed microphone or chatbox address also restarts the self flow.
 A changed `Translator` restarts both flows when they are starting or running. An enabled flow that waits for the old translator's download starts with the new one if it is installed.
-Other changes, such as the target language or the chatbox template, apply from the flow's next phrase.
+Other changes, such as the target language or the chatbox template, apply from the flow's next phrase, except `CutLevel`: it applies from the next 32 ms window of audio.
 
 Each event has an `id`, which orders all events, a `time` and a `kind`. Events about one flow also name it in `flow`:
 
@@ -94,11 +95,21 @@ The app groups phrases into messages and times its chatbox writes with fixed val
 - When phrases back up in the self flow, a waiting chatbox page stops waiting for the reading time of the page before it. Page *n* of a phrase stops waiting *n* × 17.28 s after the phrase's translation finished. 17.28 s is the reading time of a full page.
 - After a flow restarts, its first phrase joins no earlier message, and its first chatbox page waits for no reading time. The 1.5 s between writes holds across a restart.
 
+A flow reads the captured audio in 32 ms windows. For every window, it measures the level, which is the RMS in dBFS, and gives the voice activity detector (VAD) an amplified copy. The gain on the copy never clips a window and never attenuates it. A phrase is made of the captured audio, not of the copy. The numbers below are fixed. The only setting is `CutLevel`, the level under which a flow ignores sound:
+
+- A speech window is a window inside a phrase to which the VAD gives a probability of at least 0.5. A learning phrase is a phrase with at least 8 speech windows. The gain that a learning phrase needs is the gain, from 0 to +20 dB, that brings the mean power of its speech windows to −40 dBFS.
+- During a search, the VAD's copy gets +20 dB, so that the VAD finds speech that is too quiet for the learned gain. A flow starts a search when it starts, after 10 s outside a phrase, and after 8 windows in a row to which the VAD gives a probability of 0.1 or more without starting a phrase. The first learning phrase ends the search.
+- The learning phrase that ends a search sets the learned gain to the gain that it needs. The next 3 learning phrases make the learned gain the mean of the needed gains so far. Each later learning phrase moves the learned gain a quarter of the way to the gain that it needs.
+- With `CutLevel` 0, which the page shows as "Automatic", the VAD's copy gets the learned gain, or +20 dB during a search.
+- With a `CutLevel` of T dBFS, the VAD's copy gets −40 − T dB, limited to the range from 0 to +20 dB. A window can start or continue a phrase only if it, or one of the 16 windows before it, is at or above T. The flow still learns and searches, so the learned gain is ready when `CutLevel` returns to 0.
+- Before recognition, the app amplifies the whole phrase to an RMS of −25 dBFS, by at most 40 dB and without clipping.
+
 Settings JSON uses Go field names, such as `Flows.Self.Microphone` and `Chatbox.Template`, rather than YAML keys.
 `Translator` takes an `id` from `languages.translators`: `plamo-3-translate-2b`, the default, or `plamo-3-translate-0.8b`.
 `Flows.Self.Spoken` and `Flows.World.Spoken` take a spoken code from the language catalog, and `Flows.Self.Target` and `Flows.World.Target` take a target code. Only `Flows.World.Spoken` accepts `auto`.
 `Chatbox.Template` is a Go [`text/template`](https://pkg.go.dev/text/template) over `chatbox.Message`: `{{.Original}}`, `{{.Translation}}`, `{{.SourceLang}}` and `{{.TargetLang}}`.
 The app splits the rendered text into chatbox pages of at most 144 characters and 9 lines.
+`Flows.Self.CutLevel` and `Flows.World.CutLevel` are 0 for "Automatic", or a cut level from −80 to −10 dBFS: the flow ignores sound quieter than the cut level.
 `UI.Language` is `en`, `ja`, or empty to follow the browser.
 Omitted fields take their zero values, not their defaults.
 Settings saves ignore `LicensesAccepted` and both flows' `Enabled` fields and keep their saved values.
