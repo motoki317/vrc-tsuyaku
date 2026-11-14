@@ -2,6 +2,8 @@ package config
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -47,11 +49,67 @@ func TestLoadDefaultsAndPartial(t *testing.T) {
 		if got.UI.Language != "" {
 			t.Fatal("missing UI language must follow the browser", got.UI)
 		}
+		if got.Flows.Self.CutLevel != 0 || got.Flows.World.CutLevel != 0 {
+			t.Fatal("missing cut level must select automatic gain", got.Flows)
+		}
 		if got.Translator != "plamo-3-translate-2b" {
 			t.Fatal("missing translator must default to 2B", got.Translator)
 		}
 		if body != "" && (got.Flows.Self.Microphone != "endpoint" || !got.Flows.World.Enabled) {
 			t.Fatalf("fields missing: %+v", got)
+		}
+	}
+}
+
+func TestCutLevelSettings(t *testing.T) {
+	for _, flow := range []string{"self", "world"} {
+		for _, cut := range []float64{0, -80, -79, -50, -41.5, -10, -80.001, -9.999, -1, 1, math.NaN(), math.Inf(-1), math.Inf(1)} {
+			t.Run(flow+"/"+fmt.Sprint(cut), func(t *testing.T) {
+				s := Defaults()
+				if flow == "self" {
+					s.Flows.Self.CutLevel = cut
+				} else {
+					s.Flows.World.CutLevel = cut
+				}
+				dir := t.TempDir()
+				err := Save(dir, s)
+				valid := cut == 0 || (cut >= -80 && cut <= -10)
+				if !valid {
+					if !errors.Is(err, ErrInvalidSettings) || !strings.Contains(err.Error(), "flows."+flow+".cut_level") {
+						t.Fatal("invalid cut level", cut, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := Load(dir)
+				if err != nil || !reflect.DeepEqual(got, s) || got.Flows.CutLevel(flow) != cut {
+					t.Fatal("cut level round trip", got, err)
+				}
+				body, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cut == 0 && strings.Contains(string(body), "cut_level:") {
+					t.Fatal("automatic cut levels must be omitted", string(body))
+				}
+				if cut != 0 && !strings.Contains(string(body), fmt.Sprintf("cut_level: %g\n", cut)) {
+					t.Fatal("cut_level YAML key missing", string(body), err)
+				}
+			})
+		}
+		for _, cut := range []string{".nan", ".inf", "-.inf", "-81", "-9", "1"} {
+			t.Run(flow+"/yaml/"+cut, func(t *testing.T) {
+				dir := t.TempDir()
+				body := fmt.Sprintf("flows: {%s: {cut_level: %s}}\n", flow, cut)
+				if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "flows."+flow+".cut_level") {
+					t.Fatal("loaded invalid cut level", cut, err)
+				}
+			})
 		}
 	}
 }

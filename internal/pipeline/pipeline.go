@@ -51,10 +51,16 @@ type PhraseSettings struct {
 // Run waits for nothing and emits no page or sent events, but still joins
 // phrases into messages and emits merged.
 // Emit must be safe for concurrent calls and must not block the pipeline.
+// CutLevel is optional and reads the cut level in dBFS once per window.
+// A nil CutLevel, or a return value of 0, selects the automatic gain.
+// Meter is optional and must not block. Run calls it from one goroutine in capture order.
+// It receives each window's level before the gain. Digital silence is -240 dBFS.
 // Close is optional. The caller runs it after all stage calls finish.
 type Stages struct {
 	Close       func()
 	Source      audio.Source
+	CutLevel    func() float64
+	Meter       func(level float64)
 	Probability func(context.Context, []float32) (float32, error)
 	Recognize   func(context.Context, []float32) (string, error)
 	Settings    func() PhraseSettings
@@ -106,18 +112,20 @@ func Run(ctx context.Context, s Stages) error {
 	start(func() error {
 		defer close(phrases)
 		var segmenter vad.Segmenter
+		level := leveler{searching: true}
 		speech := func(text string) { emit(Event{Kind: "speech", Text: text}) }
 		defer func() {
 			if segmenter.Active() {
 				speech("end")
 			}
 		}()
-		var window [vad.WindowSamples]float32
+		var window, scored [vad.WindowSamples]float32
 		n := 0
 		publish := func(phrase []float32) error {
 			if len(phrase) == 0 {
 				return nil
 			}
+			amplifyPhrase(phrase)
 			select {
 			case phrases <- phrase:
 				return nil
@@ -126,24 +134,40 @@ func Run(ctx context.Context, s Stages) error {
 			}
 		}
 		score := func() error {
-			p, err := s.Probability(ctx, window[:])
+			var cutLevel float64
+			if s.CutLevel != nil {
+				cutLevel = s.CutLevel()
+			}
+			power, db, open := level.process(window[:], scored[:], cutLevel)
+			if s.Meter != nil {
+				s.Meter(db)
+			}
+			p, err := s.Probability(ctx, scored[:])
 			if err != nil {
 				return err
+			}
+			if !open {
+				p = 0
 			}
 			active := segmenter.Active()
 			phrase, err := segmenter.Push(window[:], p)
 			if err != nil {
 				return err
 			}
+			if segmenter.Active() && p >= vad.StartProbability {
+				level.heard(power)
+			}
 			if !active && segmenter.Active() {
 				speech("start")
 			}
 			if active && (!segmenter.Active() || len(phrase) > 0) {
+				level.ended()
 				speech("end")
 			}
 			if len(phrase) > 0 && segmenter.Active() {
 				speech("start")
 			}
+			level.after(segmenter.Active(), p)
 			return publish(phrase)
 		}
 		err := s.Source.Capture(ctx, func(chunk []float32) error {

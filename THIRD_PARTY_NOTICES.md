@@ -43,6 +43,8 @@ vrc-tsuyaku takes its idea from VRCT. Both apps translate the user's speech into
 
 The default chatbox template in `internal/chatbox/pager.go` follows VRCT's defaults: the original comes before the translation, with a newline between them.
 
+Settings → Audio follows VRCT's microphone and speaker thresholds: for each of the two inputs, a slider on a level meter sets the level under which the app ignores sound, with an automatic mode.
+
 [License text](cmd/vrc-tsuyaku/notices/other/VRCT@9427520c0ae39406a17ba0f280b1ad2735395d51/LICENSE).
 
 ## traPtitech/NeoShowcase

@@ -40,16 +40,18 @@ type Flows struct {
 }
 
 type SelfFlow struct {
-	Enabled    bool   `yaml:"enabled"`
-	Microphone string `yaml:"microphone"`
-	Spoken     string `yaml:"spoken"`
-	Target     string `yaml:"target"`
+	Enabled    bool    `yaml:"enabled"`
+	Microphone string  `yaml:"microphone"`
+	Spoken     string  `yaml:"spoken"`
+	Target     string  `yaml:"target"`
+	CutLevel   float64 `yaml:"cut_level,omitempty"`
 }
 
 type WorldFlow struct {
-	Enabled bool   `yaml:"enabled"`
-	Spoken  string `yaml:"spoken"`
-	Target  string `yaml:"target"`
+	Enabled  bool    `yaml:"enabled"`
+	Spoken   string  `yaml:"spoken"`
+	Target   string  `yaml:"target"`
+	CutLevel float64 `yaml:"cut_level,omitempty"`
 }
 
 func (f Flows) Languages(name string) (spoken, target string) {
@@ -57,6 +59,13 @@ func (f Flows) Languages(name string) (spoken, target string) {
 		return f.Self.Spoken, f.Self.Target
 	}
 	return f.World.Spoken, f.World.Target
+}
+
+func (f Flows) CutLevel(name string) float64 {
+	if name == "self" {
+		return f.Self.CutLevel
+	}
+	return f.World.CutLevel
 }
 
 type Chatbox struct {
@@ -93,6 +102,9 @@ func (s Settings) Validate() error {
 		}
 		if !catalog.IsTarget(target) {
 			return fmt.Errorf("flows.%s.target: unsupported language %q", name, target)
+		}
+		if cut := s.Flows.CutLevel(name); cut != 0 && !(cut >= -80 && cut <= -10) {
+			return fmt.Errorf("flows.%s.cut_level: must be 0 (automatic) or between -80 and -10 dBFS", name)
 		}
 	}
 	if _, err := chatbox.ParseAddress(s.Chatbox.Address); err != nil {

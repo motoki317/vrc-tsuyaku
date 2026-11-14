@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -26,6 +27,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
+	"github.com/motoki317/vrc-tsuyaku/internal/vad"
 )
 
 func TestMain(m *testing.M) {
@@ -76,6 +78,136 @@ func request(a *app, method, path, body string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	a.handler().ServeHTTP(w, r)
 	return w
+}
+
+type levelFlowInput struct {
+	windows chan []float32
+	scores  chan float32
+	end     chan error
+}
+
+func (f levelFlowInput) feed(t *testing.T, sample float32) float32 {
+	t.Helper()
+	window := make([]float32, vad.WindowSamples)
+	for i := range window {
+		window[i] = sample
+	}
+	select {
+	case f.windows <- window:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pipeline did not consume a window")
+	}
+	select {
+	case score := <-f.scores:
+		return score
+	case <-time.After(5 * time.Second):
+		t.Fatal("pipeline did not score a window")
+		return 0
+	}
+}
+
+func levelTestApp(t *testing.T) (*app, map[string]levelFlowInput) {
+	t.Helper()
+	a := testApp(t)
+	for id, artifact := range a.artifacts {
+		artifact.State = "installed"
+		a.artifacts[id] = artifact
+	}
+	a.translator = testTranslator(t)
+	inputs := make(map[string]levelFlowInput)
+	for _, name := range []string{"self", "world"} {
+		inputs[name] = levelFlowInput{make(chan []float32), make(chan float32, 1), make(chan error, 1)}
+	}
+	a.prepare = func(_ context.Context, name string, _ config.Settings) (pipeline.Stages, error) {
+		input := inputs[name]
+		return pipeline.Stages{
+			Source: recordingSource(func(ctx context.Context, consume func([]float32) error) error {
+				for {
+					select {
+					case window := <-input.windows:
+						if err := consume(window); err != nil {
+							return err
+						}
+					case err := <-input.end:
+						return err
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+			}),
+			Probability: func(_ context.Context, window []float32) (float32, error) { input.scores <- window[0]; return 0, nil },
+			Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
+			Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+		}, nil
+	}
+	return a, inputs
+}
+
+func TestCutLevelChangesReachRunningFlows(t *testing.T) {
+	a, inputs := levelTestApp(t)
+	a.settings.Flows.World.CutLevel = -50
+	for _, name := range []string{"self", "world"} {
+		if err := a.changeFlow(name, "start"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return a.flows["self"].status.State == "running" && a.flows["world"].status.State == "running"
+	})
+	a.mu.Lock()
+	runs := maps.Clone(a.flows)
+	s := cloneSettings(a.settings)
+	a.mu.Unlock()
+	for _, tc := range []struct{ self, world, selfScore, worldScore float64 }{
+		{0, -50, 0.01, 0.00316227766},
+		{-80, -50, 0.01, 0.00316227766},
+		{-80, -10, 0.01, 0.001},
+		{0, 0, 0.01, 0.01},
+	} {
+		s.Flows.Self.CutLevel, s.Flows.World.CutLevel = tc.self, tc.world
+		body, err := json.Marshal(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if w := request(a, "PUT", "/api/settings", string(body)); w.Code != http.StatusOK {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		for name, want := range map[string]float64{"self": tc.selfScore, "world": tc.worldScore} {
+			if got := inputs[name].feed(t, 0.001); math.Abs(float64(got)-want) > 1e-7 {
+				t.Fatal("cut level did not reach the next window", name, got, want)
+			}
+			a.mu.Lock()
+			unchanged := a.flows[name] == runs[name] && runs[name].status.State == "running"
+			a.mu.Unlock()
+			if !unchanged {
+				t.Fatal("cut level restarted the flow", name)
+			}
+		}
+		saved, err := config.Load(a.dir)
+		if err != nil || !reflect.DeepEqual(saved, s) {
+			t.Fatal("cut levels did not persist", saved, err)
+		}
+	}
+	for _, name := range []string{"self", "world"} {
+		invalid := cloneSettings(s)
+		if name == "self" {
+			invalid.Flows.Self.CutLevel = -9
+		} else {
+			invalid.Flows.World.CutLevel = -81
+		}
+		body, err := json.Marshal(invalid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if w := request(a, "PUT", "/api/settings", string(body)); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "flows."+name+".cut_level") {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		if got := inputs[name].feed(t, 0.001); math.Abs(float64(got)-0.01) > 1e-7 {
+			t.Fatal("invalid save changed the running cut level", got)
+		}
+	}
 }
 
 func TestRequiredArtifactsInState(t *testing.T) {

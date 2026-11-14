@@ -13,6 +13,17 @@ The app remembers each switch: a switch that you leave on starts again the next 
 
 On Linux, "Others' voices" is tested only with test playback programs, not with VRChat under Proton.
 
+## Audio level
+
+Settings → Audio shows two level meters: one under "My voice" for your microphone, and one under "Others' voices" for the sound from VRChat. A meter moves while its switch on the Translation screen is on. Each of the two has its own "Automatic" checkbox and slider.
+
+Leave "Automatic" on unless one of the two problems below happens. With "Automatic" on, the app amplifies quiet speech by itself.
+
+- The app translates a sound that you did not mean: people who talk near your microphone under "My voice", or a video or a song with vocals under "Others' voices". Watch how far that sound moves the meter. Then turn "Automatic" off there and drag the slider a little to the right of that point. The app ignores sound that does not reach the slider. Typing and steady noise are normally not translated, so they need no slider.
+- The app misses a quiet talker while someone louder also talks, because "Automatic" adjusts to the louder voice. Turn "Automatic" off and drag the slider far to the left, to about −70 dB. The slider also sets how much the app amplifies quiet sound: the further left, the more. At −70 dB, the app amplifies as much as it can and ignores almost nothing.
+
+If speech hardly moves the meter at all, no setting helps. Raise the microphone's level in Windows, or the voice volume in VRChat.
+
 ## Translation model
 
 My voice and Others' voices share the translator that Settings → Languages and models picks: PLaMo 3 Translate 2B, the default, or 0.8B. The 2B model needs about 3.2 GB of RAM. The 0.8B model needs about 1.0 GB and translates a sentence about three times as fast, but less accurately. Try 0.8B if VRChat lags or translations fall behind.

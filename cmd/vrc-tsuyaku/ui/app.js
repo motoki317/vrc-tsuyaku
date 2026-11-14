@@ -641,23 +641,29 @@ const usedByHead = () => h('li', {className: 'download download-head', 'aria-hid
 
 const plan = {rows: {}, cache: new Map(), settingsCache: new Map(), head: usedByHead()};
 
-// A select, or a radio group whose value is its checked radio's.
 function commitOnSettle(field, commit, read = () => field.value) {
-  let timer = 0;
+  let timer = 0, revision = 0;
+  const changed = () => {
+    clearTimeout(timer);
+    revision++;
+    field.dataset.dirty = 'changed';
+  };
   const settle = () => {
     clearTimeout(timer);
     if (field.dataset.dirty !== 'changed') return;
+    const saving = revision;
     field.dataset.dirty = 'saving';
     commit(read()).finally(() => {
-      if (field.dataset.dirty === 'saving') delete field.dataset.dirty;
+      if (revision === saving && field.dataset.dirty === 'saving') delete field.dataset.dirty;
       render();
     });
   };
+  // State refreshes must not replace a slider's value during a drag.
+  field.addEventListener('input', changed);
   // Keyboard steps through a closed select or a radio group fire change. Committing each step would restart the
   // flows each time.
   field.addEventListener('change', () => {
-    field.dataset.dirty = 'changed';
-    clearTimeout(timer);
+    changed();
     timer = setTimeout(settle, 500);
   });
   // Arrow keys move focus between a group's radios, so only focus that leaves the field commits.
@@ -1044,6 +1050,7 @@ function setSpeech(flow, open, closesAt) {
   const s = speech[flow];
   clearTimeout(s.timer);
   s.open = open;
+  renderMeters();
   const node = $('dots-' + flow);
   const hide = () => changeLog(() => { node.hidden = true; }, false);
   if (open) changeLog(() => { node.hidden = false; }, false);
@@ -1179,7 +1186,121 @@ function renderTranslator() {
   group.setAttribute('aria-describedby', ['translator-hint', !error.hidden && error.id].filter(Boolean).join(' '));
 }
 
-// Settings: Microphone
+// Settings: Audio
+
+const audioControls = {};
+let levels = null;
+let levelTimer = 0;
+let levelRequest = null;
+
+function buildAudio() {
+  for (const flow of FLOWS) {
+    const automatic = h('input', {type: 'checkbox', id: 'automatic-' + flow});
+    const slider = h('input', {type: 'range', className: 'level-slider', id: 'cut-level-' + flow, min: -80, max: -10, step: 1, value: -50});
+    const meter = h('div', {className: 'level-meter', role: 'meter', 'aria-valuemin': -80, 'aria-valuemax': 0});
+    const row = audioControls[flow] = {
+      root: $('level-' + flow), automatic, slider, meter, manual: -50, refusal: null,
+      value: h('span', {className: 'value'}),
+      automaticHint: h('p', {className: 'hint', id: 'automatic-hint-' + flow, 'data-i18n': 'note.automaticLevel'}),
+      cutHint: h('p', {className: 'hint', id: 'cut-hint-' + flow, 'data-i18n': 'note.cutLevel'}),
+      inactive: h('p', {className: 'hint', id: 'level-inactive-' + flow, hidden: true}),
+      fill: h('div', {className: 'level-fill'}),
+      error: h('p', {className: 'error-text', id: 'level-error-' + flow, hidden: true}),
+    };
+    meter.append(row.fill);
+    row.root.append(
+      h('div', {className: 'level-heading'},
+        h('label', {className: 'automatic'}, automatic, h('span', {id: 'automatic-label-' + flow, 'data-i18n': 'label.automatic'})), row.value),
+      row.automaticHint,
+      h('div', {className: 'level-scale'}, meter, slider),
+      h('div', {className: 'level-ticks', 'aria-hidden': 'true'},
+        h('span', {}, t('value.decibelsFS', {n: -80})), h('span', {}, t('value.decibelsFS', {n: 0}))),
+      row.cutHint, row.inactive, row.error);
+    automatic.setAttribute('aria-labelledby', `audio-${flow}-label automatic-label-${flow}`);
+    commitOnSettle(row.root, value => saveSettings(s => { s.Flows[KEY[flow]].CutLevel = value; })
+      .then(() => { row.refusal = null; })
+      .catch(e => { row.refusal = e; }), () => automatic.checked ? 0 : Number(slider.value));
+    row.root.addEventListener('input', event => {
+      if (event.target === automatic && !automatic.checked) slider.value = row.manual;
+      if (!automatic.checked) row.manual = Number(slider.value);
+      renderLevelControl(flow);
+    });
+  }
+}
+
+function renderLevelControl(flow) {
+  const row = audioControls[flow], saved = settingsOf(flow).CutLevel;
+  if (!row.root.dataset.dirty) {
+    row.automatic.checked = saved === 0;
+    row.slider.value = saved || row.manual;
+    if (saved) row.manual = Number(row.slider.value);
+  }
+  row.slider.hidden = row.value.hidden = row.cutHint.hidden = row.automatic.checked;
+  row.automatic.disabled = row.slider.disabled = !!state.settingsError;
+  row.slider.setAttribute('aria-label', t('label.cutLevel', {flow: flowLabel(flow)}));
+  const value = t('value.decibels', {n: row.slider.value});
+  row.slider.setAttribute('aria-valuetext', value);
+  setText(row.value, value);
+  setError(row.error, row.refusal && (() => saveRefusal(row.refusal)));
+  for (const [input, hint] of [[row.automatic, row.automaticHint], [row.slider, row.cutHint]]) {
+    input.setAttribute('aria-describedby', [hint.id, !row.error.hidden && row.error.id].filter(Boolean).join(' '));
+  }
+}
+
+function renderMeters() {
+  for (const flow of FLOWS) {
+    const row = audioControls[flow], level = levels?.[flow], hasLevel = Number.isFinite(level);
+    const shown = hasLevel ? Math.max(-80, Math.min(0, level)) : -80;
+    row.fill.style.width = (shown + 80) / 80 * 100 + '%';
+    row.meter.classList.toggle('speaking', speech[flow].open);
+    row.meter.setAttribute('aria-label', t('label.level', {flow: flowLabel(flow)}));
+    row.meter.setAttribute('aria-valuenow', shown);
+    const reading = hasLevel ? t('value.decibelsFS', {n: Math.round(shown)}) : t('state.noLevel');
+    row.meter.setAttribute('aria-valuetext', t('value.levelState', {
+      level: reading, state: t(speech[flow].open ? 'state.speechActive' : 'state.speechInactive'),
+    }));
+    row.inactive.hidden = levels === null || hasLevel || state.flows[flow]?.state !== 'stopped';
+    setText(row.inactive, t('note.levelInactive', {flow: flowLabel(flow)}));
+    if (row.inactive.hidden) row.meter.removeAttribute('aria-describedby');
+    else row.meter.setAttribute('aria-describedby', row.inactive.id);
+  }
+}
+
+const audioVisible = () => screen === 'settings' && sub === 'audio' && !state.settingsError && !document.hidden && connection === 'ok' && exitState !== 'exited';
+
+function syncLevelPolling() {
+  if (!audioVisible()) {
+    clearTimeout(levelTimer);
+    levelTimer = 0;
+    levelRequest?.abort();
+    levelRequest = null;
+    levels = null;
+    renderMeters();
+  } else if (!levelTimer && !levelRequest) pollLevels();
+}
+
+async function pollLevels() {
+  levelTimer = 0;
+  const request = levelRequest = new AbortController();
+  let next = null;
+  try {
+    const response = await fetch('/api/levels', {cache: 'no-store', signal: request.signal});
+    if (!response.ok) throw new Error();
+    next = await response.json();
+  } catch {}
+  // A hidden page can start a new poll before the aborted request settles.
+  if (levelRequest !== request) return;
+  levelRequest = null;
+  levels = next;
+  renderMeters();
+  levelTimer = setTimeout(pollLevels, 100);
+}
+
+function renderAudio() {
+  for (const flow of FLOWS) renderLevelControl(flow);
+  renderMeters();
+  syncLevelPolling();
+}
 
 // The last failed save, until a save succeeds.
 let microphoneRefusal = null;
@@ -1587,7 +1708,7 @@ async function replaceSettings() {
 // Screens and history
 
 function flushFields() {
-  for (const field of document.querySelectorAll('select, [role="radiogroup"]')) field.settle?.();
+  for (const field of document.querySelectorAll('select, [role="radiogroup"], .level-control')) field.settle?.();
   if ($('address').dataset.dirty) saveAddress();
   if ($('template').dataset.dirty) saveTemplate();
 }
@@ -1646,7 +1767,7 @@ function renderFrame() {
   $('screen-setup').hidden = screen !== 'setup' || settingsError;
   $('screen-translation').hidden = screen !== 'translation' || settingsError;
   $('screen-settings').hidden = screen !== 'settings' || settingsError;
-  for (const name of ['models', 'downloads', 'microphone', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
+  for (const name of ['models', 'downloads', 'audio', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
   $('screen-settings-error').hidden = !settingsError;
   setText($('settings-error-text'), state.settingsError || '');
   $('switchbar').hidden = !(settingsError || screen === 'translation');
@@ -1661,6 +1782,7 @@ function render() {
   renderSwitchBar();
   renderTranslator();
   renderMicrophone();
+  renderAudio();
   renderChatbox();
   renderDownloads();
   renderAbout();
@@ -1877,6 +1999,7 @@ async function exitApp() {
 
 function showExited() {
   exitState = 'exited';
+  syncLevelPolling();
   for (const node of [$('tabs'), $('connection'), $('main'), ...document.querySelectorAll('.bar-item')]) node.hidden = true;
   $('screen-exited').hidden = false;
   $('exited-title').focus();
@@ -1895,6 +2018,8 @@ function bind() {
   buildPlan();
   buildSwitchBar();
   buildChatbox();
+  buildAudio();
+  document.addEventListener('visibilitychange', syncLevelPolling);
   for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => show(tab.dataset.screen));
   for (const item of document.querySelectorAll('.rail-item[data-sub]')) item.addEventListener('click', () => show('settings', item.dataset.sub));
   for (const button of document.querySelectorAll('[data-open]')) {

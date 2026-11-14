@@ -77,7 +77,7 @@
     <nav class="rail" data-i18n-aria-label="label.settingsSections">
       <button type="button" class="rail-item" data-sub="models"><svg class="icon" aria-hidden="true"><use href="#i-languages"></use></svg><span data-i18n="label.languagesModels"></span></button>
       <button type="button" class="rail-item" data-sub="downloads"><svg class="icon" aria-hidden="true"><use href="#i-hard-drive-download"></use></svg><span data-i18n="label.downloads"></span></button>
-      <button type="button" class="rail-item" data-sub="microphone"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="label.microphone"></span></button>
+      <button type="button" class="rail-item" data-sub="audio"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="label.audio"></span></button>
       <button type="button" class="rail-item" data-sub="chatbox"><svg class="icon" aria-hidden="true"><use href="#i-message-square-text"></use></svg><span data-i18n="label.chatbox"></span></button>
       <button type="button" class="rail-item" data-sub="about"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span data-i18n="label.about"></span><span class="update-dot" aria-hidden="true" hidden></span></button>
     </nav>
@@ -122,14 +122,25 @@
       </div>
     </div>
 
-    <div id="sub-microphone" class="sub" hidden>
-      <div class="sub-head"><h2 class="sub-title" id="microphone-label" tabindex="-1" data-i18n="label.microphone"></h2><span class="saved" id="microphone-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
-      <div class="field-row">
-        <select id="microphone" class="select" aria-labelledby="microphone-label"></select>
-        <button type="button" id="refresh-mics" class="icon-button" data-i18n-aria-label="action.refresh"><svg class="icon" aria-hidden="true"><use href="#i-refresh-cw"></use></svg></button>
-        <span id="microphone-state" class="field-state warning" hidden><svg class="icon" aria-hidden="true"><use href="#i-circle-alert"></use></svg><span data-i18n="state.notConnected"></span></span>
-      </div>
-      <p id="microphone-error" class="error-text" hidden></p>
+    <div id="sub-audio" class="sub" hidden>
+      <h2 class="sub-title" tabindex="-1" data-i18n="label.audio"></h2>
+      <section class="audio-group" aria-labelledby="audio-self-label">
+        <h3 id="audio-self-label" data-i18n="label.self"></h3>
+        <div class="field-group">
+          <div class="label-row"><label class="field-label" for="microphone" data-i18n="label.microphone"></label><span class="saved" id="microphone-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
+          <div class="field-row">
+            <select id="microphone" class="select"></select>
+            <button type="button" id="refresh-mics" class="icon-button" data-i18n-aria-label="action.refresh"><svg class="icon" aria-hidden="true"><use href="#i-refresh-cw"></use></svg></button>
+            <span id="microphone-state" class="field-state warning" hidden><svg class="icon" aria-hidden="true"><use href="#i-circle-alert"></use></svg><span data-i18n="state.notConnected"></span></span>
+          </div>
+          <p id="microphone-error" class="error-text" hidden></p>
+        </div>
+        <div id="level-self" class="level-control"></div>
+      </section>
+      <section class="audio-group" aria-labelledby="audio-world-label">
+        <h3 id="audio-world-label" data-i18n="label.world"></h3>
+        <div id="level-world" class="level-control"></div>
+      </section>
     </div>
 
     <div id="sub-chatbox" class="sub" hidden>
