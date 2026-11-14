@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
 
 // Translate sends one phrase as the only user turn and returns trimmed text.
@@ -19,7 +20,7 @@ import (
 // it. Call Start to relaunch.
 // A response that reaches the token limit returns an error instead of partial text.
 // An empty source omits source_lang so that PLaMo detects the input language.
-func (s *Supervisor) Translate(ctx context.Context, source, target, phrase string) (string, error) {
+func (s *Supervisor) Translate(ctx context.Context, source, target, phrase string, terms []glossary.Term) (string, error) {
 	if strings.TrimSpace(phrase) == "" {
 		return "", errors.New("translation phrase is empty")
 	}
@@ -43,15 +44,23 @@ func (s *Supervisor) Translate(ctx context.Context, source, target, phrase strin
 	if address == "" {
 		return "", errors.New("llama-server has not reported its listening address: call Start before translating")
 	}
-	languages := map[string]string{"target_lang": target}
+	languages := map[string]any{"target_lang": target}
 	if source != "" {
 		languages["source_lang"] = source
+	}
+	terms = budgetTerms(terms)
+	if len(terms) > 0 {
+		pairs := make([]map[string]string, 0, len(terms))
+		for _, term := range terms {
+			pairs = append(pairs, map[string]string{"source": term.Source, "target": term.Target})
+		}
+		languages["glossary"] = pairs
 	}
 	body, err := json.Marshal(map[string]any{
 		"model":                catalog.TranslationAlias,
 		"messages":             []map[string]string{{"role": "user", "content": phrase}},
 		"chat_template_kwargs": languages,
-		"temperature":          0, "max_tokens": 512, "stream": false,
+		"temperature":          0, "max_tokens": answerTokens, "stream": false,
 		"stop": []string{"<|plamo:tag|>", "<|plamo:bos|>"},
 	})
 	if err != nil {

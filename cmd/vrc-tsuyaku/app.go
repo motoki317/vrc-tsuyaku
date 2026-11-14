@@ -644,7 +644,9 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	stages.Recognize = func(ctx context.Context, samples []float32) (string, error) {
 		return recognizer.Transcribe(ctx, samples, nil)
 	}
-	stages.Translate = a.translator.Translate
+	stages.Translate = func(ctx context.Context, source, target, phrase string) (string, error) {
+		return a.translator.Translate(ctx, source, target, phrase, nil)
+	}
 	return stages, nil
 }
 
