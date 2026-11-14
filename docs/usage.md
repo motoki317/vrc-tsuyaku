@@ -28,6 +28,10 @@ If speech hardly moves the meter at all, no setting helps. Raise the microphone'
 
 My voice and Others' voices share the translator that Settings → Languages and models picks: PLaMo 3 Translate 2B, the default, or 0.8B. The 2B model needs about 3.2 GB of RAM. The 0.8B model needs about 1.0 GB and translates a sentence about three times as fast, but less accurately. Try 0.8B if VRChat lags or translations fall behind.
 
+## Glossary
+
+Settings → Glossary holds words that speech recognition does not know, such as avatar names. The app then recognizes and translates them the way that you wrote them more often. [Glossary](glossary.md) describes an entry, what the app does with it in each language, and its side effects.
+
 ## Chatbox message
 
 Settings → Chatbox picks what "My voice" writes to your chatbox. The default, "Both, with codes", writes the original and the translation, each after its language code:

@@ -1,8 +1,11 @@
 # Translation
 
 Create one supervisor with `translate.New(serverPath, modelPath)`.
-Pass the llama.cpp b12201 CPU `llama-server` path and the PLaMo 3 Translate 2B Q4_K_M GGUF path.
-Call `Start(ctx)` when a flow starts, then `Translate(ctx, direction, phrase)` for each recognized phrase.
+Pass the path of llama.cpp's `llama-server` and the path of a PLaMo 3 Translate GGUF.
+Call `Start(ctx)` when a flow starts, then `Translate(ctx, source, target, phrase, terms)` for each recognized phrase.
+`terms` are the glossary terms that the caller found in the phrase. `Translate` sends them as the `glossary` option of PLaMo's chat template, as far as they fit the request.
+It goes through the terms in order and keeps each one whose cost still fits a total of 240. A term costs the Unicode code points of its source word and its target word, plus 1.
+The comment at `termBudget` in [supervisor.go](supervisor.go) derives the 240 from the context size.
 Keep the server running while the flows are stopped.
 Call `Close()` only at app shutdown. It waits for any pending `Start` to finish before it stops the server.
 
