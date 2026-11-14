@@ -53,11 +53,14 @@ type Stages struct {
 	Emit        func(Event)
 }
 
-// Run preserves phrase order through unbuffered stages. A slow stage applies
-// backpressure to capture. A template error skips that phrase's send and emits an
-// error event. Other errors cancel every stage and Run waits for them.
+// Run preserves phrase order. Up to 64 translated phrases can wait for Send so
+// chatbox reading time does not delay recognition or translation. Other stages
+// are unbuffered, and a full send buffer applies backpressure to capture.
+// A template error skips that phrase's send and emits an error event.
+// Other errors cancel every stage and Run waits for them.
 // Cancellation discards capture's queued audio, the partial VAD window and the
-// segmenter's pending phrase. A finite test source can return nil to end input.
+// segmenter's pending phrase, along with translated phrases waiting for Send.
+// A finite test source can return nil to end input.
 // Run then pads the partial VAD window with zeros and flushes the final phrase.
 func Run(ctx context.Context, s Stages) error {
 	if s.Source == nil || s.Probability == nil || s.Recognize == nil || s.Settings == nil || s.Translate == nil {
@@ -73,7 +76,7 @@ func Run(ctx context.Context, s Stages) error {
 		template              string
 	}
 	texts := make(chan result)
-	translations := make(chan result)
+	translations := make(chan result, 64)
 	emit := func(e Event) {
 		if s.Emit != nil {
 			s.Emit(e)
@@ -205,6 +208,9 @@ func Run(ctx context.Context, s Stages) error {
 	})
 	start(func() error {
 		for r := range translations {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if s.Send != nil {
 				message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.source, TargetLang: r.target}
 				if err := s.Send(ctx, r.template, message, func(page string) {

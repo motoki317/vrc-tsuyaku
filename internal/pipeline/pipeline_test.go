@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
@@ -20,24 +21,28 @@ type sourceFunc func(context.Context, func([]float32) error) error
 
 func (s sourceFunc) Capture(ctx context.Context, f func([]float32) error) error { return s(ctx, f) }
 
+func fakeSource(phrases int) sourceFunc {
+	return sourceFunc(func(ctx context.Context, consume func([]float32) error) error {
+		for range phrases {
+			samples := make([]float32, 512*24)
+			for i := range 512 * 8 {
+				samples[i] = 1
+			}
+			for len(samples) > 0 {
+				n := min(317, len(samples))
+				if err := consume(samples[:n]); err != nil {
+					return err
+				}
+				samples = samples[n:]
+			}
+		}
+		return nil
+	})
+}
+
 func fakeStages() Stages {
 	return Stages{
-		Source: sourceFunc(func(ctx context.Context, consume func([]float32) error) error {
-			for range 3 {
-				samples := make([]float32, 512*24)
-				for i := range 512 * 8 {
-					samples[i] = 1
-				}
-				for len(samples) > 0 {
-					n := min(317, len(samples))
-					if err := consume(samples[:n]); err != nil {
-						return err
-					}
-					samples = samples[n:]
-				}
-			}
-			return nil
-		}),
+		Source:      fakeSource(3),
 		Probability: func(_ context.Context, x []float32) (float32, error) { return x[0], nil },
 		Recognize:   func(_ context.Context, _ []float32) (string, error) { return "text", nil },
 		Settings: func() PhraseSettings {
@@ -77,6 +82,77 @@ func TestPhraseOrder(t *testing.T) {
 			t.Fatal(counts)
 		}
 	}
+}
+
+func TestSlowSendBuffersTranslations(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := fakeStages()
+		s.Source = fakeSource(10)
+		i := 0
+		s.Recognize = func(context.Context, []float32) (string, error) {
+			i++
+			return fmt.Sprint(i), nil
+		}
+		release := make(chan struct{})
+		var got []string
+		s.Send = func(_ context.Context, _ string, message chatbox.Message, _ func(string)) error {
+			<-release
+			got = append(got, message.Original)
+			return nil
+		}
+		translated := 0
+		s.Emit = func(e Event) {
+			if e.Kind == "translated" {
+				translated++
+			}
+		}
+		done := make(chan error, 1)
+		go func() { done <- Run(t.Context(), s) }()
+		synctest.Wait()
+		if translated != 10 || len(got) != 0 {
+			t.Fatalf("translated = %d, sent = %v", translated, got)
+		}
+		close(release)
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("sent = %v, want %v", got, want)
+		}
+	})
+}
+
+func TestCancellationDiscardsBufferedTranslations(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := fakeStages()
+		s.Source = fakeSource(100)
+		ctx, cancel := context.WithCancelCause(t.Context())
+		defer cancel(nil)
+		sends := 0
+		s.Send = func(ctx context.Context, _ string, _ chatbox.Message, _ func(string)) error {
+			sends++
+			<-ctx.Done()
+			return nil
+		}
+		translated := 0
+		s.Emit = func(e Event) {
+			if e.Kind == "translated" {
+				translated++
+			}
+		}
+		done := make(chan error, 1)
+		go func() { done <- Run(ctx, s) }()
+		synctest.Wait()
+		if translated != 66 || sends != 1 {
+			t.Fatalf("translated = %d, sends = %d, want 64 waiting and one blocked handoff", translated, sends)
+		}
+		want := errors.New("stop buffered send")
+		cancel(want)
+		if err := <-done; !errors.Is(err, want) || sends != 1 {
+			t.Fatalf("Run = %v, sends = %d", err, sends)
+		}
+	})
 }
 
 func TestSpeechEvents(t *testing.T) {
