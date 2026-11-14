@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRender(t *testing.T) {
@@ -29,6 +30,43 @@ func TestRender(t *testing.T) {
 			got, err := Render(tc.format, tc.message)
 			if err != nil || !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("Render = %q, %v, want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestMessageJoin(t *testing.T) {
+	for _, a := range []string{"", "a"} {
+		for _, b := range []string{"", "b"} {
+			for _, x := range []string{"", "x"} {
+				for _, y := range []string{"", "y"} {
+					got := (Message{Original: a, Translation: x, SourceLang: "ja", TargetLang: "en"}).Join(Message{Original: b, Translation: y})
+					want := Message{Original: strings.TrimSpace(a + " " + b), Translation: strings.TrimSpace(x + " " + y), SourceLang: "ja", TargetLang: "en"}
+					if got != want {
+						t.Fatalf("join (%q, %q) + (%q, %q) = %+v, want %+v", a, x, b, y, got, want)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestReadUntil(t *testing.T) {
+	since := time.Unix(100, 0)
+	for _, tc := range []struct {
+		name, page string
+		shown, end time.Duration
+	}{
+		{"long page", strings.Repeat("猫", 100), 0, 12 * time.Second},
+		{"full page", strings.Repeat("a", 144), 0, 17280 * time.Millisecond},
+		{"short page", "hi", 0, 1500 * time.Millisecond},
+		{"merged long page", strings.Repeat("猫", 100) + " hm", time.Second, 12360 * time.Millisecond},
+		{"merged short page", "a b", time.Second, 2500 * time.Millisecond},
+		{"late merge", strings.Repeat("a", 101), 12 * time.Second, 13500 * time.Millisecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ReadUntil(tc.page, since, since.Add(tc.shown)); !got.Equal(since.Add(tc.end)) {
+				t.Fatalf("ReadUntil = %s after first showing, want %s", got.Sub(since), tc.end)
 			}
 		})
 	}

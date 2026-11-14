@@ -70,17 +70,29 @@ Each event has an `id`, which orders all events, a `time` and a `kind`. Events a
 | `speech` | `start` when the flow hears speech begin, and `end` when it ends |
 | `recognized` | The recognized phrase |
 | `translated` | The translation, with the recognized phrase in `original` |
-| `page` | One chatbox page written to VRChat |
+| `page` | One chatbox page written to VRChat. When the phrase joined an earlier message, as described below, the text also holds that message's earlier phrases |
+| `merged` | The phrase joined an earlier message, as described below. `text` holds the message's translations, joined, and `original` its recognized phrases, joined. `into` holds the `phraseId` of the message's first phrase |
 | `sent` | Empty. Follows once every chatbox page of the phrase is written |
 | `error` | The diagnostic text |
 | `settings` | `saved` after the app saves settings, `reloaded` after an external edit, and `changed` after a stop that the app could not save because `settingsError` is set |
 | `download` | The artifact ID whose state or progress changed. During a download, at most one event every 250 ms |
 | `update` | The update check's result: `current`, `available` or `failed` |
 
-The events of one phrase share a `phraseId`, unique within one app process: `recognized`, `translated`, `page`, `sent`, and an `error` from sending that phrase.
+The events of one phrase share a `phraseId`, unique within one app process: `recognized`, `translated`, `page`, `merged`, `sent`, and an `error` from sending that phrase.
 They also carry the flow's spoken language in `sourceLang`, which is `auto` while the world flow detects the language, and its target language in `targetLang`.
 The app fixes both languages and the template before it recognizes the phrase, so a later settings change does not alter the phrase.
 A start that the flow's checks refuse, for example for missing downloads, emits an `error` event with `operation: "start"`.
+
+The app groups phrases into messages and times its chatbox writes with fixed values, not settings. A message is one or more phrases that the app shows together: as one chatbox text, and as one bubble in the web UI.
+
+- Two chatbox writes are at least 1.5 s apart, which keeps the app under VRChat's spam timeout.
+- A chatbox page stays on screen in VRChat for its reading time before another page replaces it. The reading time ends 120 ms per character of the page after the message first appeared, and at least 1.5 s after the page itself appeared.
+- A phrase joins the flow's latest message if that message has one chatbox page and is still in its reading time, both have the same template and languages, and the two fit in one chatbox page together. The app renders the template with the originals joined by a space and the translations joined by a space. The joined page belongs to the same message, so by the rule above a join adds 120 ms of reading time for each added character, and the joined page stays at least 1.5 s.
+- In the self flow, the app decides the join when the phrase's turn to send comes. A joined page does not wait for the reading time. The app writes it 1.5 s after the previous write at the earliest, then emits `page`, `merged` and `sent`.
+- The world flow writes nothing, so its phrases wait for nothing. A message first appears when the translation of its first phrase finishes. The app measures the message as a chatbox page of the default template, whatever `Chatbox.Template` holds, and emits `merged` right after the joining phrase's `translated`.
+- `into` stays the same while further phrases join a message, so the web UI finds the bubble that shows the message even if it never saw the phrases that joined in between.
+- When phrases back up in the self flow, a waiting chatbox page stops waiting for the reading time of the page before it. Page *n* of a phrase stops waiting *n* × 17.28 s after the phrase's translation finished. 17.28 s is the reading time of a full page.
+- After a flow restarts, its first phrase joins no earlier message, and its first chatbox page waits for no reading time. The 1.5 s between writes holds across a restart.
 
 Settings JSON uses Go field names, such as `Flows.Self.Microphone` and `Chatbox.Template`, rather than YAML keys.
 `Translator` takes an `id` from `languages.translators`: `plamo-3-translate-2b`, the default, or `plamo-3-translate-0.8b`.

@@ -926,7 +926,12 @@ function changeLog(change, counts) {
     if (oldest.phraseId) phrases.delete(oldest.phraseId);
     oldest.remove();
   }
-  // The typing dots follow the list, so they join a run of world bubbles as the next bubble would.
+  // A world bubble after another world bubble continues its run, so it drops the avatar. A merge moves a bubble,
+  // so the pass sets `first` on every world bubble again. The typing dots come after the list in the document and
+  // join a run as the next bubble would.
+  for (const node of list.children) {
+    if (isWorldPhrase(node)) node.classList.toggle('first', !isWorldPhrase(node.previousElementSibling));
+  }
   $('dots-world').classList.toggle('first', !isWorldPhrase(list.lastElementChild));
   // The ghosts and the empty log's rings leave with the first bubble.
   if ($('ghosts').hidden !== phrases.size > 0) {
@@ -940,12 +945,12 @@ function changeLog(change, counts) {
   }
 }
 
-// A world bubble after another world bubble continues its run, so it drops the avatar.
 const isWorldPhrase = node => !!node?.phraseId && node.classList.contains('world');
 
 function addPhrase(e, original) {
   const flow = e.flow, self = flow === 'self';
-  const phrase = {id: e.phraseId, flow, source: e.sourceLang, target: e.targetLang, original, translation: null, status: '', error: null, time: e.time};
+  // A bubble shows one message. `message` is the ID of the message's first phrase, which a merged event names.
+  const phrase = {id: e.phraseId, message: e.phraseId, flow, source: e.sourceLang, target: e.targetLang, original, translation: null, status: '', error: null, time: e.time};
   phrase.originalLine = h('p', {className: 'line', lang: langAttribute(phrase.source)}, original);
   phrase.translationLine = h('p', {className: 'line', lang: langAttribute(phrase.target)});
   phrase.deliveryIcon = icon('clock');
@@ -959,8 +964,7 @@ function addPhrase(e, original) {
   const time = h('time', {dateTime: e.time});
   // The bubble shows no language: its two lines show them, and the chip shows the current pair.
   const meta = h('span', {className: 'meta'}, time, self && phrase.delivery);
-  const first = !self && !isWorldPhrase($('log-list').lastElementChild);
-  const node = h('li', {className: `msg ${flow}${first ? ' first' : ''}`, 'data-relabel': ''},
+  const node = h('li', {className: `msg ${flow}`, 'data-relabel': ''},
     !self && h('span', {className: 'avatar', 'aria-hidden': 'true'}, icon('users')),
     h('div', {className: 'bubble'}, lines), meta, phrase.errorLine);
   node.phraseId = phrase.id;
@@ -1071,6 +1075,25 @@ function logEvent(e) {
       }
       renderPhrase(phrase);
       if (live) announce(t('value.announce', {flow: flowLabel(flow), text: e.text}));
+    } else if (e.kind === 'merged') {
+      // The replayed history can start after the phrase's earlier events, and the log can have dropped the bubble
+      // that showed the message until now.
+      phrase ||= addPhrase(e, e.original);
+      const shown = [...phrases.values()].find(other => other !== phrase && other.message === e.into);
+      if (shown) {
+        shown.node.replaceWith(phrase.node);
+        phrases.delete(shown.id);
+      }
+      phrase.message = e.into;
+      phrase.original = e.original;
+      setText(phrase.originalLine, e.original);
+      phrase.translation = e.text;
+      phrase.unfinished = false;
+      if (flow === 'self') {
+        phrase.status ||= 'sending';
+        if (screen === 'settings' && sub === 'chatbox') schedulePreview();
+      }
+      renderPhrase(phrase);
     } else if (e.kind === 'sent' && phrase) {
       phrase.status = 'sent';
       renderPhrase(phrase);

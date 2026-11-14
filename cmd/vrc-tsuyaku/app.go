@@ -223,7 +223,11 @@ func (a *app) start(name string, s config.Settings) error {
 				a.mu.Lock()
 				defer a.mu.Unlock()
 				source, target := a.settings.Flows.Languages(name)
-				return pipeline.PhraseSettings{SourceLang: source, TargetLang: target, Template: a.settings.Chatbox.Template}
+				format := a.settings.Chatbox.Template
+				if name == "world" {
+					format = chatbox.DefaultTemplate
+				}
+				return pipeline.PhraseSettings{SourceLang: source, TargetLang: target, Template: format}
 			}
 			a.mu.Lock()
 			run.status = flowState{State: "running"}

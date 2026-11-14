@@ -96,6 +96,66 @@ func TestTemplateSettingsAPI(t *testing.T) {
 	}
 }
 
+func TestWorldFlowUsesDefaultTemplate(t *testing.T) {
+	a := testApp(t)
+	for id, artifact := range a.artifacts {
+		artifact.State = "installed"
+		a.artifacts[id] = artifact
+	}
+	a.translator = testTranslator(t)
+	a.settings.Chatbox.Template = "{{.Translation}}"
+	originals := []string{strings.Repeat("a", 80), strings.Repeat("b", 80), "c"}
+	i := 0
+	a.prepare = func(context.Context, string, config.Settings) (pipeline.Stages, error) {
+		return pipeline.Stages{
+			Source: recordingSource(func(_ context.Context, consume func([]float32) error) error {
+				for range originals {
+					samples := make([]float32, 512*24)
+					for i := range 512 * 8 {
+						samples[i] = 1
+					}
+					if err := consume(samples); err != nil {
+						return err
+					}
+				}
+				return nil
+			}),
+			Probability: func(_ context.Context, samples []float32) (float32, error) { return samples[0], nil },
+			Recognize:   func(context.Context, []float32) (string, error) { text := originals[i]; i++; return text, nil },
+			Translate:   func(_ context.Context, _, _, text string) (string, error) { return text[:1], nil },
+		}, nil
+	}
+	if err := a.changeFlow("world", "start"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return a.flows["world"].status.State == "stopped"
+	})
+	history, _ := a.events.after(0)
+	var ids []uint64
+	var merged []pipeline.Event
+	for _, e := range history {
+		switch e.Kind {
+		case "recognized":
+			ids = append(ids, e.PhraseID)
+		case "merged":
+			merged = append(merged, e.Event)
+		case "error", "page", "sent":
+			t.Fatalf("unexpected world event: %+v", e)
+		}
+	}
+	if len(ids) != 3 || len(merged) != 1 {
+		t.Fatalf("recognized = %v, merged = %+v", ids, merged)
+	}
+	source, target := a.settings.Flows.Languages("world")
+	want := pipeline.Event{PhraseID: ids[2], Into: ids[1], Kind: "merged", Original: originals[1] + " c", Text: "b c", SourceLang: source, TargetLang: target}
+	if merged[0] != want {
+		t.Fatalf("world merge = %+v, want %+v with the default template", merged[0], want)
+	}
+}
+
 func TestTemplateEditsAndErrorsKeepFlowRunning(t *testing.T) {
 	a := testApp(t)
 	for id, artifact := range a.artifacts {
