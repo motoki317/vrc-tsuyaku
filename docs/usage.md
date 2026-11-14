@@ -7,7 +7,7 @@
 | My voice | your microphone | in your VRChat chatbox, over OSC, and on the page |
 | Others' voices | everything that VRChat plays: voices, world music and video players | on the page |
 
-Each has its own spoken language and target language, which Settings → Languages and models changes.
+Each has its own spoken language and target language, which Settings → Languages and models changes. The button between the two languages swaps them. The app disables it when it does not offer the swapped pair: for example, "Detect" cannot be a target language.
 
 The app remembers each switch: a switch that you leave on starts again the next time you open the app. "Others' voices" needs VRChat to be running, so if you leave it on, start VRChat before you open the app.
 

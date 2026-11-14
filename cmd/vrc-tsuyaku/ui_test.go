@@ -19,15 +19,24 @@ import (
 )
 
 func TestGlossaryEditor(t *testing.T) {
+	runNodeTest(t, "glossary.cjs")
+}
+
+func TestLanguageSwap(t *testing.T) {
+	runNodeTest(t, "languages.cjs")
+}
+
+func runNodeTest(t *testing.T, name string) {
+	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("install Node.js to run the glossary editor tests")
+		t.Skip("install Node.js to run the UI tests")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, node, "--test", "testdata/glossary.cjs").CombinedOutput()
+	output, err := exec.CommandContext(ctx, node, "--test", filepath.Join("testdata", name)).CombinedOutput()
 	if err != nil {
-		t.Fatalf("glossary editor: %v\n%s", err, output)
+		t.Fatalf("%s: %v\n%s", name, err, output)
 	}
 	t.Log(string(output))
 }

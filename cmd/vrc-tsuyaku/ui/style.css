@@ -152,14 +152,17 @@ main[inert], .topbar [inert] { opacity: 0.5; }
    .plan-foot. Neither slot draws a box. */
 .plan-slot, .plan-foot { display: contents; }
 .plan-rows { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
-.plan-row { padding: 14px 16px; }
+.plan-row { padding: 14px 16px; container-type: inline-size; }
 .plan-row + .plan-row { border-top: 1px solid var(--line); }
 .plan-head { display: flex; align-items: center; gap: 10px; min-height: 40px; }
 .row-label { font-weight: 700; margin-right: auto; }
-.chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
-.chain > .select { flex: 1 1 11.5em; min-width: 0; }
-.chain .link { flex: 1 1 calc(9.5em + 28px); min-width: 0; display: flex; align-items: center; gap: 8px; }
-.chain .link .select { flex: 1; min-width: 0; }
+.chain { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 8px; }
+.chain > .select { width: 100%; min-width: 0; }
+.chain .swap { justify-self: center; }
+@container (max-width: 440px) {
+  .chain { grid-template-columns: minmax(0, 1fr); }
+  .chain .swap .icon { transform: rotate(90deg); }
+}
 option, optgroup { background: var(--surface); color: var(--fg); }
 .select, .input {
   min-height: 40px; padding: 7px 10px; border: 1px solid var(--outline); border-radius: 8px;

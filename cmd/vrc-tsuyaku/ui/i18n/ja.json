@@ -73,6 +73,7 @@
   "action.retry": "再試行",
   "action.retryDownload": "{name}のダウンロードを再試行",
   "action.retryFor": "{flow}のダウンロードを再試行",
+  "action.swapLanguages": "言語を入れ替え",
   "action.tryAgain": "再試行",
 
   "state.blockedBy": "{flow}：開始不可",

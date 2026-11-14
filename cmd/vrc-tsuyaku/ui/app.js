@@ -670,6 +670,21 @@ function commitOnSettle(field, commit, read = () => field.value) {
   // Arrow keys move focus between a group's radios, so only focus that leaves the field commits.
   field.addEventListener('focusout', event => { if (!field.contains(event.relatedTarget)) settle(); });
   field.settle = settle;
+  return () => { changed(); settle(); };
+}
+
+function swappedLanguages(languages, flow, {Spoken, Target}, settingsError) {
+  const spoken = languages.variants[Target] || Target;
+  if (settingsError || languages.spoken.some(language => language.code === Spoken && language.auto) ||
+      !languages.targets.includes(Spoken) ||
+      !languages.spoken.some(language => language.code === spoken && (flow === 'world' || !language.auto))) return null;
+  return {Spoken: spoken, Target: Spoken};
+}
+
+function renderSwap(flow) {
+  const row = plan.rows[flow];
+  row.swap.setAttribute('aria-label', t('action.swapLanguages'));
+  row.swap.disabled = !swappedLanguages(state.languages, flow, row.readPair(), state.settingsError);
 }
 
 function buildPlan() {
@@ -677,7 +692,12 @@ function buildPlan() {
     const control = new FlowControl(flow, 'plan');
     const spoken = h('select', {className: 'select'});
     const target = h('select', {className: 'select'});
-    const row = {control, spoken, target, label: h('span', {className: 'row-label'}), saveError: h('p', {className: 'error-text', hidden: true})};
+    const row = {control, spoken, target, label: h('span', {className: 'row-label'}),
+      saveError: h('p', {className: 'error-text', id: uid('language-error'), hidden: true})};
+    row.swap = h('button', {type: 'button', className: 'icon-button swap'}, icon('arrow-left-right'));
+    for (const input of [spoken, row.swap, target]) input.setAttribute('aria-describedby', row.saveError.id);
+    row.chain = h('div', {className: 'chain'}, spoken, row.swap, target);
+    row.readPair = () => ({Spoken: spoken.value, Target: target.value});
     // The spoken language selects the recognizer, so its group lists one choice, checked, in the same radio form as
     // the translator choices.
     row.recognizer = modelCard('recognizer-' + flow);
@@ -685,18 +705,22 @@ function buildPlan() {
     row.recognizerLabel = h('span', {className: 'model-label'});
     row.recognizerGroup = h('div', {className: 'options', role: 'radiogroup'}, row.recognizer.root);
     row.model = h('div', {className: 'model'}, row.recognizerLabel, row.recognizerGroup);
-    for (const [select, field] of [[spoken, 'Spoken'], [target, 'Target']]) {
-      commitOnSettle(select, value => saveSettings(s => { s.Flows[KEY[flow]][field] = value; })
-        .then(() => setError(row.saveError, null))
-        .catch(e => {
-          delete select.dataset.dirty;
-          setError(row.saveError, () => e.status ? errorText(e.code, e.message) : t('error.request'));
-        }));
-    }
+    const savePair = commitOnSettle(row.chain, pair => saveSettings(s => { Object.assign(s.Flows[KEY[flow]], pair); })
+      .then(() => setError(row.saveError, null))
+      .catch(e => setError(row.saveError, () => e.status ? errorText(e.code, e.message) : t('error.request'))), row.readPair);
+    for (const event of ['input', 'change']) row.chain.addEventListener(event, () => renderSwap(flow));
+    row.swap.addEventListener('click', () => {
+      const pair = swappedLanguages(state.languages, flow, row.readPair(), state.settingsError);
+      if (!pair) return;
+      spoken.value = pair.Spoken;
+      target.value = pair.Target;
+      savePair();
+      renderSwap(flow);
+    });
     plan.rows[flow] = row;
     return h('div', {className: 'plan-row', 'data-flow': flow},
       h('div', {className: 'plan-head'}, icon(ICON[flow], 'flow-icon'), row.label, control.button),
-      h('div', {className: 'chain'}, spoken, h('span', {className: 'link'}, icon('arrow-right', 'muted'), target)),
+      row.chain,
       control.error, row.saveError, row.model);
   });
   plan.all = h('button', {type: 'button', className: 'button download-all'},
@@ -752,6 +776,7 @@ function renderPlan() {
   if (plan.all.parentNode !== foot) foot.append(plan.all, plan.details);
   for (const flow of FLOWS) {
     const row = plan.rows[flow];
+    const pair = row.chain.dataset.dirty ? row.readPair() : settingsOf(flow);
     setText(row.label, flowLabel(flow));
     row.spoken.setAttribute('aria-label', t('label.spoken', {flow: flowLabel(flow)}));
     row.target.setAttribute('aria-label', t('label.target', {flow: flowLabel(flow)}));
@@ -759,13 +784,14 @@ function renderPlan() {
     const option = language => new Option(languageName(language.code), language.code);
     fillSelect(row.spoken, JSON.stringify([lang, [...first, ...rest].map(language => language.code)]),
       () => [...first.map(option), rest.length ? h('optgroup', {label: t('label.european')}, rest.map(option)) : null].filter(Boolean),
-      settingsOf(flow).Spoken);
+      pair.Spoken);
     const targets = state.languages.targets;
     const top = FIRST_TARGETS.filter(code => targets.includes(code));
     const others = targets.filter(code => !top.includes(code)).sort((a, b) => collator.compare(languageName(a), languageName(b)));
     fillSelect(row.target, JSON.stringify([lang, targets]),
       () => [...top.map(code => new Option(languageName(code), code)), h('hr'), ...others.map(code => new Option(languageName(code), code))],
-      settingsOf(flow).Target);
+      pair.Target);
+    renderSwap(flow);
     row.control.update();
     row.model.hidden = setup;
     setText(row.recognizerLabel, t('label.recognizer'));
@@ -1937,7 +1963,7 @@ async function replaceSettings() {
 // Screens and history
 
 function flushFields() {
-  for (const field of document.querySelectorAll('select, [role="radiogroup"], .level-control')) field.settle?.();
+  for (const field of document.querySelectorAll('select, [role="radiogroup"], .level-control, .chain')) field.settle?.();
   if ($('address').dataset.dirty) saveAddress();
   if ($('template').dataset.dirty) saveTemplate();
   saveGlossary();

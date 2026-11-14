@@ -73,6 +73,7 @@
   "action.retry": "Retry",
   "action.retryDownload": "Retry {name}",
   "action.retryFor": "Retry downloads for {flow}",
+  "action.swapLanguages": "Swap languages",
   "action.tryAgain": "Try again",
 
   "state.blockedBy": "{flow} cannot start",
