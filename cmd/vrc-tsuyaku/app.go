@@ -641,7 +641,9 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	}
 	stages.Source = a.source(name, s.Flows.Self.Microphone)
 	stages.Probability = silero.NewStream().Probability
-	stages.Recognize = recognizer.Transcribe
+	stages.Recognize = func(ctx context.Context, samples []float32) (string, error) {
+		return recognizer.Transcribe(ctx, samples, nil)
+	}
 	stages.Translate = a.translator.Translate
 	return stages, nil
 }

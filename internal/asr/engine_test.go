@@ -50,11 +50,11 @@ func testInferenceModels(t *testing.T) (*Engine, map[string]inferenceTestModel) 
 	}
 	return e, map[string]inferenceTestModel{
 		"Haas": {infer: func(ctx context.Context) error {
-			_, err := haas.Transcribe(ctx, []float32{0})
+			_, err := haas.Transcribe(ctx, []float32{0}, nil)
 			return err
 		}, release: releaseHaas},
 		"Parakeet": {infer: func(ctx context.Context) error {
-			_, err := parakeet.Transcribe(ctx, []float32{0})
+			_, err := parakeet.Transcribe(ctx, []float32{0}, nil)
 			return err
 		}, release: releaseParakeet},
 		"Silero": {infer: func(ctx context.Context) error {
@@ -251,7 +251,7 @@ func TestReleasedModelsRejectInference(t *testing.T) {
 	e := &Engine{ort: &ort.Engine{}}
 	defer e.Close()
 	for _, model := range []Recognizer{&Haas{engine: e}, &Parakeet{engine: e}} {
-		if _, err := model.Transcribe(t.Context(), []float32{0}); err == nil {
+		if _, err := model.Transcribe(t.Context(), []float32{0}, nil); err == nil {
 			t.Fatal("released recognizer accepted inference")
 		}
 	}
@@ -282,7 +282,7 @@ func TestLoadAllowsInferenceAndCloseWaits(t *testing.T) {
 	cancel()
 	result := make(chan error, 1)
 	go func() {
-		_, err := (&Haas{engine: e}).Transcribe(ctx, []float32{0})
+		_, err := (&Haas{engine: e}).Transcribe(ctx, []float32{0}, nil)
 		result <- err
 	}()
 	select {

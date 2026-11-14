@@ -106,7 +106,14 @@ Source: [NVIDIA/NeMo](https://github.com/NVIDIA/NeMo), nemo-toolkit 2.7.3. Licen
 They zero-pad clips under one second to one second, splitting padding across both sides with any extra sample on the right.
 No NeMo source code is copied.
 
-[License text](cmd/vrc-tsuyaku/notices/other/NeMo@2.7.3/LICENSE).
+`internal/asr/hints.go` and `internal/asr/speculation.go` reimplement NeMo's GPU-accelerated phrase-boosting tree (GPU-PB) for greedy transducer decoding.
+Source: [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech). License: Apache-2.0.
+The [GPU-PB paper](https://arxiv.org/abs/2508.07014) describes the boosting idea.
+The Go implementation matches folded spellings and applies a fixed bonus per token after the greedy blank gate.
+Rollback is VRC Tsuyaku's own addition: when a hint does not complete, decoding returns to the first speculative step and takes the unbiased token.
+It copies no upstream code.
+
+[License text for NVIDIA/NeMo and NVIDIA-NeMo/Speech](cmd/vrc-tsuyaku/notices/other/NeMo@2.7.3/LICENSE).
 
 ## flash-linear-attention
 

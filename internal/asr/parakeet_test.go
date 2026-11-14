@@ -88,12 +88,15 @@ func TestParakeetCPUParity(t *testing.T) {
 	defer e.Close()
 	p := loadTestParakeet(t, e, bundle)
 	for i, ref := range refs {
-		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID))
+		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
 		if err != nil {
 			t.Fatalf("%s: %v", ref.ID, err)
 		}
 		if got := onnxASRText(p.vocab, tokens); got != ref.Hyp {
 			t.Fatalf("%s: got %q, want %q, tokens %v", ref.ID, got, ref.Hyp, tokens)
+		}
+		if ref.Tokens != nil && !slices.Equal(tokens, ref.Tokens) {
+			t.Fatalf("%s: tokens %v, want %v", ref.ID, tokens, ref.Tokens)
 		}
 		if (i+1)%50 == 0 {
 			t.Logf("%d/%d identical", i+1, len(refs))
@@ -128,7 +131,7 @@ func TestParakeetV3CPUParity(t *testing.T) {
 		if ref.Lang == "" || len(ref.Tokens) == 0 {
 			t.Fatalf("%s: reference must include language and token IDs", ref.ID)
 		}
-		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID))
+		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
 		if err != nil {
 			t.Fatalf("%s: %v", ref.ID, err)
 		}
@@ -170,17 +173,17 @@ func TestParakeetLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := p.Transcribe(ctx, []float32{0}); !errors.Is(err, context.Canceled) {
+	if _, err := p.Transcribe(ctx, []float32{0}, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation = %v", err)
 	}
 	for _, audio := range [][]float32{nil, {float32(math.NaN())}, {float32(math.Inf(1))}} {
-		if _, err := p.Transcribe(t.Context(), audio); err == nil {
+		if _, err := p.Transcribe(t.Context(), audio, nil); err == nil {
 			t.Fatalf("accepted audio %v", audio)
 		}
 	}
 	audio := readTestWAV(t, wavDir, refs[0].ID)
 	before := slices.Clone(audio)
-	tokens, err := p.tokens(t.Context(), audio)
+	tokens, err := p.tokens(t.Context(), audio, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +194,7 @@ func TestParakeetLifecycle(t *testing.T) {
 	results := make(chan error, 2)
 	for range 2 {
 		go func() {
-			text, err := p.Transcribe(t.Context(), audio)
+			text, err := p.Transcribe(t.Context(), audio, nil)
 			if err == nil && text != want {
 				err = errors.New("concurrent transcription differs: " + text)
 			}
@@ -207,7 +210,7 @@ func TestParakeetLifecycle(t *testing.T) {
 		t.Fatal("transcription changed the input audio")
 	}
 	e.Close()
-	if _, err := p.Transcribe(t.Context(), audio); err == nil {
+	if _, err := p.Transcribe(t.Context(), audio, nil); err == nil {
 		t.Fatal("transcription succeeded after close")
 	}
 	if _, _, err := e.LoadParakeet(catalog.ParakeetBundle(catalog.Parakeet, bundle)); err == nil {
