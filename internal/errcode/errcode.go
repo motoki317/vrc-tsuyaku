@@ -32,11 +32,32 @@ const (
 	DownloadIntegrity Code = "download_integrity"
 	// DiskWrite asks the player to choose a data folder with free space and write permission, then retry.
 	DiskWrite Code = "disk_write"
+	// GlossaryLimit asks the player to remove glossary entries before adding more.
+	GlossaryLimit Code = "glossary_limit"
+	// GlossaryLanguage asks the player to choose a supported translation language.
+	GlossaryLanguage Code = "glossary_language"
+	// GlossarySameLanguage asks the player to choose different source and target languages.
+	GlossarySameLanguage Code = "glossary_same_language"
+	// GlossaryRequired asks the player to enter a word.
+	GlossaryRequired Code = "glossary_required"
+	// GlossaryControl asks the player to remove control characters and line breaks.
+	GlossaryControl Code = "glossary_control"
+	// GlossaryLength asks the player to shorten the word or reading.
+	GlossaryLength Code = "glossary_length"
+	// GlossaryReading asks the player to use kana for a Japanese word's reading.
+	GlossaryReading Code = "glossary_reading"
 )
 
+// Location uses a zero-based index in the validated list and the field's settings JSON name.
+type Location struct {
+	Index int    `json:"index"`
+	Field string `json:"field"`
+}
+
 type coded struct {
-	code Code
-	err  error
+	code     Code
+	err      error
+	location *Location
 }
 
 func (e *coded) Error() string { return e.err.Error() }
@@ -47,6 +68,21 @@ func With(code Code, err error) error {
 		return nil
 	}
 	return &coded{code: code, err: err}
+}
+
+func At(code Code, index int, field string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &coded{code: code, err: err, location: &Location{Index: index, Field: field}}
+}
+
+func LocationOf(err error) *Location {
+	var e *coded
+	if errors.As(err, &e) {
+		return e.location
+	}
+	return nil
 }
 
 func Of(err error) Code {

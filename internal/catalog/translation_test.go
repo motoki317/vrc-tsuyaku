@@ -148,6 +148,7 @@ func TestLanguageCopies(t *testing.T) {
 	before := Languages()
 	changed := Languages()
 	changed.Targets[0] = "changed"
+	changed.Variants["ja-easy"] = "changed"
 	changed.Spoken[0].Recognizer = "changed"
 	changed.CommonArtifacts[0] = "changed"
 	changed.Translators[0].Artifact = "changed"
@@ -155,5 +156,20 @@ func TestLanguageCopies(t *testing.T) {
 	required[0] = "changed"
 	if !reflect.DeepEqual(before, Languages()) {
 		t.Fatal("caller mutated language catalog")
+	}
+}
+
+func TestBaseLanguage(t *testing.T) {
+	for _, code := range Languages().Targets {
+		want := code
+		if code == "ja-easy" {
+			want = Japanese
+		}
+		if got := BaseLanguage(code); got != want {
+			t.Errorf("base of %q = %q, want %q", code, got, want)
+		}
+		if base := Languages().Variants[code]; base != "" && base != want {
+			t.Errorf("page variant %q = %q, want %q", code, base, want)
+		}
 	}
 }

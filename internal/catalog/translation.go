@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 )
 
@@ -59,6 +60,17 @@ var targetCodes = []string{
 	"uz", "vi", "zh-hans", "zh-hant",
 }
 
+var targetVariants = map[string]string{"ja-easy": Japanese}
+
+// BaseLanguage returns the language whose words a translation variant uses.
+// It returns code unchanged when code is not a variant.
+func BaseLanguage(code string) string {
+	if base, ok := targetVariants[code]; ok {
+		return base
+	}
+	return code
+}
+
 // SpokenLanguage maps a code to its recognizer. Auto marks a detection choice,
 // which only the world flow can use.
 type SpokenLanguage struct {
@@ -94,14 +106,18 @@ var commonArtifacts = []string{ONNXRuntime, Silero, LlamaCPP}
 
 // LanguageCatalog supplies the downloads for a language choice before it is saved.
 type LanguageCatalog struct {
-	Targets         []string         `json:"targets"`
-	Spoken          []SpokenLanguage `json:"spoken"`
-	CommonArtifacts []string         `json:"commonArtifacts"`
-	Translators     []Translator     `json:"translators"`
+	Targets         []string          `json:"targets"`
+	Variants        map[string]string `json:"variants"`
+	Spoken          []SpokenLanguage  `json:"spoken"`
+	CommonArtifacts []string          `json:"commonArtifacts"`
+	Translators     []Translator      `json:"translators"`
 }
 
 func Languages() LanguageCatalog {
-	return LanguageCatalog{slices.Clone(targetCodes), slices.Clone(spokenLanguages), slices.Clone(commonArtifacts), Translators()}
+	return LanguageCatalog{
+		Targets: slices.Clone(targetCodes), Variants: maps.Clone(targetVariants),
+		Spoken: slices.Clone(spokenLanguages), CommonArtifacts: slices.Clone(commonArtifacts), Translators: Translators(),
+	}
 }
 
 func IsTarget(code string) bool {
