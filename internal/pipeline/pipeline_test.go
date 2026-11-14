@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
+	"github.com/motoki317/vrc-tsuyaku/internal/vad"
 )
 
 type sourceFunc func(context.Context, func([]float32) error) error
@@ -591,5 +593,241 @@ func TestCancellationAndFinalWindow(t *testing.T) {
 	cancel()
 	if err := Run(ctx, s); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
+	}
+}
+
+func TestRunLevelMeterAndFlushedGain(t *testing.T) {
+	s := fakeStages()
+	input := make([]float32, 8*vad.WindowSamples+1)
+	for i := range input {
+		input[i] = 0.001
+	}
+	s.Source = sourceFunc(func(_ context.Context, consume func([]float32) error) error {
+		for start := 0; start < len(input); start += 317 {
+			if err := consume(input[start:min(start+317, len(input))]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	reads, scores := 0, 0
+	s.CutLevel = func() float64 { reads++; return -70 }
+	var levels []float64
+	s.Meter = func(db float64) { levels = append(levels, db) }
+	s.Probability = func(_ context.Context, window []float32) (float32, error) {
+		nearLevel(t, float64(window[0]), 0.01)
+		if len(levels) != scores+1 {
+			t.Error("meter readings lost window order", len(levels), scores)
+		}
+		scores++
+		// A scorer's use of its copy must not change the segmenter's captured audio.
+		clear(window)
+		return 1, nil
+	}
+	var speech []string
+	s.Emit = func(e Event) {
+		if e.Kind == "speech" {
+			speech = append(speech, e.Text)
+		}
+	}
+	recognized := 0
+	s.Recognize = func(_ context.Context, phrase []float32) (string, error) {
+		recognized++
+		if len(phrase) != 9*vad.WindowSamples {
+			t.Error("flushed phrase length", len(phrase))
+		}
+		power, _ := measureLevel(phrase)
+		nearLevel(t, powerDB(power), -25)
+		gain := math.Pow(10, -25.0/20) * math.Sqrt(float64(len(phrase))/float64(len(input)))
+		for i, sample := range phrase {
+			want := 0.0
+			if i < len(input) {
+				want = gain
+			}
+			nearLevel(t, float64(sample), want)
+		}
+		return "", nil
+	}
+	if err := Run(t.Context(), s); err != nil {
+		t.Fatal(err)
+	}
+	if reads != 9 || scores != 9 || len(levels) != 9 || recognized != 1 {
+		t.Fatal("window or phrase counts", reads, scores, len(levels), recognized)
+	}
+	for _, db := range levels[:8] {
+		nearLevel(t, db, -60)
+	}
+	nearLevel(t, levels[8], -60-10*math.Log10(vad.WindowSamples))
+	if !reflect.DeepEqual(speech, []string{"start", "end"}) {
+		t.Fatal("unbalanced flushed speech", speech)
+	}
+}
+
+func TestRunManualGateChanges(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		loudWindows, windows   int
+		initialCut, changedCut float64
+		wantSpeech             []string
+		wantEventWindows       []int
+		wantPhraseWindows      []int
+	}{
+		{"closed", 0, 48, -50, -50, nil, nil, nil},
+		{"lower cut", 0, 48, -50, -70, []string{"start", "end"}, []int{9, 48}, []int{48}},
+		{"raise cut", 0, 48, -70, -50, []string{"start", "end"}, []int{1, 24}, []int{24}},
+		{"speech stays above cut", 0, 48, -70, -65, []string{"start", "end"}, []int{1, 48}, []int{48}},
+		{"hold", 8, 48, -50, -50, []string{"start", "end"}, []int{1, 40}, []int{40}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := fakeStages()
+			s.Source = sourceFunc(func(_ context.Context, consume func([]float32) error) error {
+				for i := range tc.windows {
+					db := -60.0
+					if i < tc.loudWindows {
+						db = -40
+					}
+					if err := consume(levelWindow(db)); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			reads, scores := 0, 0
+			s.CutLevel = func() float64 {
+				reads++
+				if reads <= 8 {
+					return tc.initialCut
+				}
+				return tc.changedCut
+			}
+			s.Probability = func(context.Context, []float32) (float32, error) {
+				scores++
+				return 1, nil
+			}
+			var speech []string
+			var eventWindows, phraseWindows []int
+			s.Emit = func(e Event) {
+				if e.Kind == "speech" {
+					speech = append(speech, e.Text)
+					eventWindows = append(eventWindows, scores)
+				}
+			}
+			s.Recognize = func(_ context.Context, phrase []float32) (string, error) {
+				phraseWindows = append(phraseWindows, len(phrase)/vad.WindowSamples)
+				return "", nil
+			}
+			if err := Run(t.Context(), s); err != nil {
+				t.Fatal(err)
+			}
+			if reads != tc.windows || scores != tc.windows {
+				t.Fatal("gated windows still need a cut reading and a VAD score", reads, scores)
+			}
+			if !reflect.DeepEqual(speech, tc.wantSpeech) || !reflect.DeepEqual(eventWindows, tc.wantEventWindows) ||
+				!reflect.DeepEqual(phraseWindows, tc.wantPhraseWindows) {
+				t.Fatal("speech, event windows, phrase windows:", speech, eventWindows, phraseWindows)
+			}
+		})
+	}
+}
+
+func TestRunAutomaticGainBoundaries(t *testing.T) {
+	type block struct {
+		windows       int
+		db            float64
+		probability   float32
+		cut, wantGain float64
+	}
+	for _, tc := range []struct {
+		name                 string
+		blocks               []block
+		phrases, speechPairs int
+	}{
+		{"normal end", []block{
+			{8, -60, 1, 0, 20}, {16, math.Inf(-1), 0, 0, 20}, {8, -60, 1, 0, 20},
+		}, 2, 2},
+		{"dropped phrase clears learning", []block{
+			{7, -60, 1, 0, 20}, {16, math.Inf(-1), 0, 0, 20},
+			{8, -40, 1, 0, 20}, {16, math.Inf(-1), 0, 0, 20}, {8, -60, 1, 0, 0},
+		}, 2, 3},
+		{"forced cut clears learning", []block{
+			{469, -60, 1, 0, 20}, {8, -40, 1, 0, 20},
+			{16, math.Inf(-1), 0, 0, 20}, {8, -60, 1, 0, 10},
+		}, 3, 3},
+		{"manual mode keeps learning", []block{
+			{8, -60, 1, -70, 20}, {16, math.Inf(-1), 0, -70, 20}, {8, -60, 1, 0, 20},
+		}, 2, 2},
+		{"only active high probability windows teach", []block{
+			{8, -20, 0.4, 0, 20}, {8, -60, vad.StartProbability, 0, 20},
+			{8, -20, 0.4, 0, 20}, {16, math.Inf(-1), 0, 0, 20}, {8, -60, 1, 0, 20},
+		}, 2, 2},
+		{"search after idle", []block{
+			{8, -40, 1, 0, 20}, {16, math.Inf(-1), 0, 0, 20},
+			{311, -70, 0, 0, 0}, {8, -70, 1, 0, 20},
+		}, 2, 2},
+		{"search after consecutive hints", []block{
+			{8, -40, 1, 0, 20}, {16, math.Inf(-1), 0, 0, 20},
+			{7, -70, 0.1, 0, 0}, {1, -70, 0.099, 0, 0},
+			{8, -70, 0.1, 0, 0}, {8, -70, 1, 0, 20},
+		}, 2, 2},
+		{"closed manual gate gives no hints", []block{
+			{8, -40, 1, 0, 20}, {16, math.Inf(-1), 0, 0, 20},
+			{8, -70, 0.1, -50, 10}, {1, -70, 0, 0, 0},
+		}, 1, 1},
+		{"manual hints keep search state", []block{
+			{8, -40, 1, 0, 20}, {16, math.Inf(-1), 0, 0, 20},
+			{8, -70, 0.1, -80, 20}, {8, -70, 1, 0, 20},
+		}, 2, 2},
+		{"manual idle keeps search state", []block{
+			{8, -40, 1, 0, 20}, {16, math.Inf(-1), 0, 0, 20},
+			{311, -70, 0, -50, 10}, {8, -70, 1, 0, 20},
+		}, 2, 2},
+		{"manual gain overrides search", []block{
+			{8, -40, 1, -50, 10}, {16, math.Inf(-1), 0, -50, 10}, {8, -60, 1, 0, 0},
+		}, 2, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for range 2 {
+				s := fakeStages()
+				var current block
+				s.Source = sourceFunc(func(_ context.Context, consume func([]float32) error) error {
+					for _, b := range tc.blocks {
+						current = b
+						for range b.windows {
+							if err := consume(levelWindow(b.db)); err != nil {
+								return err
+							}
+						}
+					}
+					return nil
+				})
+				reads, scores := 0, 0
+				s.CutLevel = func() float64 { reads++; return current.cut }
+				s.Probability = func(_ context.Context, window []float32) (float32, error) {
+					scores++
+					power, _ := measureLevel(window)
+					nearLevel(t, powerDB(power), max(-240, current.db+current.wantGain))
+					return current.probability, nil
+				}
+				var speech []string
+				s.Emit = func(e Event) {
+					if e.Kind == "speech" {
+						speech = append(speech, e.Text)
+					}
+				}
+				recognized := 0
+				s.Recognize = func(context.Context, []float32) (string, error) { recognized++; return "", nil }
+				if err := Run(t.Context(), s); err != nil {
+					t.Fatal(err)
+				}
+				if reads != scores || recognized != tc.phrases || len(speech) != 2*tc.speechPairs {
+					t.Fatal("cut reads, scores, recognized, speech:", reads, scores, recognized, speech)
+				}
+				for i, event := range speech {
+					if event != []string{"start", "end"}[i%2] {
+						t.Fatal("unbalanced speech", speech)
+					}
+				}
+			}
+		})
 	}
 }

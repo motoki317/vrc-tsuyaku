@@ -16,13 +16,16 @@ import (
 // WindowSamples is the number of samples scored by one Silero inference call.
 const WindowSamples = 512
 
+// StartProbability is the probability at which a phrase starts.
+// It is exported so that pipeline's gain learning counts the same windows as speech.
+const StartProbability = 0.5
+
 const (
-	startProbability = 0.5
-	endProbability   = 0.35
-	preRollSamples   = 16000 * 300 / 1000
-	endSamples       = 16000 * 500 / 1000
-	minimumSamples   = 16000 * 250 / 1000
-	maximumSamples   = 16000 * 15
+	endProbability = 0.35
+	preRollSamples = 16000 * 300 / 1000
+	endSamples     = 16000 * 500 / 1000
+	minimumSamples = 16000 * 250 / 1000
+	maximumSamples = 16000 * 15
 )
 
 // Segmenter starts a phrase at probability >= 0.5, with up to 300 ms of pre-roll.
@@ -63,7 +66,7 @@ func (s *Segmenter) Push(audio []float32, probability float32) ([]float32, error
 			return nil, fmt.Errorf("audio sample %d is not finite", i)
 		}
 	}
-	if !s.active && probability >= startProbability {
+	if !s.active && probability >= StartProbability {
 		s.active = true
 		s.phrase = slices.Clone(s.history)
 		s.preRoll = len(s.history)
@@ -77,7 +80,7 @@ func (s *Segmenter) Push(audio []float32, probability float32) ([]float32, error
 		return nil, nil
 	}
 	s.phrase = append(s.phrase, audio...)
-	if probability >= startProbability {
+	if probability >= StartProbability {
 		s.silence = 0
 	} else if probability < endProbability || s.silence > 0 {
 		s.silence += WindowSamples
