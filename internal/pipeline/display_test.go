@@ -177,7 +177,7 @@ func TestDisplayBacklog(t *testing.T) {
 		s := fakeStages()
 		s.Source = fakeSource(20)
 		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
-		s.Translate = func(context.Context, string, string, string) (string, error) {
+		s.Translate = func(context.Context, string, PhraseSettings) (string, error) {
 			time.Sleep(8 * time.Second)
 			return strings.Repeat("a", 154), nil
 		}
@@ -236,7 +236,7 @@ func TestDisplayCancellationDuringReadingTime(t *testing.T) {
 		s := fakeStages()
 		s.Source = fakeSource(2)
 		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
-		s.Translate = func(context.Context, string, string, string) (string, error) { return strings.Repeat("a", 100), nil }
+		s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return strings.Repeat("a", 100), nil }
 		r := displayRecord{start: time.Now()}
 		s.Send = r.send
 		ctx, cancel := context.WithCancelCause(t.Context())
@@ -276,7 +276,7 @@ func TestDisplayStateEndsWithRun(t *testing.T) {
 			s := fakeStages()
 			s.Source = fakeSource(1)
 			s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
-			s.Translate = func(context.Context, string, string, string) (string, error) { return text, nil }
+			s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return text, nil }
 			s.Send = r.send
 			if err := Run(t.Context(), s); err != nil {
 				t.Fatal(err)

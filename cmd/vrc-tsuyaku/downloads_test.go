@@ -161,8 +161,8 @@ func TestLanguageChangeStartsAfterRecognizerDownload(t *testing.T) {
 				return pipeline.Stages{
 					Source:      recordingSource(func(ctx context.Context, _ func([]float32) error) error { <-ctx.Done(); return ctx.Err() }),
 					Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
-					Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
-					Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+					Recognize:   func(context.Context, []float32, pipeline.PhraseSettings) (string, error) { return "", nil },
+					Translate:   func(context.Context, string, pipeline.PhraseSettings) (string, error) { return "", nil },
 				}, nil
 			}
 			if err := a.changeFlow(flow, "start"); err != nil {

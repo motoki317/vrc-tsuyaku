@@ -46,11 +46,11 @@ func fakeStages() Stages {
 	return Stages{
 		Source:      fakeSource(3),
 		Probability: func(_ context.Context, x []float32) (float32, error) { return x[0], nil },
-		Recognize:   func(_ context.Context, _ []float32) (string, error) { return "text", nil },
+		Recognize:   func(_ context.Context, _ []float32, _ PhraseSettings) (string, error) { return "text", nil },
 		Settings: func() PhraseSettings {
 			return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: chatbox.DefaultTemplate}
 		},
-		Translate: func(_ context.Context, _, _, s string) (string, error) { return "translated " + s, nil },
+		Translate: func(_ context.Context, s string, _ PhraseSettings) (string, error) { return "translated " + s, nil },
 	}
 }
 
@@ -60,7 +60,7 @@ func TestPhraseOrder(t *testing.T) {
 		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Original}}:{{.Translation}}"} }
 		var got []string
 		i := 0
-		s.Recognize = func(_ context.Context, x []float32) (string, error) {
+		s.Recognize = func(_ context.Context, x []float32, _ PhraseSettings) (string, error) {
 			i++
 			if len(x) < 512*24 {
 				t.Error("phrase lost confirming silence")
@@ -94,7 +94,7 @@ func TestSlowSendBuffersTranslations(t *testing.T) {
 		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Original}}"} }
 		s.Source = fakeSource(10)
 		i := 0
-		s.Recognize = func(context.Context, []float32) (string, error) {
+		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
 			i++
 			return fmt.Sprint(i), nil
 		}
@@ -186,7 +186,7 @@ func TestSpeechEvents(t *testing.T) {
 				return consume(samples)
 			})
 			if tc.emptyText {
-				s.Recognize = func(context.Context, []float32) (string, error) { return "", nil }
+				s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { return "", nil }
 			}
 			var mu sync.Mutex
 			var speech []string
@@ -251,7 +251,7 @@ func TestPhraseIdentityAcrossRuns(t *testing.T) {
 		seen := make(map[uint64]bool)
 		for _, send := range []bool{true, false, true} {
 			s := fakeStages()
-			s.Translate = func(context.Context, string, string, string) (string, error) { return strings.Repeat("a", 145), nil }
+			s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return strings.Repeat("a", 145), nil }
 			s.Settings = func() PhraseSettings {
 				return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
 			}
@@ -311,7 +311,7 @@ func TestLanguageChangesApplyToNextPhrase(t *testing.T) {
 			return PhraseSettings{SourceLang: "ja", TargetLang: target.Load().(string), Template: chatbox.DefaultTemplate}
 		}
 		first := true
-		s.Recognize = func(context.Context, []float32) (string, error) {
+		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
 			if first {
 				first = false
 				target.Store("ja-easy")
@@ -319,7 +319,8 @@ func TestLanguageChangesApplyToNextPhrase(t *testing.T) {
 			return "text", nil
 		}
 		var translatedTargets []string
-		s.Translate = func(_ context.Context, source, target, phrase string) (string, error) {
+		s.Translate = func(_ context.Context, phrase string, settings PhraseSettings) (string, error) {
+			source, target := settings.SourceLang, settings.TargetLang
 			if source != "ja" || phrase != "text" {
 				t.Errorf("unexpected request: %s, %s", source, phrase)
 			}
@@ -379,7 +380,8 @@ func TestSpokenCodeSurvivesOmittedTranslationSource(t *testing.T) {
 				return PhraseSettings{SourceLang: tc.spoken, TargetLang: "ja", Template: chatbox.DefaultTemplate}
 			}
 			translated, sent := 0, 0
-			s.Translate = func(_ context.Context, source, target, phrase string) (string, error) {
+			s.Translate = func(_ context.Context, phrase string, settings PhraseSettings) (string, error) {
+				source, target := settings.SourceLang, settings.TargetLang
 				if source != tc.source || target != "ja" || phrase == "" {
 					t.Errorf("translation request: %q, %q, %q", source, target, phrase)
 				}
@@ -426,7 +428,7 @@ func TestSentWaitsForSuccessfulReturn(t *testing.T) {
 				s.Settings = func() PhraseSettings {
 					return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
 				}
-				s.Translate = func(context.Context, string, string, string) (string, error) { return strings.Repeat("a", 145), nil }
+				s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return strings.Repeat("a", 145), nil }
 				var returned atomic.Bool
 				var completed atomic.Int32
 				var pageCount atomic.Int32
@@ -476,7 +478,7 @@ func TestTemplateChangesApplyToNextPhrase(t *testing.T) {
 		s.Settings = func() PhraseSettings {
 			return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: format.Load().(string)}
 		}
-		s.Recognize = func(context.Context, []float32) (string, error) {
+		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
 			format.Store("{{.Translation}}")
 			return "original", nil
 		}
@@ -502,7 +504,7 @@ func TestTemplateErrorContinuesToNextPhrase(t *testing.T) {
 			return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: `{{if eq .Original "2"}}partial {{index .Translation 100}}{{else}}{{.Translation}}{{end}}`}
 		}
 		i := 0
-		s.Recognize = func(context.Context, []float32) (string, error) { i++; return fmt.Sprint(i), nil }
+		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { i++; return fmt.Sprint(i), nil }
 		s.Send = func(context.Context, string) error { return nil }
 		var mu sync.Mutex
 		phrases := make(map[uint64][]Event)
@@ -553,9 +555,9 @@ func TestFailureCancelsCapture(t *testing.T) {
 			case "vad":
 				s.Probability = func(context.Context, []float32) (float32, error) { return 0, want }
 			case "recognize":
-				s.Recognize = func(context.Context, []float32) (string, error) { return "", want }
+				s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { return "", want }
 			case "translate":
-				s.Translate = func(context.Context, string, string, string) (string, error) { return "", want }
+				s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return "", want }
 			case "send":
 				s.Send = func(context.Context, string) error { return want }
 			}
@@ -585,7 +587,7 @@ func TestCancellationAndFinalWindow(t *testing.T) {
 		}
 		return 1, nil
 	}
-	s.Recognize = func(context.Context, []float32) (string, error) { recognized = true; return "", nil }
+	s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { recognized = true; return "", nil }
 	if err := Run(context.Background(), s); err != nil || !padded || !recognized {
 		t.Fatalf("%v padded=%v recognized=%v", err, padded, recognized)
 	}
@@ -631,7 +633,7 @@ func TestRunLevelMeterAndFlushedGain(t *testing.T) {
 		}
 	}
 	recognized := 0
-	s.Recognize = func(_ context.Context, phrase []float32) (string, error) {
+	s.Recognize = func(_ context.Context, phrase []float32, _ PhraseSettings) (string, error) {
 		recognized++
 		if len(phrase) != 9*vad.WindowSamples {
 			t.Error("flushed phrase length", len(phrase))
@@ -712,7 +714,7 @@ func TestRunManualGateChanges(t *testing.T) {
 					eventWindows = append(eventWindows, scores)
 				}
 			}
-			s.Recognize = func(_ context.Context, phrase []float32) (string, error) {
+			s.Recognize = func(_ context.Context, phrase []float32, _ PhraseSettings) (string, error) {
 				phraseWindows = append(phraseWindows, len(phrase)/vad.WindowSamples)
 				return "", nil
 			}
@@ -815,7 +817,7 @@ func TestRunAutomaticGainBoundaries(t *testing.T) {
 					}
 				}
 				recognized := 0
-				s.Recognize = func(context.Context, []float32) (string, error) { recognized++; return "", nil }
+				s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { recognized++; return "", nil }
 				if err := Run(t.Context(), s); err != nil {
 					t.Fatal(err)
 				}

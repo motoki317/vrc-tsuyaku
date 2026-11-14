@@ -42,7 +42,7 @@ func (a *app) writeSettings(s config.Settings) error {
 	stamp := a.statSettings()
 	saved, err := config.Load(a.dir)
 	// An external writer can replace the file between Save and Stat.
-	if err == nil && reflect.DeepEqual(saved, s) && stamp == a.statSettings() {
+	if err == nil && reflect.DeepEqual(saved, cloneSettings(s)) && stamp == a.statSettings() {
 		a.settingsFile = stamp
 	}
 	a.mu.Lock()

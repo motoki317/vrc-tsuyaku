@@ -12,6 +12,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 	"github.com/motoki317/vrc-tsuyaku/internal/vad"
 )
 
@@ -42,6 +43,7 @@ type PhraseSettings struct {
 	SourceLang string
 	TargetLang string
 	Template   string
+	Terms      []glossary.Term
 }
 
 // Stages supplies the operations for one Run.
@@ -56,15 +58,17 @@ type PhraseSettings struct {
 // Meter is optional and must not block. Run calls it from one goroutine in capture order.
 // It receives each window's level before the gain. Digital silence is -240 dBFS.
 // Close is optional. The caller runs it after all stage calls finish.
+// Recognize receives the flow's terms in PhraseSettings.Terms.
+// Translate receives the terms used by Rewrite and the translator's source language.
 type Stages struct {
 	Close       func()
 	Source      audio.Source
 	CutLevel    func() float64
 	Meter       func(level float64)
 	Probability func(context.Context, []float32) (float32, error)
-	Recognize   func(context.Context, []float32) (string, error)
+	Recognize   func(context.Context, []float32, PhraseSettings) (string, error)
 	Settings    func() PhraseSettings
-	Translate   func(ctx context.Context, source, target, phrase string) (string, error)
+	Translate   func(context.Context, string, PhraseSettings) (string, error)
 	Send        func(ctx context.Context, page string) error
 	Emit        func(Event)
 }
@@ -90,8 +94,7 @@ func Run(ctx context.Context, s Stages) error {
 	type result struct {
 		id                    uint64
 		original, translation string
-		source, target        string
-		template              string
+		settings              PhraseSettings
 		queued                time.Time
 	}
 	texts := make(chan result)
@@ -209,17 +212,18 @@ func Run(ctx context.Context, s Stages) error {
 			}
 			settings := s.Settings()
 			source, target := settings.SourceLang, settings.TargetLang
-			text, err := s.Recognize(ctx, phrase)
+			text, err := s.Recognize(ctx, phrase, settings)
 			if err != nil {
 				return err
 			}
 			if text == "" {
 				continue
 			}
+			text, settings.Terms = glossary.Rewrite(text, settings.Terms)
 			id := nextPhraseID.Add(1)
 			emit(Event{PhraseID: id, Kind: "recognized", Text: text, SourceLang: source, TargetLang: target})
 			select {
-			case texts <- result{id: id, original: text, source: source, target: target, template: settings.Template}:
+			case texts <- result{id: id, original: text, settings: settings}:
 			case <-ctx.Done():
 				return context.Cause(ctx)
 			}
@@ -229,12 +233,14 @@ func Run(ctx context.Context, s Stages) error {
 	start(func() error {
 		defer close(translations)
 		for r := range texts {
-			translated, err := s.Translate(ctx, catalog.TranslatorSource(r.source), r.target, r.original)
+			settings := r.settings
+			settings.SourceLang = catalog.TranslatorSource(settings.SourceLang)
+			translated, err := s.Translate(ctx, r.original, settings)
 			if err != nil {
 				return err
 			}
 			r.translation = translated
-			emit(Event{PhraseID: r.id, Kind: "translated", Original: r.original, Text: translated, SourceLang: r.source, TargetLang: r.target})
+			emit(Event{PhraseID: r.id, Kind: "translated", Original: r.original, Text: translated, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
 			r.queued = time.Now()
 			select {
 			case translations <- r:
@@ -250,19 +256,19 @@ func Run(ctx context.Context, s Stages) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.source, TargetLang: r.target}
-			if err := display.show(ctx, r.id, r.template, message, r.queued); err != nil {
+			message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang}
+			if err := display.show(ctx, r.id, r.settings.Template, message, r.queued); err != nil {
 				if ctx.Err() != nil {
 					return context.Cause(ctx)
 				}
-				emit(Event{PhraseID: r.id, Kind: "error", Code: errcode.Of(err), Text: err.Error(), SourceLang: r.source, TargetLang: r.target})
+				emit(Event{PhraseID: r.id, Kind: "error", Code: errcode.Of(err), Text: err.Error(), SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
 				if errors.Is(err, chatbox.ErrTemplate) {
 					continue
 				}
 				return err
 			}
 			if s.Send != nil {
-				emit(Event{PhraseID: r.id, Kind: "sent", SourceLang: r.source, TargetLang: r.target})
+				emit(Event{PhraseID: r.id, Kind: "sent", SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
 			}
 		}
 		return nil

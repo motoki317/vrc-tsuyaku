@@ -16,7 +16,13 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
+
+// MaxSettingsJSONBytes reserves 64 KiB for other settings and 256 bytes per entry for JSON keys, language codes and separators.
+// The cap applies before validation, so language codes can contain JSON escapes.
+// The source word, target word and reading can each use 12 bytes per code point as a JSON surrogate pair.
+const MaxSettingsJSONBytes = 64<<10 + glossary.MaxEntries*(3*glossary.MaxRunes*12+256)
 
 // ErrInvalidSettings marks validation failures returned by Save.
 var ErrInvalidSettings = errors.New("invalid settings")
@@ -27,6 +33,7 @@ type Settings struct {
 	Translator       string            `yaml:"translator"`
 	Flows            Flows             `yaml:"flows"`
 	Chatbox          Chatbox           `yaml:"chatbox"`
+	Glossary         []glossary.Entry  `yaml:"glossary,omitempty"`
 	LicensesAccepted map[string]string `yaml:"licenses_accepted"`
 }
 
@@ -82,6 +89,7 @@ func Defaults() Settings {
 			World: WorldFlow{Spoken: catalog.English, Target: catalog.Japanese},
 		},
 		Chatbox:          Chatbox{Address: "127.0.0.1:9000", Template: chatbox.DefaultTemplate},
+		Glossary:         []glossary.Entry{},
 		LicensesAccepted: make(map[string]string),
 	}
 }
@@ -112,6 +120,9 @@ func (s Settings) Validate() error {
 	}
 	if err := chatbox.ValidateTemplate(s.Chatbox.Template); err != nil {
 		return fmt.Errorf("chatbox.template: %w", err)
+	}
+	if err := glossary.Validate(s.Glossary); err != nil {
+		return err
 	}
 	for key, value := range s.LicensesAccepted {
 		if key == "" {
@@ -157,6 +168,9 @@ func Load(dataDir string) (Settings, error) {
 	}
 	if s.LicensesAccepted == nil {
 		s.LicensesAccepted = make(map[string]string)
+	}
+	if s.Glossary == nil {
+		s.Glossary = []glossary.Entry{}
 	}
 	if err = s.Validate(); err != nil {
 		return s, settingsError(dataDir, err)

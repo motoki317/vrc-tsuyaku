@@ -121,8 +121,12 @@ func TestWorldFlowUsesDefaultTemplate(t *testing.T) {
 				return nil
 			}),
 			Probability: func(_ context.Context, samples []float32) (float32, error) { return samples[0], nil },
-			Recognize:   func(context.Context, []float32) (string, error) { text := originals[i]; i++; return text, nil },
-			Translate:   func(_ context.Context, _, _, text string) (string, error) { return text[:1], nil },
+			Recognize: func(context.Context, []float32, pipeline.PhraseSettings) (string, error) {
+				text := originals[i]
+				i++
+				return text, nil
+			},
+			Translate: func(_ context.Context, text string, _ pipeline.PhraseSettings) (string, error) { return text[:1], nil },
 		}, nil
 	}
 	if err := a.changeFlow("world", "start"); err != nil {
@@ -207,11 +211,11 @@ func TestTemplateEditsAndErrorsKeepFlowRunning(t *testing.T) {
 				}
 			}),
 			Probability: func(_ context.Context, samples []float32) (float32, error) { return samples[0], nil },
-			Recognize: func(context.Context, []float32) (string, error) {
+			Recognize: func(context.Context, []float32, pipeline.PhraseSettings) (string, error) {
 				i++
 				return string(rune('0' + i)), nil
 			},
-			Translate: func(ctx context.Context, _, _, phrase string) (string, error) {
+			Translate: func(ctx context.Context, phrase string, _ pipeline.PhraseSettings) (string, error) {
 				if phrase == "2" {
 					close(translating)
 					select {

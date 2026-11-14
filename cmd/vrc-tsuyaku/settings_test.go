@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 )
 
@@ -23,13 +24,16 @@ func pollSettings(a *app) {
 }
 
 func TestExternalSettingsApplyLikePageSave(t *testing.T) {
-	for _, change := range []string{"microphone", "address", "spoken", "target", "template", "ui"} {
+	for _, change := range []string{"microphone", "address", "spoken", "target", "template", "ui", "glossary", "glossary-empty", "glossary-missing"} {
 		t.Run(change, func(t *testing.T) {
 			a := testApp(t)
 			a.settings.Flows.Self.Enabled, a.settings.Flows.World.Enabled = true, true
 			a.settings.Flows.Self.Microphone = "synthetic-source"
 			a.settings.Chatbox.Address = "127.0.0.1:47123"
 			a.settings.LicensesAccepted["example"] = "2026-11-09T01:02:03Z"
+			if change == "glossary-empty" || change == "glossary-missing" {
+				a.settings.Glossary = []glossary.Entry{{SourceLang: "ja", Source: "マヌカ", TargetLang: "en", Target: "Manuka"}}
+			}
 			for id, state := range a.artifacts {
 				state.State = "installed"
 				a.artifacts[id] = state
@@ -62,6 +66,12 @@ func TestExternalSettingsApplyLikePageSave(t *testing.T) {
 				s.Chatbox.Template = "{{.Translation}}"
 			case "ui":
 				s.UI.Language = "ja"
+			case "glossary":
+				s.Glossary = []glossary.Entry{{SourceLang: "ja", Source: "桔梗", TargetLang: "en", Target: "Kikyo", Reading: "ききょう"}}
+			case "glossary-empty":
+				s.Glossary = []glossary.Entry{}
+			case "glossary-missing":
+				s.Glossary = nil
 			}
 			if err := config.Save(a.dir, s); err != nil {
 				t.Fatal(err)
@@ -84,7 +94,7 @@ func TestExternalSettingsApplyLikePageSave(t *testing.T) {
 			a.mu.Unlock()
 			s.Flows.Self.Enabled, s.Flows.World.Enabled = true, true
 			s.LicensesAccepted["example"] = "2026-11-09T01:02:03Z"
-			if !reflect.DeepEqual(got, s) {
+			if !reflect.DeepEqual(got, cloneSettings(s)) {
 				t.Fatalf("reload differs from page save: %+v, want %+v", got, s)
 			}
 			if after, err := os.ReadFile(filepath.Join(a.dir, "settings.yaml")); err != nil || string(after) != string(before) {
@@ -95,6 +105,56 @@ func TestExternalSettingsApplyLikePageSave(t *testing.T) {
 			afterEvents, _ := a.events.after(0)
 			if len(afterEvents) != len(beforeEvents) {
 				t.Fatal("unchanged file reloaded twice")
+			}
+		})
+	}
+}
+
+func TestGlossarySettingsClone(t *testing.T) {
+	s := config.Defaults()
+	s.Glossary = []glossary.Entry{{SourceLang: "ja", Source: "桔梗", TargetLang: "en", Target: "Kikyo", Reading: "ききょう"}}
+	cloned := cloneSettings(s)
+	cloned.Glossary[0].Reading = "キキョウ"
+	if s.Glossary[0].Reading != "ききょう" {
+		t.Fatal("settings clone shares the glossary's backing array")
+	}
+	for _, entries := range [][]glossary.Entry{nil, {}} {
+		s.Glossary = entries
+		if cloned := cloneSettings(s); cloned.Glossary == nil || !reflect.DeepEqual(cloned, config.Defaults()) {
+			t.Fatal("settings clone did not normalize an empty glossary", cloned.Glossary)
+		}
+	}
+}
+
+func TestEmptyGlossaryPageSave(t *testing.T) {
+	for _, glossaryJSON := range []string{"", `,"Glossary":[]`, `,"Glossary":null`} {
+		t.Run(glossaryJSON, func(t *testing.T) {
+			a := testApp(t)
+			s := cloneSettings(a.settings)
+			s.Glossary = []glossary.Entry{{SourceLang: "ja", Source: "マヌカ", TargetLang: "en", Target: "Manuka"}}
+			if err := a.saveSettings(s); err != nil {
+				t.Fatal(err)
+			}
+			body, err := json.Marshal(config.Defaults())
+			if err != nil {
+				t.Fatal(err)
+			}
+			bodyText := strings.Replace(string(body), `,"Glossary":[]`, glossaryJSON, 1)
+			w := request(a, "PUT", "/api/settings", bodyText)
+			if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"Glossary":[]`) {
+				t.Fatal("empty glossary not returned as an array", w.Code, w.Body.String())
+			}
+			if a.settingsFile != a.statSettings() {
+				t.Fatal("normalization made an app write look like an external edit")
+			}
+			before, _ := a.events.after(0)
+			pollSettings(a)
+			after, _ := a.events.after(0)
+			if len(after) != len(before) {
+				t.Fatal("empty glossary caused a false reload")
+			}
+			if saved, err := config.Load(a.dir); err != nil || !reflect.DeepEqual(saved, config.Defaults()) {
+				t.Fatal("empty glossary differed after reload", saved.Glossary, err)
 			}
 		})
 	}
