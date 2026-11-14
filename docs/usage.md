@@ -30,6 +30,17 @@ Settings → Chatbox picks what "My voice" writes to your chatbox. The default, 
 
 VRChat shows at most 144 characters and 9 lines at a time, so the app splits a longer message into pages and sends them in turn.
 
+A new message replaces the one in your chatbox. So the app leaves each message, or each page of a long one, up long enough to read: about one second for every 8 characters, and at least 1.5 seconds. If you say something more during that time, and it fits in the chatbox together with the message on screen, the app adds it to that message, and shows the two as one bubble in its own window. For example, "うん。" right after "今日は寒いですね。" gives:
+
+```text
+[ja] 今日は寒いですね。 うん。
+[en] It's cold today. Yeah.
+```
+
+What does not fit waits for its turn. When you keep talking, a message waits about 17 seconds at most after the app translated it. After that the app sends it to the chatbox, even if the message there had less than its reading time.
+
+"Others' voices" joins phrases in the same way. If a phrase arrives during the reading time of the bubble before it, and the two are short enough for one chatbox message, the app adds the phrase to that bubble. Nothing waits there.
+
 ## Memory
 
 Every model runs on the CPU, alongside VRChat. Settings → Languages and models shows how much RAM each model needs, and an estimate for both switches on. When you turn a switch off or change its spoken language, the app frees the speech recognition model that no switch uses any more. The translation model stays in memory until you exit the app.
