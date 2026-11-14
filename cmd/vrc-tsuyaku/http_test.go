@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +13,10 @@ import (
 	"testing"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/download"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
 
@@ -191,7 +195,7 @@ func TestFetchSiteCheck(t *testing.T) {
 
 func TestHeaderChecksBeforeEveryRoute(t *testing.T) {
 	a := testApp(t)
-	for _, path := range []string{"/", "/app.js", "/notices.txt", "/api/state", "/api/events", "/api/settings", "/api/microphones", "/api/downloads/unknown", "/api/flows/self/start", "/api/chatbox/preview", "/api/open/data", "/api/exit", "/api/unknown"} {
+	for _, path := range []string{"/", "/app.js", "/notices.txt", "/api/state", "/api/levels", "/api/events", "/api/settings", "/api/microphones", "/api/downloads/unknown", "/api/flows/self/start", "/api/chatbox/preview", "/api/open/data", "/api/exit", "/api/unknown"} {
 		for _, header := range []string{"Host", "Origin", "Sec-Fetch-Site"} {
 			r := localRequest("POST", path, "")
 			switch header {
@@ -210,6 +214,105 @@ func TestHeaderChecksBeforeEveryRoute(t *testing.T) {
 			}
 		}
 	}
+}
+
+func wantLevels(t *testing.T, a *app, want map[string]float64) {
+	t.Helper()
+	w := request(a, "GET", "/api/levels", "")
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "application/json" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	checkSecurityHeaders(t, w)
+	var got map[string]float64
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || got == nil || len(got) != len(want) {
+		t.Fatal("level entries", got, want, err)
+	}
+	for name, expected := range want {
+		if level, ok := got[name]; !ok || math.Abs(level-expected) > 1e-5 {
+			t.Fatal("level", name, got, want)
+		}
+	}
+}
+
+func TestLevelsLifecycle(t *testing.T) {
+	a, inputs := levelTestApp(t)
+	wantLevels(t, a, map[string]float64{})
+	for _, name := range []string{"self", "world"} {
+		if err := a.changeFlow(name, "start"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return a.flows["self"].status.State == "running" && a.flows["world"].status.State == "running"
+	})
+	wantLevels(t, a, map[string]float64{})
+	before, _ := a.events.after(0)
+	inputs["self"].feed(t, 0.1)
+	wantLevels(t, a, map[string]float64{"self": -20})
+	inputs["world"].feed(t, 0)
+	wantLevels(t, a, map[string]float64{"self": -20, "world": -240})
+	inputs["world"].feed(t, 0.01)
+	for _, want := range []float64{-21.5, -23, -24.5} {
+		inputs["self"].feed(t, 0.001)
+		for range 2 {
+			wantLevels(t, a, map[string]float64{"self": want, "world": -40})
+		}
+	}
+	inputs["self"].feed(t, 1)
+	wantLevels(t, a, map[string]float64{"self": 0, "world": -40})
+	inputs["self"].feed(t, 0)
+	wantLevels(t, a, map[string]float64{"self": -1.5, "world": -40})
+	after, _ := a.events.after(0)
+	if len(after) != len(before) {
+		t.Fatal("level readings entered the event stream", after[len(before):])
+	}
+	if err := a.changeFlow("self", "stop"); err != nil {
+		t.Fatal(err)
+	}
+	wantLevels(t, a, map[string]float64{"world": -40})
+	for _, end := range []error{nil, errors.New("synthetic capture failure")} {
+		if err := a.changeFlow("self", "start"); err != nil {
+			t.Fatal(err)
+		}
+		wantLevels(t, a, map[string]float64{"world": -40})
+		inputs["self"].feed(t, 0.001)
+		wantLevels(t, a, map[string]float64{"self": -60, "world": -40})
+		a.mu.Lock()
+		run := a.flows["self"]
+		a.mu.Unlock()
+		inputs["self"].end <- end
+		<-run.done
+		wantLevels(t, a, map[string]float64{"world": -40})
+	}
+	if err := a.changeFlow("world", "stop"); err != nil {
+		t.Fatal(err)
+	}
+	wantLevels(t, a, map[string]float64{})
+}
+
+func TestLevelsDisappearBeforeModelRelease(t *testing.T) {
+	a, inputs := levelTestApp(t)
+	prepare := a.prepare
+	closing, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	a.prepare = func(ctx context.Context, name string, s config.Settings) (pipeline.Stages, error) {
+		stages, err := prepare(ctx, name, s)
+		stages.Close = func() {
+			close(closing)
+			<-release
+		}
+		return stages, err
+	}
+	if err := a.changeFlow("self", "start"); err != nil {
+		t.Fatal(err)
+	}
+	inputs["self"].feed(t, 0.01)
+	wantLevels(t, a, map[string]float64{"self": -40})
+	inputs["self"].end <- nil
+	<-closing
+	wantLevels(t, a, map[string]float64{})
 }
 
 func checkSecurityHeaders(t *testing.T, w *httptest.ResponseRecorder) {

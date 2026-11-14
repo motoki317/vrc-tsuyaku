@@ -32,6 +32,7 @@ func (a *app) handler() http.Handler {
 		a.cancel()
 	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.snapshot()) })
+	mux.HandleFunc("GET /api/levels", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.levels()) })
 	mux.HandleFunc("GET /api/microphones", func(w http.ResponseWriter, r *http.Request) {
 		devices, err := audio.Microphones(r.Context())
 		if err != nil {

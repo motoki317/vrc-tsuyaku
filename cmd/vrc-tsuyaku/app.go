@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/asr"
@@ -49,6 +51,20 @@ type flowRun struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	status flowState
+	// Holds the bits of a float64 level in dBFS.
+	// NaN means no reading because the zero value reads as 0 dBFS.
+	level atomic.Uint64
+}
+
+// At 1.5 dB per 32 ms window, a sound between two of the page's 100 ms polls
+// reads at most about 5 dB low.
+const levelFallDB = 1.5
+
+func (r *flowRun) meter(level float64) {
+	if previous := math.Float64frombits(r.level.Load()); !math.IsNaN(previous) {
+		level = max(level, previous-levelFallDB)
+	}
+	r.level.Store(math.Float64bits(level))
 }
 
 type app struct {
@@ -127,7 +143,9 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		a.artifacts[artifact.ID] = state
 	}
 	for _, name := range []string{"self", "world"} {
-		a.flows[name] = &flowRun{status: flowState{State: "stopped"}}
+		run := &flowRun{status: flowState{State: "stopped"}}
+		run.level.Store(math.Float64bits(math.NaN()))
+		a.flows[name] = run
 	}
 	return a, nil
 }
@@ -179,6 +197,18 @@ func (a *app) snapshot() any {
 	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
 }
 
+func (a *app) levels() map[string]float64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	levels := make(map[string]float64)
+	for name, run := range a.flows {
+		if level := math.Float64frombits(run.level.Load()); !math.IsNaN(level) {
+			levels[name] = level
+		}
+	}
+	return levels
+}
+
 func (a *app) startEnabled() {
 	a.operations.Lock()
 	defer a.operations.Unlock()
@@ -211,6 +241,7 @@ func (a *app) start(name string, s config.Settings) error {
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	run := &flowRun{cancel: cancel, done: make(chan struct{}), status: flowState{State: "starting"}}
+	run.level.Store(math.Float64bits(math.NaN()))
 	a.flows[name] = run
 	a.mu.Unlock()
 	a.emit(name, "state", "starting")
@@ -229,12 +260,19 @@ func (a *app) start(name string, s config.Settings) error {
 				}
 				return pipeline.PhraseSettings{SourceLang: source, TargetLang: target, Template: format}
 			}
+			stages.CutLevel = func() float64 {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				return a.settings.Flows.CutLevel(name)
+			}
+			stages.Meter = run.meter
 			a.mu.Lock()
 			run.status = flowState{State: "running"}
 			a.mu.Unlock()
 			a.emit(name, "state", "running")
 			stages.Emit = func(e pipeline.Event) { a.events.publish(name, e) }
 			err = a.runStages(ctx, stages)
+			run.level.Store(math.Float64bits(math.NaN()))
 		}
 		if stages.Close != nil {
 			stages.Close()
