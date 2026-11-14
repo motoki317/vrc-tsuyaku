@@ -148,8 +148,7 @@ main[inert], .topbar [inert] { opacity: 0.5; }
 
 /* Language plan */
 .plan { display: flex; flex-direction: column; gap: 12px; }
-/* The one plan moves between Setup and Settings: its rows go in .plan-slot, and Download all and the list in
-   .plan-foot. Neither slot draws a box. */
+/* The flow rows and Download all move between Setup and Settings. Neither slot draws a box. */
 .plan-slot, .plan-foot { display: contents; }
 .plan-rows { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
 .plan-row { padding: 14px 16px; container-type: inline-size; }
@@ -192,8 +191,6 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .plan-downloads summary::-webkit-details-marker { display: none; }
 .plan-downloads .chevron { transform: rotate(-90deg); transition: transform 0.15s; }
 .plan-downloads[open] .chevron { transform: none; }
-/* The arrow ends the label, so the padding mirrors .compact's. */
-.plan-downloads .more { margin-top: 8px; padding: 4px 10px 4px 14px; }
 
 /* Flow control */
 .fc {
@@ -258,7 +255,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .download-list, .license-list { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .download-list { list-style: none; margin: 0; padding: 4px 12px; }
 .download-list, .download-groups { display: grid; grid-template-columns: minmax(24px, auto) minmax(0, 1fr) auto auto minmax(36px, auto); column-gap: 12px; }
-/* Settings → Downloads splits its rows into groups that share one set of columns. The lists' padding and border
+/* Settings splits its downloads into groups that share one set of columns. The lists' padding and border
    take room from the edge columns, so those grow with their content. */
 .download-group, .download-groups .download-list { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
 .download-group { margin-top: 20px; }
@@ -450,8 +447,8 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 }
 .field-state { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.9em; }
 .field-state.warning { color: var(--warning); }
-.audio-group { margin-bottom: 32px; }
-.audio-group h3 { margin: 0 0 16px; font-size: 1.05em; }
+.settings-group { margin-bottom: 32px; }
+.settings-group > h3 { margin: 0 0 16px; font-size: 1.05em; }
 .level-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .automatic { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
 .automatic input { width: 18px; height: 18px; margin: 0; accent-color: var(--self); }
@@ -509,11 +506,10 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 /* Languages and models */
 .model { margin-top: 12px; }
 .model-label { display: block; margin: 0 0 6px; color: var(--muted); font-size: 0.9em; font-weight: 600; }
-.translator { margin-top: 12px; }
 .shared { display: inline-flex; gap: 4px; color: var(--muted); }
 .shared .icon { width: 18px; height: 18px; }
 .memory-total {
-  display: flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 12px 14px;
+  display: flex; align-items: center; gap: 8px; margin: 0 0 32px; padding: 12px 14px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-weight: 700;
 }
 .memory-total .icon { flex: none; }

@@ -54,4 +54,4 @@ What does not fit waits for its turn. When you keep talking, a message waits abo
 
 ## Memory
 
-Every model runs on the CPU, alongside VRChat. Settings → Languages and models shows how much RAM each model needs, and an estimate for both switches on. When you turn a switch off or change its spoken language, the app frees the speech recognition model that no switch uses any more. The translation model stays in memory until you exit the app.
+Every model runs on the CPU, alongside VRChat. Settings → Languages and models shows how much RAM each model needs. "Estimated memory use" at its top is the total with both switches on. When you turn a switch off or change its spoken language, the app frees the speech recognition model that no switch uses any more. The translation model stays in memory until you pick the other one or exit the app.

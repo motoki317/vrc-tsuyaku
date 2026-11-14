@@ -640,7 +640,7 @@ const usedByHead = () => h('li', {className: 'download download-head', 'aria-hid
 // Language plan: one instance, shown in Setup and in Settings → Languages and models. Settings adds each flow's
 // recognizer.
 
-const plan = {rows: {}, cache: new Map(), settingsCache: new Map(), head: usedByHead()};
+const plan = {rows: {}, cache: new Map()};
 
 function commitOnSettle(field, commit, read = () => field.value) {
   let timer = 0, revision = 0;
@@ -733,13 +733,9 @@ function buildPlan() {
   });
   plan.summaryLabel = h('span');
   plan.list = h('ul', {className: 'download-list'});
-  plan.more = h('button', {type: 'button', className: 'button secondary compact more'}, plan.moreLabel = h('span'), icon('arrow-right'));
-  plan.more.addEventListener('click', () => {
-    show('settings', 'downloads');
-    $('sub-downloads').querySelector('.sub-title').focus();
-  });
   plan.details = h('details', {className: 'plan-downloads'},
-    h('summary', {}, icon('chevron-down', 'chevron'), plan.summaryLabel), plan.list, plan.more);
+    h('summary', {}, icon('chevron-down', 'chevron'), plan.summaryLabel), plan.list);
+  $('screen-setup').querySelector('.plan-foot').append(plan.details);
   plan.rowsRoot = h('div', {className: 'plan-rows'}, rows);
 }
 
@@ -773,7 +769,7 @@ function renderPlan() {
   const parent = setup ? $('screen-setup') : $('sub-models');
   const slot = parent.querySelector('.plan-slot'), foot = parent.querySelector('.plan-foot');
   if (plan.rowsRoot.parentNode !== slot) slot.append(plan.rowsRoot);
-  if (plan.all.parentNode !== foot) foot.append(plan.all, plan.details);
+  if (plan.all.parentNode !== foot) foot.prepend(plan.all);
   for (const flow of FLOWS) {
     const row = plan.rows[flow];
     const pair = row.chain.dataset.dirty ? row.readPair() : settingsOf(flow);
@@ -800,18 +796,9 @@ function renderPlan() {
   }
   setText($('memory-total'), formatSize(memoryEstimate()));
   renderDownloadAll();
-  // The list holds what Download all fetches. Settings adds any download in progress, so its progress stays in view
-  // after a language change, and leaves every other download to Settings → Downloads.
-  const needed = neededIds();
-  const ids = byName(setup ? needed : Object.keys(state.artifacts).filter(id => needed.includes(id) || inProgress(id)));
+  const ids = byName(neededIds());
   setText(plan.summaryLabel, t('label.downloads'));
-  plan.more.hidden = setup;
-  if (setup) renderList(plan.list, plan.cache, ids, 'plan');
-  else {
-    setText(plan.head.firstChild, t('label.usedBy'));
-    setText(plan.moreLabel, t('action.allDownloads'));
-    renderList(plan.list, plan.settingsCache, ids, 'settings', plan.head);
-  }
+  renderList(plan.list, plan.cache, ids, 'plan');
   // A failure, or a refused request, opens the section that holds it, once per failure.
   for (const id of ids) {
     if (artifactKind(state.artifacts[id]) !== 'failed' && !requestError(id)) knownFailures.delete(id);
@@ -847,7 +834,7 @@ function renderDownloadAll() {
   const view = downloadAllView(), button = plan.all;
   if (view.kind !== 'running') rate.total = 0;
   if (view.kind === 'none') {
-    if (document.activeElement === button) (screen === 'setup' ? $('next') : plan.details.querySelector('summary')).focus();
+    if (document.activeElement === button) (screen === 'setup' ? $('next') : $('model-downloads-label')).focus();
     button.hidden = true;
     return;
   }
@@ -1812,7 +1799,7 @@ function renderChatbox() {
   renderPresets();
 }
 
-// Settings: Downloads. The groups split the catalog: what the current selection needs, what else is installed, and
+// The groups split the catalog: what the current selection needs, what else is installed, and
 // the rest. A row that changes group keeps its element, so it can keep focus (see render).
 
 const downloads = {cache: new Map(), head: usedByHead()};
@@ -1862,9 +1849,6 @@ async function confirmDelete() {
   setDisabled(button, true);
   try {
     apply(await (await api('downloads/' + dialog.target, {method: 'DELETE'})).json());
-    // A selection change on another page can take the row out of Languages and models' list, so focus goes to the
-    // list's summary.
-    if (!dialog.opener.isConnected) dialog.opener = plan.details.querySelector('summary');
     dialog.close();
   } catch (e) {
     setError($('delete-error'), () => e.status === 409 ? t('error.inUse') : errorText(e.code, e.message));
@@ -2023,7 +2007,7 @@ function renderFrame() {
   $('screen-setup').hidden = screen !== 'setup' || settingsError;
   $('screen-translation').hidden = screen !== 'translation' || settingsError;
   $('screen-settings').hidden = screen !== 'settings' || settingsError;
-  for (const name of ['models', 'downloads', 'audio', 'glossary', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
+  for (const name of ['models', 'audio', 'glossary', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
   $('screen-settings-error').hidden = !settingsError;
   setText($('settings-error-text'), state.settingsError || '');
   $('switchbar').hidden = !(settingsError || screen === 'translation');
