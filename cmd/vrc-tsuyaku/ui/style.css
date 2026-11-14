@@ -425,9 +425,6 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .sub { grid-area: sub; min-width: 0; }
 .sub-title { margin: 6px 0 16px; font-size: 1.25em; }
 .sub-title:focus { outline: none; }
-/* A sub-screen that sets one field uses its title as the field's label, so the saved mark follows the title. */
-.sub-head { display: flex; align-items: center; gap: 10px; margin: 6px 0 16px; }
-.sub-head .sub-title { margin: 0; }
 .field-group { margin-bottom: 24px; }
 .field-label { display: block; margin: 0 0 8px; font-size: 1em; font-weight: 700; }
 .label-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -437,6 +434,24 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .field-row .input { flex: 1 1 14em; min-width: 0; }
 .field-state { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.9em; }
 .field-state.warning { color: var(--warning); }
+.audio-group { margin-bottom: 32px; }
+.audio-group h3 { margin: 0 0 16px; font-size: 1.05em; }
+.level-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.automatic { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
+.automatic input { width: 18px; height: 18px; margin: 0; accent-color: var(--self); }
+.level-control .hint { margin: 4px 0; }
+.level-scale { position: relative; height: 40px; padding: 0 10px; }
+.level-meter { position: absolute; top: 15px; left: 10px; right: 10px; height: 10px; border-radius: 5px; background: #000; overflow: hidden; }
+.level-fill { height: 100%; width: 0; background: #555c66; }
+.level-meter.speaking .level-fill { background: var(--self); }
+/* The slider ends at -10 on the meter's -80 to 0 scale. Its width also includes the 20 px thumb. */
+.level-slider { appearance: none; position: relative; width: calc(87.5% + 20px); height: 40px; margin: 0 -10px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.level-slider::-webkit-slider-runnable-track { height: 10px; background: transparent; }
+.level-slider::-moz-range-track { height: 10px; background: transparent; }
+.level-slider::-webkit-slider-thumb { appearance: none; width: 20px; height: 24px; margin-top: -7px; border: 2px solid var(--bg); border-radius: 5px; background: var(--fg); }
+.level-slider::-moz-range-thumb { width: 20px; height: 24px; border: 2px solid var(--bg); border-radius: 5px; background: var(--fg); }
+.level-slider:disabled { cursor: default; opacity: 0.45; }
+.level-ticks { display: flex; justify-content: space-between; margin: -2px 10px 4px; color: var(--muted); font-size: 0.8em; font-variant-numeric: tabular-nums; }
 /* A plain mark, not a button: an icon and the state. */
 .saved { display: inline-flex; align-items: center; gap: 4px; color: var(--fg); font-size: 0.9rem; font-weight: 600; transition: opacity 0.4s; }
 .saved .icon { width: 16px; height: 16px; }
