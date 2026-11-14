@@ -88,6 +88,71 @@ func TestPhraseOrder(t *testing.T) {
 	})
 }
 
+func TestDropsTranscriptsWithoutLettersOrDigits(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		texts, want, wantPages []string
+	}{
+		{
+			name:      "punctuation and words",
+			texts:     []string{"――", "。", "ーー", "OK"},
+			want:      []string{"ーー", "OK"},
+			wantPages: []string{"ーー", "ーー OK"},
+		},
+		{
+			name:      "unicode letters and digits",
+			texts:     []string{"", " \t\n", "!?", "😀", "\u0301", "²", "…字。", "٩"},
+			want:      []string{"…字。", "٩"},
+			wantPages: []string{"…字。", "…字。 ٩"},
+		},
+		{
+			name:  "all dropped",
+			texts: []string{"", "――", "。", "!?"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				s := fakeStages()
+				s.Source = fakeSource(len(tc.texts))
+				s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Original}}"} }
+				i := 0
+				s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
+					text := tc.texts[i]
+					i++
+					return text, nil
+				}
+				var translated, pages []string
+				s.Translate = func(_ context.Context, text string, _ PhraseSettings) (string, error) {
+					translated = append(translated, text)
+					return text, nil
+				}
+				s.Send = func(_ context.Context, text string) error {
+					pages = append(pages, text)
+					return nil
+				}
+				var mu sync.Mutex
+				var recognized []string
+				s.Emit = func(e Event) {
+					mu.Lock()
+					defer mu.Unlock()
+					if e.Kind == "recognized" {
+						recognized = append(recognized, e.Text)
+					}
+				}
+				if err := Run(t.Context(), s); err != nil {
+					t.Fatal(err)
+				}
+				if i != len(tc.texts) || !reflect.DeepEqual(recognized, tc.want) || !reflect.DeepEqual(translated, tc.want) {
+					t.Fatalf("recognizer calls = %d, recognized = %q, translated = %q; want %d, %q, %q", i, recognized, translated, len(tc.texts), tc.want, tc.want)
+				}
+				if !reflect.DeepEqual(pages, tc.wantPages) {
+					t.Fatalf("chatbox pages = %q, want %q", pages, tc.wantPages)
+				}
+			})
+		})
+	}
+}
+
 func TestSlowSendBuffersTranslations(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()

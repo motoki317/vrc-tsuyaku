@@ -69,7 +69,7 @@ Each event has an `id`, which orders all events, a `time` and a `kind`. Events a
 | --- | --- |
 | `state` | The flow's new state: `starting`, `running` or `stopped`. A flow that fails sends an `error` event instead, and `GET /api/state` shows it as `error` |
 | `speech` | `start` when the flow hears speech begin, and `end` when it ends |
-| `recognized` | The recognized phrase |
+| `recognized` | The recognized phrase. The app drops a phrase whose text holds no letter and no digit, such as `――`: it emits no `recognized` and no later event for that phrase |
 | `translated` | The translation, with the recognized phrase in `original` |
 | `page` | One chatbox page written to VRChat. When the phrase joined an earlier message, as described below, the text also holds that message's earlier phrases |
 | `merged` | The phrase joined an earlier message, as described below. `text` holds the message's translations, joined, and `original` its recognized phrases, joined. `into` holds the `phraseId` of the message's first phrase |

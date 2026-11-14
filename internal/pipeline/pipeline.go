@@ -4,9 +4,11 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
@@ -216,7 +218,9 @@ func Run(ctx context.Context, s Stages) error {
 			if err != nil {
 				return err
 			}
-			if text == "" {
+			// A recognizer writes text for sound that is not speech, such as "――" for a breath.
+			// Text without a letter or digit holds nothing to translate.
+			if !strings.ContainsFunc(text, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
 				continue
 			}
 			text, settings.Terms = glossary.Rewrite(text, settings.Terms)

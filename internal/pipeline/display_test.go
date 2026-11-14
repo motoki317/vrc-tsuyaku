@@ -198,14 +198,14 @@ func TestDisplayBacklog(t *testing.T) {
 }
 
 func TestDisplaySkippedPhrasePreservesMessage(t *testing.T) {
-	for _, skipped := range []string{"bad", " \t\n"} {
+	for _, skipped := range []string{"bad", "blank"} {
 		t.Run(skipped, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				a, last := strings.Repeat("a", 100), strings.Repeat("z", 100)
 				originals := []string{a, skipped, "b", last}
 				s := timedStages(originals, 0)
 				s.Settings = func() PhraseSettings {
-					return PhraseSettings{Template: `{{if eq .Original "bad"}}{{index .Translation 1000}}{{else}}{{.Original}}{{end}}`}
+					return PhraseSettings{Template: `{{if eq .Original "bad"}}{{index .Translation 1000}}{{else if eq .Original "blank"}} {{else}}{{.Original}}{{end}}`}
 				}
 				r := displayRecord{start: time.Now()}
 				s.Send = r.send
