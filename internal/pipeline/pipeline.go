@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
@@ -16,10 +17,15 @@ import (
 
 // Event reports a pipeline result. The app also uses this type for status updates.
 // PhraseID is unique across Run calls and links the recognized, translated,
-// page and sent events for one phrase.
-// Original accompanies a translation. A sent event means Send returned nil.
+// page, merged and sent events for one phrase.
+// A message is one or more phrases that Run's last stage shows together.
+// Into names the message's first phrase and stays fixed over a chain of merges.
+// A merged event carries the joined originals and translations in Original and Text.
+// A page event carries the written text under its phrase's ID. When Run's last
+// stage merges the phrase into the page on screen, the text also holds earlier phrases.
 type Event struct {
 	PhraseID   uint64       `json:"phraseId,omitempty"`
+	Into       uint64       `json:"into,omitempty"`
 	Kind       string       `json:"kind"`
 	Code       errcode.Code `json:"code,omitempty"`
 	Text       string       `json:"text"`
@@ -31,6 +37,7 @@ type Event struct {
 var nextPhraseID atomic.Uint64
 
 // PhraseSettings is captured before recognition and stays fixed through sending.
+// Template renders the chatbox pages. Without Send it only measures whether phrases fit in one page together.
 type PhraseSettings struct {
 	SourceLang string
 	TargetLang string
@@ -38,8 +45,11 @@ type PhraseSettings struct {
 }
 
 // Stages supplies the operations for one Run.
-// Send is optional and calls pageSent after each page it successfully writes.
-// Run emits a page event for each callback and a sent event after Send returns nil.
+// Send is optional and writes one rendered page. Run emits a page event after
+// each successful write and a sent event after all of a phrase's pages succeed.
+// Without Send the flow has no chatbox, and the web UI keeps every message:
+// Run waits for nothing and emits no page or sent events, but still joins
+// phrases into messages and emits merged.
 // Emit must be safe for concurrent calls and must not block the pipeline.
 // Close is optional. The caller runs it after all stage calls finish.
 type Stages struct {
@@ -49,14 +59,16 @@ type Stages struct {
 	Recognize   func(context.Context, []float32) (string, error)
 	Settings    func() PhraseSettings
 	Translate   func(ctx context.Context, source, target, phrase string) (string, error)
-	Send        func(ctx context.Context, format string, message chatbox.Message, pageSent func(string)) error
+	Send        func(ctx context.Context, page string) error
 	Emit        func(Event)
 }
 
 // Run preserves phrase order. Up to 64 translated phrases can wait for Send so
 // chatbox reading time does not delay recognition or translation. Other stages
 // are unbuffered, and a full send buffer applies backpressure to capture.
-// A template error skips that phrase's send and emits an error event.
+// With Send, a template error skips that phrase's send and emits an error event.
+// Without Send, a template error emits no event, and no later phrase joins a message from before that phrase.
+// Reading time and the message that a phrase can join last for this Run only.
 // Other errors cancel every stage and Run waits for them.
 // Cancellation discards capture's queued audio, the partial VAD window and the
 // segmenter's pending phrase, along with translated phrases waiting for Send.
@@ -74,6 +86,7 @@ func Run(ctx context.Context, s Stages) error {
 		original, translation string
 		source, target        string
 		template              string
+		queued                time.Time
 	}
 	texts := make(chan result)
 	translations := make(chan result, 64)
@@ -198,6 +211,7 @@ func Run(ctx context.Context, s Stages) error {
 			}
 			r.translation = translated
 			emit(Event{PhraseID: r.id, Kind: "translated", Original: r.original, Text: translated, SourceLang: r.source, TargetLang: r.target})
+			r.queued = time.Now()
 			select {
 			case translations <- r:
 			case <-ctx.Done():
@@ -207,24 +221,23 @@ func Run(ctx context.Context, s Stages) error {
 		return nil
 	})
 	start(func() error {
+		display := display{send: s.Send, emit: emit}
 		for r := range translations {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if s.Send != nil {
-				message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.source, TargetLang: r.target}
-				if err := s.Send(ctx, r.template, message, func(page string) {
-					emit(Event{PhraseID: r.id, Kind: "page", Text: page, SourceLang: r.source, TargetLang: r.target})
-				}); err != nil {
-					if ctx.Err() != nil {
-						return context.Cause(ctx)
-					}
-					emit(Event{PhraseID: r.id, Kind: "error", Code: errcode.Of(err), Text: err.Error(), SourceLang: r.source, TargetLang: r.target})
-					if errors.Is(err, chatbox.ErrTemplate) {
-						continue
-					}
-					return err
+			message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.source, TargetLang: r.target}
+			if err := display.show(ctx, r.id, r.template, message, r.queued); err != nil {
+				if ctx.Err() != nil {
+					return context.Cause(ctx)
 				}
+				emit(Event{PhraseID: r.id, Kind: "error", Code: errcode.Of(err), Text: err.Error(), SourceLang: r.source, TargetLang: r.target})
+				if errors.Is(err, chatbox.ErrTemplate) {
+					continue
+				}
+				return err
+			}
+			if s.Send != nil {
 				emit(Event{PhraseID: r.id, Kind: "sent", SourceLang: r.source, TargetLang: r.target})
 			}
 		}

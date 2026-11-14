@@ -17,9 +17,8 @@ import (
 const pageInterval = 1500 * time.Millisecond
 
 // Queue sends messages to one UDP destination.
-// A message is the original text and translation supplied to one Send call.
-// Reuse the Queue when stopping and resuming sends to preserve the 1.5 s page spacing.
-// This spacing keeps sends under VRChat's chatbox spam timeout.
+// Keep one Queue while its caller stops and restarts sending so writes stay
+// 1.5 s apart for VRChat's spam timeout.
 type Queue struct {
 	conn      io.WriteCloser
 	turn      chan struct{}
@@ -59,28 +58,16 @@ func newQueue(conn io.WriteCloser) *Queue {
 	return &Queue{conn: conn, turn: make(chan struct{}, 1), closed: make(chan struct{})}
 }
 
-// Send renders format with message, then splits the result into pages.
-// Send splits each message into pages of at most 144 runes and nine newline-delimited lines.
-// Splits prefer sentence endings, then whitespace, then rune boundaries.
-// Whitespace at page edges is omitted. Whitespace-only input sends nothing.
-// A template error or invalid rendered text fails before any page is sent.
-// sent runs synchronously after each successful page write and must not call Send on this queue.
-//
-// Send blocks until every page is written or an error occurs. Concurrent calls
-// cannot interleave pages. Each write attempt is at least 1.5 seconds after the
-// previous attempt finishes, including attempts from earlier Send calls.
-// Cancellation stops pending pages, including while waiting behind another Send.
+// Send writes one rendered page, at least 1.5 seconds after the previous Send's write attempt finished.
+// Concurrent calls cannot overlap writes.
+// Cancellation stops a pending page, including while waiting behind another Send.
 // Cancellation cannot interrupt an active UDP write, but Close can. Errors are not retried.
-func (q *Queue) Send(ctx context.Context, format string, message Message, sent func(string)) (err error) {
+func (q *Queue) Send(ctx context.Context, page string) (err error) {
 	defer func() {
-		if err != nil && !errors.Is(err, ErrTemplate) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			err = errcode.With(errcode.ChatboxSend, err)
 		}
 	}()
-	messagePages, err := Render(format, message)
-	if err != nil {
-		return err
-	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -92,34 +79,29 @@ func (q *Queue) Send(ctx context.Context, format string, message Message, sent f
 	if err := q.check(ctx); err != nil {
 		return err
 	}
-	for i, page := range messagePages {
-		if delay := time.Until(q.next); delay > 0 {
-			timer := time.NewTimer(delay)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			case <-q.closed:
-				timer.Stop()
-				return net.ErrClosed
-			case <-timer.C:
-			}
+	if delay := time.Until(q.next); delay > 0 {
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-q.closed:
+			timer.Stop()
+			return net.ErrClosed
+		case <-timer.C:
 		}
-		if err := q.check(ctx); err != nil {
-			return err
-		}
-		packet := encodePage(page)
-		n, err := q.conn.Write(packet)
-		q.next = time.Now().Add(pageInterval)
-		if err == nil && n != len(packet) {
-			err = io.ErrShortWrite
-		}
-		if err != nil {
-			return fmt.Errorf("send chatbox page %d: %w", i+1, err)
-		}
-		if sent != nil {
-			sent(page)
-		}
+	}
+	if err := q.check(ctx); err != nil {
+		return err
+	}
+	packet := encodePage(page)
+	n, err := q.conn.Write(packet)
+	q.next = time.Now().Add(pageInterval)
+	if err == nil && n != len(packet) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		return fmt.Errorf("send chatbox page: %w", err)
 	}
 	return nil
 }

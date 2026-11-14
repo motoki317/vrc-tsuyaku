@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -19,10 +18,6 @@ import (
 type recordedWrite struct {
 	packet []byte
 	at     time.Time
-}
-
-func send(q *Queue, ctx context.Context, original, translation string) error {
-	return q.Send(ctx, "{{.Original}}\n{{.Translation}}", Message{Original: original, Translation: translation}, nil)
 }
 
 type recordingSocket struct {
@@ -63,90 +58,68 @@ func (s *recordingSocket) recorded() ([]recordedWrite, int) {
 	return slices.Clone(s.writes), s.closed
 }
 
-func TestQueueTiming(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		socket := &recordingSocket{}
-		q := newQueue(socket)
-		defer q.Close()
-		start := time.Now()
-		done := make(chan error, 1)
-		go func() { done <- send(q, t.Context(), strings.Repeat("猫", 145), "English") }()
-		synctest.Wait()
-		if writes, _ := socket.recorded(); len(writes) != 1 || !writes[0].at.Equal(start) {
-			t.Fatalf("first page did not send immediately: %v", writes)
-		}
-		time.Sleep(1500*time.Millisecond - time.Nanosecond)
-		synctest.Wait()
-		if writes, _ := socket.recorded(); len(writes) != 1 {
-			t.Fatal("second page sent before 1.5 seconds")
-		}
-		time.Sleep(time.Nanosecond)
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
-		if err := send(q, t.Context(), "next", "次"); err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(5 * time.Second)
-		if err := send(q, t.Context(), "after idle", "待機後"); err != nil {
-			t.Fatal(err)
-		}
-		wantTimes := []time.Duration{0, 1500 * time.Millisecond, 3 * time.Second, 8 * time.Second}
-		wantTexts := []string{strings.Repeat("猫", 144), "猫\nEnglish", "next\n次", "after idle\n待機後"}
-		writes, _ := socket.recorded()
-		if len(writes) != len(wantTimes) {
-			t.Fatalf("writes = %d, want %d", len(writes), len(wantTimes))
-		}
-		for i, w := range writes {
-			if got := w.at.Sub(start); got != wantTimes[i] {
-				t.Fatalf("page %d at %s, want %s", i, got, wantTimes[i])
-			}
-			if got := decodePacket(t, w.packet); got != wantTexts[i] {
-				t.Fatalf("page %d = %q, want %q", i, got, wantTexts[i])
-			}
-		}
-	})
+func TestQueueSpacing(t *testing.T) {
+	for _, delay := range []time.Duration{0, 2 * time.Second} {
+		t.Run(delay.String(), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				socket := &recordingSocket{delay: delay}
+				q := newQueue(socket)
+				defer q.Close()
+				for _, page := range []string{"first", "second", "third"} {
+					if err := q.Send(t.Context(), page); err != nil {
+						t.Fatal(err)
+					}
+				}
+				writes, _ := socket.recorded()
+				if len(writes) != 3 {
+					t.Fatal(writes)
+				}
+				for i := 1; i < len(writes); i++ {
+					if gap := writes[i].at.Sub(writes[i-1].at); gap != delay+1500*time.Millisecond {
+						t.Fatalf("write gap = %s, want %s", gap, delay+1500*time.Millisecond)
+					}
+				}
+				time.Sleep(5 * time.Second)
+				start := time.Now()
+				if err := q.Send(t.Context(), "after idle"); err != nil {
+					t.Fatal(err)
+				}
+				writes, _ = socket.recorded()
+				if got := writes[3].at.Sub(start); got != delay {
+					t.Fatalf("idle send took %s, want %s", got, delay)
+				}
+			})
+		})
+	}
 }
 
-func TestQueueSlowWrites(t *testing.T) {
+func TestQueueConcurrentPages(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		socket := &recordingSocket{delay: 2 * time.Second}
 		q := newQueue(socket)
 		defer q.Close()
-		if err := send(q, t.Context(), strings.Repeat("x", 300), ""); err != nil {
-			t.Fatal(err)
+		start := time.Now()
+		done := make(chan error, 3)
+		for _, page := range []string{"a", "b", "c"} {
+			go func() { done <- q.Send(t.Context(), page) }()
+			synctest.Wait()
 		}
-		writes, _ := socket.recorded()
-		for i := 1; i < len(writes); i++ {
-			if gap := writes[i].at.Sub(writes[i-1].at); gap != 3500*time.Millisecond {
-				t.Fatalf("write gap = %s, want 3.5s", gap)
-			}
-		}
-	})
-}
-
-func TestQueueConcurrentMessages(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		socket := &recordingSocket{}
-		q := newQueue(socket)
-		defer q.Close()
-		done := make(chan error, 2)
-		go func() { done <- send(q, t.Context(), strings.Repeat("a", 145), "A") }()
-		synctest.Wait()
-		go func() { done <- send(q, t.Context(), strings.Repeat("b", 145), "B") }()
-		for range 2 {
+		for range 3 {
 			if err := <-done; err != nil {
 				t.Fatal(err)
 			}
 		}
-		var got []string
 		writes, _ := socket.recorded()
-		for _, w := range writes {
-			got = append(got, decodePacket(t, w.packet))
+		var pages []string
+		for i, w := range writes {
+			if got, want := w.at.Sub(start), 2*time.Second+time.Duration(i)*3500*time.Millisecond; got != want {
+				t.Fatalf("write %d at %s, want %s", i, got, want)
+			}
+			pages = append(pages, decodePacket(t, w.packet))
 		}
-		want := []string{strings.Repeat("a", 144), "a\nA", strings.Repeat("b", 144), "b\nB"}
-		if !slices.Equal(got, want) {
-			t.Fatalf("interleaved messages: %q", got)
+		slices.Sort(pages)
+		if !slices.Equal(pages, []string{"a", "b", "c"}) {
+			t.Fatal(pages)
 		}
 	})
 }
@@ -156,13 +129,16 @@ func TestQueueCancellation(t *testing.T) {
 		socket := &recordingSocket{}
 		q := newQueue(socket)
 		defer q.Close()
+		if err := q.Send(t.Context(), "first"); err != nil {
+			t.Fatal(err)
+		}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- send(q, ctx, strings.Repeat("a", 145), "A") }()
+		go func() { done <- q.Send(ctx, "spacing wait") }()
 		synctest.Wait()
 		waiting, cancelWaiting := context.WithCancel(t.Context())
 		other := make(chan error, 1)
-		go func() { other <- send(q, waiting, "queued", "待機") }()
+		go func() { other <- q.Send(waiting, "waiting for turn") }()
 		synctest.Wait()
 		cancelWaiting()
 		if err := <-other; !errors.Is(err, context.Canceled) {
@@ -171,12 +147,15 @@ func TestQueueCancellation(t *testing.T) {
 		time.Sleep(time.Second)
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {
-			t.Fatalf("page cancellation = %v", err)
+			t.Fatalf("spacing wait cancellation = %v", err)
+		}
+		if err := q.Send(ctx, "already canceled"); !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
 		}
 		if writes, _ := socket.recorded(); len(writes) != 1 {
 			t.Fatalf("sent %d pages after cancellation", len(writes))
 		}
-		if err := send(q, t.Context(), "new", "新"); err != nil {
+		if err := q.Send(t.Context(), "new"); err != nil {
 			t.Fatal(err)
 		}
 		writes, _ := socket.recorded()
@@ -190,26 +169,46 @@ func TestQueueClose(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		socket := &recordingSocket{}
 		q := newQueue(socket)
+		if err := q.Send(t.Context(), "first"); err != nil {
+			t.Fatal(err)
+		}
 		done := make(chan error, 2)
-		go func() { done <- send(q, t.Context(), strings.Repeat("a", 300), "") }()
-		synctest.Wait()
-		go func() { done <- send(q, t.Context(), "queued", "") }()
-		synctest.Wait()
+		for range 2 {
+			go func() { done <- q.Send(t.Context(), "queued") }()
+			synctest.Wait()
+		}
 		for range 2 {
 			if err := q.Close(); err != nil {
 				t.Fatal(err)
 			}
 		}
 		for range 2 {
-			if err := <-done; !errors.Is(err, net.ErrClosed) {
+			if err := <-done; !errors.Is(err, net.ErrClosed) || errcode.Of(err) != errcode.ChatboxSend {
 				t.Fatalf("close during Send = %v", err)
 			}
 		}
-		if err := send(q, t.Context(), "later", ""); !errors.Is(err, net.ErrClosed) {
+		if err := q.Send(t.Context(), "later"); !errors.Is(err, net.ErrClosed) {
 			t.Fatalf("Send after Close = %v", err)
 		}
 		if writes, closed := socket.recorded(); len(writes) != 1 || closed != 1 {
 			t.Fatalf("writes = %d, closes = %d", len(writes), closed)
+		}
+	})
+}
+
+func TestQueueCloseActiveWrite(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		writer, reader := net.Pipe()
+		defer reader.Close()
+		q := newQueue(writer)
+		done := make(chan error, 1)
+		go func() { done <- q.Send(t.Context(), "blocked write") }()
+		synctest.Wait()
+		if err := q.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; !errors.Is(err, io.ErrClosedPipe) || errcode.Of(err) != errcode.ChatboxSend {
+			t.Fatalf("closed write = %v", err)
 		}
 	})
 }
@@ -221,21 +220,21 @@ func TestQueueWriteErrors(t *testing.T) {
 			socket := &recordingSocket{}
 			q := newQueue(socket)
 			defer q.Close()
-			if err := send(q, t.Context(), "first", ""); err != nil {
+			if err := q.Send(t.Context(), "first"); err != nil {
 				t.Fatal(err)
 			}
 			socket.err = wantErr
 			if short {
 				socket.err, socket.short, wantErr = nil, true, io.ErrShortWrite
 			}
-			if err := send(q, t.Context(), strings.Repeat("x", 300), ""); !errors.Is(err, wantErr) || errcode.Of(err) != errcode.ChatboxSend {
+			if err := q.Send(t.Context(), "failed"); !errors.Is(err, wantErr) || errcode.Of(err) != errcode.ChatboxSend {
 				t.Fatalf("write error = %v, want %v", err, wantErr)
 			}
 			if writes, _ := socket.recorded(); len(writes) != 2 {
-				t.Fatalf("retried or continued after a write error: %d writes", len(writes))
+				t.Fatalf("retried after a write error: %d writes", len(writes))
 			}
 			socket.err, socket.short = nil, false
-			if err := send(q, t.Context(), "later", ""); err != nil {
+			if err := q.Send(t.Context(), "later"); err != nil {
 				t.Fatal(err)
 			}
 			writes, _ := socket.recorded()
@@ -243,52 +242,6 @@ func TestQueueWriteErrors(t *testing.T) {
 				t.Fatalf("failed write reset the rate limit: %s", gap)
 			}
 		})
-	}
-}
-
-func TestQueueRejectsInvalidText(t *testing.T) {
-	socket := &recordingSocket{}
-	q := newQueue(socket)
-	defer q.Close()
-	for _, input := range []string{"bad\x00text", "bad\xfftext"} {
-		for _, parts := range [][2]string{{input, "valid"}, {"valid", input}} {
-			if err := send(q, t.Context(), parts[0], parts[1]); err == nil {
-				t.Fatalf("accepted %q", parts)
-			}
-		}
-	}
-	if err := send(q, t.Context(), " \n", "\t"); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := send(q, ctx, "cancelled", ""); !errors.Is(err, context.Canceled) {
-		t.Fatalf("already cancelled Send = %v", err)
-	}
-	if writes, _ := socket.recorded(); len(writes) != 0 {
-		t.Fatalf("unexpected writes: %d", len(writes))
-	}
-}
-
-func TestQueueTemplateFailureSendsNothing(t *testing.T) {
-	socket := &recordingSocket{}
-	q := newQueue(socket)
-	defer q.Close()
-	for _, format := range []string{"{{", `partial {{index .Translation 100}}`, `partial {{printf "%c" 0}}`} {
-		if err := q.Send(t.Context(), format, Message{Translation: "short"}, func(string) {
-			t.Error("page callback after a template failure")
-		}); !errors.Is(err, ErrTemplate) || errcode.Of(err) != errcode.Template {
-			t.Fatalf("template error = %v", err)
-		}
-	}
-	if writes, _ := socket.recorded(); len(writes) != 0 {
-		t.Fatalf("sent partial output: %d writes", len(writes))
-	}
-	if err := q.Send(t.Context(), DefaultTemplate, Message{Original: "こんにちは", Translation: "Hello", SourceLang: "ja", TargetLang: "en"}, nil); err != nil {
-		t.Fatal(err)
-	}
-	if writes, _ := socket.recorded(); len(writes) != 1 || decodePacket(t, writes[0].packet) != "[ja] こんにちは\n[en] Hello" {
-		t.Fatalf("queue did not recover: %v", writes)
 	}
 }
 
@@ -349,39 +302,8 @@ func TestQueueUDP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer q.Close()
-	if err := send(q, t.Context(), strings.Repeat("猫", 145), "Hello."); err != nil {
-		t.Fatal(err)
-	}
-	if err := listener.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	packet := make([]byte, 2048)
-	for _, want := range []string{strings.Repeat("猫", 144), "猫\nHello."} {
-		n, _, err := listener.ReadFromUDP(packet)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := decodePacket(t, packet[:n]); got != want {
-			t.Fatalf("received text = %q, want %q", got, want)
-		}
-	}
-}
-
-func TestQueueDefaultTemplateUDP(t *testing.T) {
-	listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-	q, err := New(listener.LocalAddr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer q.Close()
-	var reported []string
-	if err := q.Send(t.Context(), DefaultTemplate, Message{Original: "こんにちは", Translation: "Hello", SourceLang: "ja", TargetLang: "en"}, func(page string) {
-		reported = append(reported, page)
-	}); err != nil {
+	want := "[ja] こんにちは\n[en] Hello"
+	if err := q.Send(t.Context(), want); err != nil {
 		t.Fatal(err)
 	}
 	if err := listener.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
@@ -392,8 +314,7 @@ func TestQueueDefaultTemplateUDP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[ja] こんにちは\n[en] Hello"
-	if got := decodePacket(t, packet[:n]); got != want || !slices.Equal(reported, []string{want}) {
-		t.Fatalf("received %q, callback %q, want %q", got, reported, want)
+	if got := decodePacket(t, packet[:n]); got != want {
+		t.Fatalf("received %q, want %q", got, want)
 	}
 }
