@@ -1,19 +1,36 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"html"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
+
+func TestGlossaryEditor(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("install Node.js to run the glossary editor tests")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, node, "--test", "testdata/glossary.cjs").CombinedOutput()
+	if err != nil {
+		t.Fatalf("glossary editor: %v\n%s", err, output)
+	}
+	t.Log(string(output))
+}
 
 // The page explains itself through layout and state, so the catalogs hold no hint or description category.
 // A string that a usability test justifies goes in "note", with a "//note.NAME" key that names the finding.

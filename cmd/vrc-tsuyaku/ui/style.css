@@ -75,13 +75,13 @@ a { color: var(--link); }
 }
 .button.secondary { background: transparent; color: var(--fg); border-color: var(--outline); }
 .button.danger { background: var(--error); border-color: var(--error); color: var(--surface); }
-.button[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+.button[aria-disabled="true"], .button:disabled { opacity: 0.45; cursor: default; }
 .icon-button {
   display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0;
   border: 0; border-radius: 18px; background: transparent; color: var(--fg);
 }
 .icon-button:hover { background: var(--surface-2); }
-.icon-button[aria-disabled="true"] { color: var(--muted); cursor: default; background: transparent; }
+.icon-button[aria-disabled="true"], .icon-button:disabled { color: var(--muted); cursor: default; background: transparent; }
 .button.compact { min-height: 32px; padding: 4px 14px 4px 10px; gap: 6px; font-size: 0.9rem; }
 .button.compact .icon { width: 16px; height: 16px; }
 .error-text { margin: 4px 0 0; color: var(--error); font-size: 0.9em; }
@@ -165,7 +165,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   min-height: 40px; padding: 7px 10px; border: 1px solid var(--outline); border-radius: 8px;
   background: var(--surface); color: var(--fg);
 }
-.input[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }
+.input[aria-invalid="true"], .select[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }
 
 .download-all {
   position: relative; overflow: hidden; width: 100%; min-height: 44px; justify-content: flex-start;
@@ -432,6 +432,19 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .field-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .field-row .select { flex: 1 1 14em; min-width: 0; }
 .field-row .input { flex: 1 1 14em; min-width: 0; }
+.glossary-list { list-style: none; margin: 0; padding: 0; }
+.glossary-description { margin: 0 0 20px; }
+.glossary-entry { min-width: 0; margin: 0 0 16px; padding: 12px 16px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.glossary-entry legend { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0 4px; font-weight: 700; }
+.glossary-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 16px; margin-top: 12px; }
+.glossary-side, .glossary-words { display: grid; gap: 12px; min-width: 0; }
+.glossary-link { align-self: center; color: var(--muted); }
+.glossary-field { min-width: 0; }
+.glossary-field .input, .glossary-field .select { width: 100%; min-width: 0; }
+@media (max-width: 600px) {
+  .glossary-pair { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .glossary-link { justify-self: center; transform: rotate(90deg); }
+}
 .field-state { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.9em; }
 .field-state.warning { color: var(--warning); }
 .audio-group { margin-bottom: 32px; }

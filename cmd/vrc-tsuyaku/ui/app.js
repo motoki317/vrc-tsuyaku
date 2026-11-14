@@ -52,7 +52,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function h(tag, props = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
-    if (value == null || value === false) continue;
+    if (value == null) continue;
     if (/^(aria-|data-|role$|lang$|for$)/.test(key)) node.setAttribute(key, value);
     else node[key] = value;
   }
@@ -187,10 +187,11 @@ function errorText(code, text) {
 // API
 
 class RequestError extends Error {
-  constructor(status, message, code = '') {
+  constructor(status, message, code = '', errorLocation = null) {
     super(message);
     this.status = status;
     this.code = code;
+    this.errorLocation = errorLocation;
   }
 }
 
@@ -205,7 +206,7 @@ async function api(path, options = {}) {
   if (connection === 'reconnecting') setConnection('ok');
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new RequestError(response.status, body.error || `HTTP ${response.status}`, body.code);
+    throw new RequestError(response.status, body.error || `HTTP ${response.status}`, body.code, body.location);
   }
   return response;
 }
@@ -1302,6 +1303,234 @@ function renderAudio() {
   syncLevelPolling();
 }
 
+// Settings: Glossary
+
+// Drafts stay in this page. An error's index counts the sent rows,
+// so a save remembers which screen row each sent entry comes from.
+const glossaryEditor = {rows: [], dirty: false, revision: 0, pending: new Set(), refusal: null, timer: 0};
+const GLOSSARY_LABELS = {
+  SourceLang: 'label.language', Source: 'label.word',
+  TargetLang: 'label.language', Target: 'label.word', Reading: 'label.reading',
+};
+const GLOSSARY_FIELDS = Object.keys(GLOSSARY_LABELS);
+
+function glossaryFieldName(row, field) {
+  const first = field.startsWith('Source') || (field === 'Reading' && row.inputs.SourceLang.value === 'ja');
+  return t('label.glossaryField', {field: t(GLOSSARY_LABELS[field]), n: first ? 1 : 2});
+}
+
+function glossaryLanguages() {
+  return state.languages.targets.filter(code => !state.languages.variants[code])
+    .sort((a, b) => collator.compare(languageName(a), languageName(b)));
+}
+
+function newGlossaryEntry() {
+  const self = settingsOf('self'), codes = glossaryLanguages();
+  const base = code => state.languages.variants[code] || code;
+  const source = codes.includes(base(self.Spoken)) ? base(self.Spoken) : codes[0];
+  const target = base(self.Target);
+  return {SourceLang: source, TargetLang: codes.includes(target) && target !== source ? target : codes.find(code => code !== source)};
+}
+
+function readGlossaryRow(row) {
+  return Object.fromEntries(GLOSSARY_FIELDS.map(field => [field,
+    field.endsWith('Lang') ? row.inputs[field].value : row.inputs[field].value.trim()]));
+}
+
+const completeGlossaryRow = entry => !!entry.Source && !!entry.Target;
+
+function writeGlossaryRow(row, entry) {
+  for (const field of GLOSSARY_FIELDS) {
+    const input = row.inputs[field], value = entry[field] || '';
+    if (field.endsWith('Lang') && ![...input.options].some(option => option.value === value)) {
+      input.add(new Option(languageName(value), value));
+    }
+    input.value = value;
+  }
+}
+
+function glossaryChanged() {
+  clearTimeout(glossaryEditor.timer);
+  if (glossaryEditor.refusal?.error.code?.startsWith('glossary_') &&
+      glossaryEditor.refusal.entries === JSON.stringify(glossaryEditor.rows.map(readGlossaryRow))) return;
+  glossaryEditor.revision++;
+  glossaryEditor.dirty = true;
+  glossaryEditor.refusal = null;
+}
+
+function glossaryRow(entry) {
+  const row = {inputs: {}, fields: {}, labels: {}, errors: {}, required: new Set(), legend: h('span', {id: uid('glossary-entry')})};
+  for (const field of GLOSSARY_FIELDS) {
+    const id = uid('glossary'), errorId = id + '-error';
+    const input = row.inputs[field] = h(field.endsWith('Lang') ? 'select' : 'input', {
+      id, className: field.endsWith('Lang') ? 'select' : 'input', autocomplete: 'off', spellcheck: false,
+      'aria-describedby': errorId,
+    });
+    row.labels[field] = h('label', {className: 'field-label', for: id});
+    row.errors[field] = h('p', {id: errorId, className: 'error-text', hidden: true});
+    row.fields[field] = h('div', {className: 'glossary-field'}, row.labels[field], input, row.errors[field]);
+  }
+  row.source = h('div', {className: 'glossary-words'}, row.fields.Source);
+  row.target = h('div', {className: 'glossary-words'}, row.fields.Target);
+  row.remove = h('button', {type: 'button', className: 'icon-button'}, icon('trash-2'));
+  row.root = h('li', {}, h('fieldset', {className: 'glossary-entry', 'aria-labelledby': row.legend.id},
+    h('legend', {}, row.legend, row.remove),
+    h('div', {className: 'glossary-pair'},
+      h('div', {className: 'glossary-side'}, row.fields.SourceLang, row.source),
+      icon('arrow-left-right', 'glossary-link'),
+      h('div', {className: 'glossary-side'}, row.fields.TargetLang, row.target))));
+  row.remove.addEventListener('click', () => {
+    const index = glossaryEditor.rows.indexOf(row);
+    glossaryEditor.rows.splice(index, 1);
+    row.root.remove();
+    glossaryChanged();
+    renderGlossary();
+    (glossaryEditor.rows[index]?.inputs.Source || $('glossary-add')).focus();
+    saveGlossary();
+  });
+  writeGlossaryRow(row, entry);
+  return row;
+}
+
+function buildGlossary() {
+  $('glossary-add').addEventListener('click', () => {
+    const row = glossaryRow(newGlossaryEntry());
+    glossaryEditor.rows.push(row);
+    glossaryChanged();
+    renderGlossary();
+    row.inputs.Source.focus();
+  });
+  const list = $('glossary-list');
+  list.addEventListener('input', () => {
+    glossaryChanged();
+    queueMicrotask(renderGlossary);
+  });
+  list.addEventListener('change', () => {
+    glossaryChanged();
+    // Moving the focused reading input can fire change again. Queue the render to finish the move before another render or save.
+    queueMicrotask(renderGlossary);
+    // A closed select can step through languages with the keyboard.
+    glossaryEditor.timer = setTimeout(saveGlossary, 500);
+  });
+  list.addEventListener('focusout', event => {
+    const row = glossaryEditor.rows.find(row => row.root.contains(event.target));
+    queueMicrotask(() => {
+      if (row && !row.root.contains(event.relatedTarget)) {
+        const entry = readGlossaryRow(row);
+        for (const field of ['Source', 'Target']) if (!entry[field]) row.required.add(field);
+        renderGlossary();
+      }
+      saveGlossary();
+    });
+  });
+  list.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.isComposing && event.target.tagName === 'INPUT') {
+      event.preventDefault();
+      saveGlossary();
+    }
+  });
+}
+
+function saveGlossary() {
+  clearTimeout(glossaryEditor.timer);
+  const revision = glossaryEditor.revision;
+  if (!glossaryEditor.dirty || glossaryEditor.pending.has(revision) || glossaryEditor.refusal?.error.code?.startsWith('glossary_')) return;
+  const snapshot = glossaryEditor.rows.map(row => ({row, entry: readGlossaryRow(row)}));
+  const sent = snapshot.filter(({entry}) => completeGlossaryRow(entry));
+  const entries = sent.map(({entry}) => entry);
+  const saved = () => {
+    if (glossaryEditor.revision !== revision) return;
+    for (const {row, entry} of snapshot) writeGlossaryRow(row, entry);
+    glossaryEditor.dirty = false;
+    glossaryEditor.refusal = null;
+    return true;
+  };
+  if (!glossaryEditor.pending.size && JSON.stringify(entries) === JSON.stringify(state.settings.Glossary)) {
+    saved();
+    return;
+  }
+  glossaryEditor.pending.add(revision);
+  saveSettings(s => { s.Glossary = entries; })
+    .then(() => { if (saved()) flashSaved('glossary'); })
+    .catch(error => {
+      if (glossaryEditor.revision !== revision) return;
+      const row = sent[error.errorLocation?.index]?.row;
+      const field = error.errorLocation?.field;
+      glossaryEditor.refusal = {error, row: row?.inputs[field] ? row : null, field,
+        entries: JSON.stringify(snapshot.map(({entry}) => entry))};
+      if (glossaryEditor.refusal.row) announce(t('value.glossaryError', {
+        entry: t('label.glossaryEntry', {n: glossaryEditor.rows.indexOf(row) + 1}),
+        field: glossaryFieldName(row, field), message: saveRefusal(error),
+      }));
+    })
+    .finally(() => {
+      glossaryEditor.pending.delete(revision);
+      render();
+    });
+}
+
+function renderGlossary() {
+  const editor = glossaryEditor, list = $('glossary-list');
+  if (!editor.dirty && !editor.pending.size) {
+    const incoming = state.settings.Glossary;
+    const complete = editor.rows.map(readGlossaryRow).filter(completeGlossaryRow);
+    if (JSON.stringify(complete) !== JSON.stringify(incoming)) {
+      let index = 0;
+      // State refreshes update saved entries without throwing away unfinished rows between them.
+      editor.rows = editor.rows.filter(row => {
+        if (!completeGlossaryRow(readGlossaryRow(row))) return true;
+        if (index === incoming.length) return false;
+        writeGlossaryRow(row, incoming[index++]);
+        return true;
+      });
+      while (index < incoming.length) editor.rows.push(glossaryRow(incoming[index++]));
+    }
+  }
+  const roots = editor.rows.map(row => row.root);
+  if (roots.length !== list.children.length || roots.some((root, i) => list.children[i] !== root)) list.replaceChildren(...roots);
+  const codes = glossaryLanguages();
+  const targets = new Set(codes);
+  const choices = codes.map(code => ({code, name: languageName(code)}));
+  const signature = JSON.stringify([lang, codes]);
+  for (const [index, row] of editor.rows.entries()) {
+    setText(row.legend, t('label.glossaryEntry', {n: index + 1}));
+    row.remove.setAttribute('aria-label', t('action.removeEntry', {n: index + 1}));
+    row.remove.disabled = !!state.settingsError;
+    for (const field of GLOSSARY_FIELDS) {
+      const input = row.inputs[field];
+      setText(row.labels[field], t(GLOSSARY_LABELS[field]));
+      input.setAttribute('aria-label', glossaryFieldName(row, field));
+      input.disabled = !!state.settingsError;
+      if (field.endsWith('Lang')) {
+        const value = input.value;
+        const extra = targets.has(value) ? '' : value;
+        fillSelect(input, signature + extra, () => [
+          ...choices.map(({code, name}) => new Option(name, code)),
+          ...(!targets.has(value) ? [new Option(languageName(value), value)] : []),
+        ], value);
+      }
+      const refusal = editor.refusal;
+      const refused = refusal?.row === row && (refusal.field === field ||
+        (refusal.error.code === 'glossary_same_language' && field.endsWith('Lang')));
+      if (input.value.trim()) row.required.delete(field);
+      const error = refused ? () => saveRefusal(refusal.error) :
+        row.required.has(field) && (() => t('error.code.glossary_required'));
+      if (error || !row.errors[field].hidden) setFieldError(input, row.errors[field], error);
+    }
+    const source = row.inputs.SourceLang.value, target = row.inputs.TargetLang.value;
+    row.inputs.Source.lang = langAttribute(source) || '';
+    row.inputs.Target.lang = langAttribute(target) || '';
+    row.inputs.Reading.lang = 'ja';
+    const reading = row.fields.Reading, beside = source === 'ja' ? row.source : row.target;
+    if (reading.parentNode !== beside) beside.append(reading);
+    reading.hidden = source !== 'ja' && target !== 'ja';
+    if (reading.hidden) row.inputs.Reading.value = '';
+  }
+  $('glossary-add').disabled = !!state.settingsError || editor.rows.length >= state.glossaryLimit;
+  const refusal = editor.refusal;
+  setError($('glossary-error'), refusal && !refusal.row && (() => saveRefusal(refusal.error)));
+}
+
 // The last failed save, until a save succeeds.
 let microphoneRefusal = null;
 
@@ -1711,6 +1940,7 @@ function flushFields() {
   for (const field of document.querySelectorAll('select, [role="radiogroup"], .level-control')) field.settle?.();
   if ($('address').dataset.dirty) saveAddress();
   if ($('template').dataset.dirty) saveTemplate();
+  saveGlossary();
 }
 
 // A screen change adds no history entry, so Exit can close the tab (see showExited).
@@ -1767,7 +1997,7 @@ function renderFrame() {
   $('screen-setup').hidden = screen !== 'setup' || settingsError;
   $('screen-translation').hidden = screen !== 'translation' || settingsError;
   $('screen-settings').hidden = screen !== 'settings' || settingsError;
-  for (const name of ['models', 'downloads', 'audio', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
+  for (const name of ['models', 'downloads', 'audio', 'glossary', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
   $('screen-settings-error').hidden = !settingsError;
   setText($('settings-error-text'), state.settingsError || '');
   $('switchbar').hidden = !(settingsError || screen === 'translation');
@@ -1783,6 +2013,7 @@ function render() {
   renderTranslator();
   renderMicrophone();
   renderAudio();
+  renderGlossary();
   renderChatbox();
   renderDownloads();
   renderAbout();
@@ -2019,6 +2250,7 @@ function bind() {
   buildSwitchBar();
   buildChatbox();
   buildAudio();
+  buildGlossary();
   document.addEventListener('visibilitychange', syncLevelPolling);
   for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => show(tab.dataset.screen));
   for (const item of document.querySelectorAll('.rail-item[data-sub]')) item.addEventListener('click', () => show('settings', item.dataset.sub));

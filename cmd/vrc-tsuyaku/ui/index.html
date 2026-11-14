@@ -78,6 +78,7 @@
       <button type="button" class="rail-item" data-sub="models"><svg class="icon" aria-hidden="true"><use href="#i-languages"></use></svg><span data-i18n="label.languagesModels"></span></button>
       <button type="button" class="rail-item" data-sub="downloads"><svg class="icon" aria-hidden="true"><use href="#i-hard-drive-download"></use></svg><span data-i18n="label.downloads"></span></button>
       <button type="button" class="rail-item" data-sub="audio"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="label.audio"></span></button>
+      <button type="button" class="rail-item" data-sub="glossary"><svg class="icon" aria-hidden="true"><use href="#i-book-a"></use></svg><span data-i18n="label.glossary"></span></button>
       <button type="button" class="rail-item" data-sub="chatbox"><svg class="icon" aria-hidden="true"><use href="#i-message-square-text"></use></svg><span data-i18n="label.chatbox"></span></button>
       <button type="button" class="rail-item" data-sub="about"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span data-i18n="label.about"></span><span class="update-dot" aria-hidden="true" hidden></span></button>
     </nav>
@@ -141,6 +142,17 @@
         <h3 id="audio-world-label" data-i18n="label.world"></h3>
         <div id="level-world" class="level-control"></div>
       </section>
+    </div>
+
+    <div id="sub-glossary" class="sub" hidden>
+      <h2 id="glossary-label" class="sub-title" tabindex="-1" data-i18n="label.glossary"></h2>
+      <p id="glossary-description" class="hint glossary-description" data-i18n="note.glossary"></p>
+      <ul id="glossary-list" class="glossary-list" aria-labelledby="glossary-label" aria-describedby="glossary-description glossary-error"></ul>
+      <p id="glossary-error" class="error-text" role="status" hidden></p>
+      <div class="field-row">
+        <button type="button" id="glossary-add" class="button secondary" data-i18n="action.addEntry"></button>
+        <span class="saved" id="glossary-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span>
+      </div>
     </div>
 
     <div id="sub-chatbox" class="sub" hidden>
