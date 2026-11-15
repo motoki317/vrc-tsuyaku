@@ -95,17 +95,15 @@ func TestGlossaryChangesReachBothRunningFlows(t *testing.T) {
 		for _, name := range []string{"self", "world"} {
 			inputs[name] <- struct{}{}
 			source, target := s.Flows.Languages(name)
-			var wantTerms []glossary.Term
+			wantTerms := glossary.Terms(s.Glossary, source, target)
 			wantText := "ききょう"
 			if name == "world" {
 				wantText = "LILTOON"
 			}
 			if word != "" {
 				wantText = word
-				wantTerms = []glossary.Term{{Source: word, Reading: "ききょう", Target: "lilToon"}}
 				if name == "world" {
 					wantText = "lilToon"
-					wantTerms = []glossary.Term{{Source: "lilToon", Target: word}}
 				}
 			}
 			recognized, translated := receive(recognitions), receive(translations)

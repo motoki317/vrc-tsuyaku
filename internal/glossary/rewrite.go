@@ -18,7 +18,15 @@ func Rewrite(text string, terms []Term) (string, []Term) {
 		short bool
 	}
 	var candidates []candidate
+	exactWords := make(map[string]bool, len(terms))
+	soundTerms := make(map[string]int)
 	for index, term := range terms {
+		exactWords[strings.ToLower(term.Source)] = true
+		if term.soundKey != "" {
+			if _, exists := soundTerms[term.soundKey]; !exists {
+				soundTerms[term.soundKey] = index
+			}
+		}
 		for _, word := range []string{term.Source, term.Reading} {
 			if word != "" {
 				folded := []rune(Fold(word))
@@ -31,20 +39,38 @@ func Rewrite(text string, terms []Term) (string, []Term) {
 	found := make([]bool, len(terms))
 	var out strings.Builder
 	for i := 0; i < len(folded); {
+		termIndex := -1
 		length := 0
+		if len(soundTerms) > 0 && soundWordRune(original[i]) && (i == 0 || !soundWordRune(original[i-1])) {
+			end := i + 1
+			for end < len(original) && soundWordRune(original[end]) {
+				end++
+			}
+			word := string(original[i:end])
+			if !exactWords[strings.ToLower(word)] {
+				if index, ok := soundTerms[soundKey(word)]; ok {
+					termIndex, length = index, end-i
+				}
+			}
+		}
 		for _, candidate := range candidates {
+			if len(candidate.word) < length {
+				break
+			}
 			if !matches(original, folded, i, candidate.word) {
 				continue
 			}
 			if candidate.short && allHiragana(original[i:i+len(candidate.word)]) {
 				continue
 			}
-			out.WriteString(terms[candidate.term].Source)
-			found[candidate.term] = true
+			termIndex = candidate.term
 			length = len(candidate.word)
 			break
 		}
-		if length == 0 {
+		if termIndex >= 0 {
+			out.WriteString(terms[termIndex].Source)
+			found[termIndex] = true
+		} else {
 			out.WriteRune(original[i])
 			length = 1
 		}

@@ -1,11 +1,16 @@
 package glossary
 
-import "github.com/motoki317/vrc-tsuyaku/internal/catalog"
+import (
+	"strings"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+)
 
 type Term struct {
-	Source  string
-	Reading string
-	Target  string
+	Source   string
+	Reading  string
+	Target   string
+	soundKey string
 }
 
 // Terms applies entries in either order of the flow's languages.
@@ -27,6 +32,11 @@ func Terms(entries []Entry, source, target string) []Term {
 		}
 		if source == catalog.Japanese {
 			term.Reading = entry.Reading
+		}
+		if source == catalog.English && strings.IndexFunc(term.Source, func(r rune) bool { return !asciiLetter(r) }) < 0 {
+			if key := soundKey(term.Source); len(key) >= 5 {
+				term.soundKey = key
+			}
 		}
 		word, reading := Fold(term.Source), Fold(term.Reading)
 		if seen[word] || (reading != "" && seen[reading]) {

@@ -76,3 +76,39 @@ func TestGlossarySnapshotRewrite(t *testing.T) {
 		}
 	})
 }
+
+func TestSoundKeyRewriteReachesTranslator(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		terms := glossary.Terms([]glossary.Entry{
+			{SourceLang: "en", Source: "FUJIYAMA", TargetLang: "ja", Target: "富士山"},
+			{SourceLang: "en", Source: "Selestia", TargetLang: "ja", Target: "セレスティア"},
+		}, "en", "ja")
+		s := fakeStages()
+		s.Settings = func() PhraseSettings {
+			return PhraseSettings{SourceLang: "en", TargetLang: "ja", Template: "{{.Original}}", Terms: terms}
+		}
+		texts := []string{"Fujiama", "control", "FUJIYAMA Fujiama"}
+		recognized := 0
+		s.Recognize = func(_ context.Context, _ []float32, _ PhraseSettings) (string, error) {
+			text := texts[recognized]
+			recognized++
+			return text, nil
+		}
+		wantTexts := []string{"FUJIYAMA", "control", "FUJIYAMA FUJIYAMA"}
+		wantTerms := [][]glossary.Term{terms[:1], nil, terms[:1]}
+		translated := 0
+		s.Translate = func(_ context.Context, text string, settings PhraseSettings) (string, error) {
+			if text != wantTexts[translated] || !reflect.DeepEqual(settings.Terms, wantTerms[translated]) {
+				t.Errorf("translation %d = %q, %+v", translated, text, settings.Terms)
+			}
+			translated++
+			return "translated", nil
+		}
+		if err := Run(t.Context(), s); err != nil {
+			t.Fatal(err)
+		}
+		if recognized != 3 || translated != 3 {
+			t.Fatalf("recognitions %d, translations %d, want 3 each", recognized, translated)
+		}
+	})
+}

@@ -16,15 +16,15 @@ func TestTerms(t *testing.T) {
 		source, target string
 		want           []Term
 	}{
-		{"ja", "en", []Term{{"桔梗", "ききょう", "Kikyo"}, {"マヌカ", "まぬか", "Manuka"}}},
-		{"en", "ja", []Term{{"Kikyo", "", "桔梗"}, {"Manuka", "", "マヌカ"}}},
-		{"en", "ja-easy", []Term{{"Kikyo", "", "桔梗"}, {"Manuka", "", "マヌカ"}}},
-		{"fr", "ja", []Term{{"Renard", "", "狐"}}},
-		{"en", "fr", []Term{{"Fox", "", "Renard"}}},
+		{"ja", "en", []Term{{Source: "桔梗", Reading: "ききょう", Target: "Kikyo"}, {Source: "マヌカ", Reading: "まぬか", Target: "Manuka"}}},
+		{"en", "ja", []Term{{Source: "Kikyo", Target: "桔梗", soundKey: "kikio"}, {Source: "Manuka", Target: "マヌカ", soundKey: "manuka"}}},
+		{"en", "ja-easy", []Term{{Source: "Kikyo", Target: "桔梗", soundKey: "kikio"}, {Source: "Manuka", Target: "マヌカ", soundKey: "manuka"}}},
+		{"fr", "ja", []Term{{Source: "Renard", Target: "狐"}}},
+		{"en", "fr", []Term{{Source: "Fox", Target: "Renard"}}},
 		{"ja", "de", nil},
-		{"auto", "ja", []Term{{"Kikyo", "", "桔梗"}, {"Manuka", "", "マヌカ"}, {"Renard", "", "狐"}}},
-		{"pt", "ja-easy", []Term{{"Kikyo", "", "桔梗"}, {"Manuka", "", "マヌカ"}, {"Renard", "", "狐"}}},
-		{"sv", "en", []Term{{"桔梗", "", "Kikyo"}, {"マヌカ", "", "Manuka"}, {"Renard", "", "Fox"}}},
+		{"auto", "ja", []Term{{Source: "Kikyo", Target: "桔梗"}, {Source: "Manuka", Target: "マヌカ"}, {Source: "Renard", Target: "狐"}}},
+		{"pt", "ja-easy", []Term{{Source: "Kikyo", Target: "桔梗"}, {Source: "Manuka", Target: "マヌカ"}, {Source: "Renard", Target: "狐"}}},
+		{"sv", "en", []Term{{Source: "桔梗", Target: "Kikyo"}, {Source: "マヌカ", Target: "Manuka"}, {Source: "Renard", Target: "Fox"}}},
 	} {
 		t.Run(tc.source+"/"+tc.target, func(t *testing.T) {
 			if got := Terms(entries, tc.source, tc.target); !reflect.DeepEqual(got, tc.want) {
@@ -47,8 +47,38 @@ func TestTermCollisions(t *testing.T) {
 		{SourceLang: "ja", Source: "べつ", TargetLang: "en", Target: "Different"},
 		{SourceLang: "ja", Source: "マヌカ", Reading: "まぬか", TargetLang: "en", Target: "Manuka"},
 	}
-	want := []Term{{"lilToon", "りるとぅーん", "lilToon"}, {"べつ", "", "Different"}, {"マヌカ", "まぬか", "Manuka"}}
+	want := []Term{{Source: "lilToon", Reading: "りるとぅーん", Target: "lilToon"}, {Source: "べつ", Target: "Different"}, {Source: "マヌカ", Reading: "まぬか", Target: "Manuka"}}
 	if got := Terms(entries, "ja", "en"); !reflect.DeepEqual(got, want) {
 		t.Fatalf("terms = %+v, want %+v", got, want)
+	}
+}
+
+func TestTermSoundKeys(t *testing.T) {
+	for _, tc := range []struct{ word, source, want string }{
+		{"FUJIYAMA", "en", "fujiama"},
+		{"Kikyo", "en", "kikio"},
+		{"Lime", "en", ""},
+		{"Ziiii", "en", ""},
+		{"Fuji Yama", "en", ""},
+		{"Fuji-Yama", "en", ""},
+		{"Fuji2ama", "en", ""},
+		{"Fuji'ama", "en", ""},
+		{"Fujiyamá", "en", ""},
+		{"FUJIYAMA", "ja", ""},
+		{"FUJIYAMA", "fr", ""},
+		{"FUJIYAMA", "auto", ""},
+		{"FUJIYAMA", "pt", ""},
+	} {
+		t.Run(tc.word+"/"+tc.source, func(t *testing.T) {
+			entrySource := tc.source
+			if entrySource == "auto" || entrySource == "pt" {
+				entrySource = "en"
+			}
+			entries := []Entry{{SourceLang: entrySource, Source: tc.word, TargetLang: "de", Target: "target"}}
+			got := Terms(entries, tc.source, "de")
+			if len(got) != 1 || got[0].soundKey != tc.want {
+				t.Fatalf("terms = %+v, want key %q", got, tc.want)
+			}
+		})
 	}
 }
