@@ -2,10 +2,16 @@
 
 [Usage](../../docs/usage.md) covers using the app.
 
-`main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It prints the app's name, version (when set) and page URL to standard output, with browser status and exit instructions in English and Japanese.
+`main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It prints the app's name, its version when the build has one, and the page's URL to standard output. Every console message is in English and in Japanese.
 The page is embedded in the executable, so rebuild after you change `ui/`.
 Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits. `POST /api/exit`, which the page's Exit button sends, does the same.
-After a page sends its closing signal, the app exits the same way if no event stream remains open after 5 s.
+A page sends `POST /api/closing` when its tab closes or reloads, unless it shows the exited screen. The app then exits the same way if no event stream is open 5 s later.
+A stream that drops without that request never exits the app, because a browser can unload a background tab by itself.
+
+At launch, `main` joins the [instance registry](../../internal/instance/README.md) of its data directory.
+If other instances of that directory are alive, this one waits: it serves its page, but starts no flow and no download. It starts its enabled flows when the others are gone, or when the user starts it beside them with `POST /api/instance/start`.
+When the user stops another instance with `POST /api/instance/stop/{slot}`, the app sends that instance `POST /api/exit`. If that instance still holds its registry slot 10 s after the stop began, the app kills the PID that the slot names. If the slot is still held 5 s after that, the stop fails.
+A slot's PID and address mean something only on the machine that wrote them. So when a slot's `host` differs from this machine's host name, or either is empty, the app sends no request and kills nothing, and the stop fails at once.
 
 Turning a flow's switch on saves the flow as enabled, and `main` starts every enabled flow at launch. Turning the switch off saves the flow as disabled.
 A flow saved as enabled that cannot start because its downloads are missing, for example after a language change, starts when the last of them finishes.
@@ -29,11 +35,10 @@ The check compares the release tag with the module version that Go stamped into 
 `version` is that module version when it comes from a tag, such as `v0.1.0`, and is empty for a pseudo-version or a build without version information.
 `revision`, `time` and `modified` come from the `vcs.*` settings that `go build` records only in a git checkout.
 
-`instance.state` in `GET /api/state` is `waiting` while this instance waits for earlier instances, or an empty string when it can start flows.
-Only a waiting instance has `instance.others`: rows with `slot`, `url`, `pid`, `started`, `state`, `error` and `code`.
+`instance.state` in `GET /api/state` is `waiting` while this instance waits for other instances, or an empty string when it can start flows.
+Only a waiting instance has `instance.others`: rows with `slot`, `url`, `pid`, `host`, `started`, `state`, `error` and `code`.
 A row's `state` is `stopping` during a stop, or an empty string otherwise.
 Its `error` and `code` describe its last failed stop.
-The app starts its enabled flows when no other instance remains, or after `POST /api/instance/start`.
 
 `GET /notices.txt`, which Settings → About links to, returns the license texts in `notices/` as plain text: those of Go, of each Go module in `go.mod`, and of the other code that the executable contains or reimplements.
 After you change `go.mod`, run `just notices`, which copies each module's license texts from the module cache. `TestModuleNoticesMatchGoMod` fails until `notices/modules/` matches `go.mod`.
@@ -57,9 +62,9 @@ A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, p
 | `DELETE /api/downloads/{id}` | Delete an installed artifact's files. Returns 409 while the artifact downloads or a starting or running flow needs it. On Windows, ONNX Runtime stays loaded after a flow first uses it, so its deletion returns 500 until the app restarts |
 | `POST /api/open/{target}` | Open the data folder (`data`) or `settings.yaml` (`settings`) in the OS's file manager or default app. If `settings.yaml` is missing, the app first writes the current settings to it. Returns 204 |
 | `POST /api/exit` | Exit the app as Ctrl+C does. Returns 202 before the app shuts down |
-| `POST /api/closing` | Signal that a page is closing. Returns 204 and restarts the 5 s wait before the app checks for open event streams |
-| `POST /api/instance/start` | Start this instance beside the others. Returns 200 with the state snapshot, or 409 unless waiting |
-| `POST /api/instance/stop/{slot}` | Stop one listed instance. Returns 202, 404 for an unknown slot, or 409 unless waiting or while that row already stops |
+| `POST /api/closing` | Signal that a page is closing. Returns 204. The app exits 5 s after the latest signal if no event stream is open then |
+| `POST /api/instance/start` | Start this instance beside the others. Returns 200 with the state snapshot, or 409 if this instance is not waiting |
+| `POST /api/instance/stop/{slot}` | Stop one listed instance. Returns 202, 404 for an unknown slot, or 409 if this instance is not waiting or that row is already stopping |
 | `GET /api/events` | Newline-delimited JSON events: the latest 256 events, then new ones as they happen. While idle, the server sends an empty line every 5 s, which readers skip |
 
 `{flow}` is `self` or `world`, `{action}` is `start` or `stop`, and `{id}` is a catalog artifact ID.
@@ -83,16 +88,17 @@ When the flow's spoken language is English, it also finds a word whose [sound ke
 The translator gets the terms that `glossary.Rewrite` found in the phrase.
 The page sends only the rows that have both words, so `location.index` counts the entries in the request, not the rows on the screen.
 
-When the app begins shutdown, each open event stream ends with `{"kind":"exit"}`, without an `id` or `time`.
+When the app begins shutdown, each open event stream ends with the line `{"kind":"exit"}`, which has no `id` or `time`.
 The page shows exit progress, waits until the server stops answering, then shows the exited screen.
-Without an exit record, three consecutive failed reconnects also show the exited screen.
+Without that line, the page also shows the exited screen when the stream drops and the next two reconnects fail.
 The page then stops reconnecting and polling and tries to close its tab after 3 s.
+After a lost connection the app can still be alive, for example when the browser could not reach it for a few seconds. So that page asks the server every 2 s and reloads when the server answers.
 
 Every other event has an `id`, which orders all events, a `time` and a `kind`. Events about one flow also name it in `flow`:
 
 | Kind | `text` |
 | --- | --- |
-| `state` | The flow's new state: `starting`, `running` or `stopped`. A flow that fails sends an `error` event instead, and `GET /api/state` shows it as `error` |
+| `state` | The flow's new state: `starting`, `running` or `stopped`. A flow that fails sends an `error` event instead, and `GET /api/state` shows it as `error`. A `state` event without `flow` reports a change of `instance` in `GET /api/state`: its `text` is `waiting` or empty |
 | `speech` | `start` when the flow hears speech begin, and `end` when it ends |
 | `recognized` | The recognized phrase, after the glossary rewrote its words. The app drops a phrase whose text holds no letter and no digit, such as `――`: it emits no `recognized` and no later event for that phrase |
 | `translated` | The translation, with the recognized phrase in `original` |
