@@ -130,8 +130,6 @@ a { color: var(--link); }
   display: flex; align-items: center; gap: 8px; padding: 10px 16px;
   background: var(--surface-2); border-bottom: 1px solid var(--line); font-weight: 600;
 }
-.connection:not([data-kind="reconnecting"]) { color: var(--error); }
-.connection:not([data-kind="reconnecting"]) .spinner-slot { display: none; }
 main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 main[inert], .topbar [inert] { opacity: 0.5; }
 .screen { flex: 1; min-height: 0; }
@@ -554,6 +552,17 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   background: var(--bg); font: 0.85em/1.5 var(--font); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.instance-details { margin-top: 18px; }
+.instance-details summary { cursor: pointer; }
+.instance-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.instance-row { display: grid; grid-template-columns: minmax(0, 1fr) fit-content(50%); gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.instance-info { min-width: 0; overflow-wrap: anywhere; }
+.instance-info p { margin: 2px 0 0; }
+.instance-info .value { color: var(--muted); font-size: 0.9em; }
+.instance-row > .button { align-self: start; }
+.instance-row > .error-text { grid-column: 1 / -1; }
+#instance-replace { width: 100%; }
+#instance-dialog .dialog-actions { flex-direction: column; align-items: stretch; }
 .delete-flows { display: flex; gap: 16px; margin: 8px 0 0; }
 .blocked-flow { position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px; }
 .blocked-flow .slash { position: absolute; right: -4px; bottom: -4px; width: 16px; height: 16px; color: var(--error); background: var(--surface); border-radius: 50%; }

@@ -13,7 +13,7 @@ VRC Tsuyaku runs on 64-bit Windows 11, or on 64-bit Windows 10 version 2004 (May
 
 The first time you start it, Windows shows "Windows protected your PC", because the app is not signed. Click "More info", then "Run anyway".
 
-A black console window opens, and the app opens its page in your browser. Keep the console window open while you use the app. If the page does not open, or after you close its tab, open the address that the console window prints in your browser.
+A black console window opens, and the app opens its page in your browser. The app exits when you close the page's tab or the console window, so keep both open while you use it. If the page does not open, copy the address from the console window into your browser.
 
 ## Set up translation
 
@@ -31,7 +31,11 @@ If your chatbox stays empty, turn on OSC in VRChat: Action Menu → Options → 
 
 ## Exit
 
-Press "Exit" at the top right of the page, or close the console window.
+Close the page's tab, press "Exit" at the top right of the page, or close the console window. After you close the tab, the app exits about 5 seconds later.
+
+## If VRC Tsuyaku is already running
+
+If you start the app while one that you started earlier from the same folder is still running, the new one waits, and its page asks what to do. To save memory, press "Stop the earlier VRC Tsuyaku and start this one". The app does not ask when the earlier one runs from another folder: both then run.
 
 ## Update
 

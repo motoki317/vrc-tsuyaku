@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,7 +32,34 @@ func (a *app) handler() http.Handler {
 		_ = http.NewResponseController(w).Flush()
 		a.cancel()
 	})
+	mux.HandleFunc("POST /api/closing", func(w http.ResponseWriter, r *http.Request) {
+		a.pageClosing()
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.snapshot()) })
+	mux.HandleFunc("POST /api/instance/start", func(w http.ResponseWriter, r *http.Request) {
+		if !a.startInstance() {
+			apiError(w, errors.New("this instance is not waiting"), http.StatusConflict)
+			return
+		}
+		writeJSON(w, a.snapshot())
+	})
+	mux.HandleFunc("POST /api/instance/stop/{slot}", func(w http.ResponseWriter, r *http.Request) {
+		slot, err := strconv.Atoi(r.PathValue("slot"))
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if err := a.stopInstance(slot); err != nil {
+			if errors.Is(err, errInstanceNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			apiError(w, err, http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
 	mux.HandleFunc("GET /api/levels", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.levels()) })
 	mux.HandleFunc("GET /api/microphones", func(w http.ResponseWriter, r *http.Request) {
 		devices, err := audio.Microphones(r.Context())
@@ -202,6 +230,14 @@ func apiError(w http.ResponseWriter, err error, status int) {
 }
 
 func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	a.eventStreams++
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		a.eventStreams--
+		a.mu.Unlock()
+	}()
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	rc := http.NewResponseController(w)
 	var id uint64
@@ -228,6 +264,12 @@ func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-a.ctx.Done():
+			if err := rc.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				return
+			}
+			if _, err := io.WriteString(w, "{\"kind\":\"exit\"}\n"); err == nil {
+				_ = rc.Flush()
+			}
 			return
 		case <-changed:
 		case <-time.After(5 * time.Second):

@@ -216,6 +216,7 @@ async function refresh() {
 }
 
 function scheduleRefresh() {
+  if (exitState === 'exited') return;
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => refresh().catch(() => {}), 100);
 }
@@ -364,7 +365,7 @@ function confirmLicense(ids, opener) {
     dialog.addEventListener('close', () => {
       $('license-accept').removeEventListener('click', accept);
       // Cancel returns focus to the control that opened the dialog. Accept keeps it there for the progress.
-      opener?.focus();
+      if (!exitState) opener?.focus();
       resolve(dialog.returnValue === 'accept');
     }, {once: true});
     dialog.returnValue = '';
@@ -1822,6 +1823,124 @@ function renderDownloads() {
   }
 }
 
+// Waiting instance dialog
+
+const instanceView = {cache: new Map(), pending: new Set(), starting: false, timer: 0};
+const instanceKey = info => `${info.slot}:${info.pid}`;
+
+function buildInstances() {
+  $('instance-dialog').addEventListener('cancel', event => event.preventDefault());
+  // Ignore Escape before a repeated close request can bypass cancel prevention.
+  $('instance-dialog').addEventListener('keydown', event => { if (event.key === 'Escape') event.preventDefault(); });
+  $('instance-replace').addEventListener('click', () => {
+    if (!isDisabled($('instance-replace'))) stopInstances(state.instance.others || []);
+  });
+  $('instance-start').addEventListener('click', startInstanceBeside);
+  $('instance-exit').addEventListener('click', exitApp);
+}
+
+function instanceAge(started) {
+  const seconds = (Date.parse(started) - Date.now()) / 1000;
+  const [unit, scale] = [['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]]
+    .find(([, scale]) => Math.abs(seconds) >= scale || scale === 1);
+  return new Intl.RelativeTimeFormat(lang, {numeric: 'auto'}).format(Math.round(seconds / scale), unit);
+}
+
+function renderInstances() {
+  const dialog = $('instance-dialog');
+  if (state?.instance?.state !== 'waiting' || exitState) {
+    if (dialog.open) dialog.close();
+    clearTimeout(instanceView.timer);
+    instanceView.timer = 0;
+    return;
+  }
+  const infos = state.instance.others || [];
+  const stopping = infos.some(info => info.state === 'stopping' || instanceView.pending.has(instanceKey(info)));
+  const blocked = instanceView.starting;
+  setText($('instance-title'), t('title.instance', {n: infos.length}));
+  setText($('instance-replace-text'), t(stopping ? 'state.instanceStopping' : 'action.instanceReplace'));
+  setDisabled($('instance-replace'), stopping || blocked);
+  setDisabled($('instance-start'), blocked);
+  const rows = infos.map(info => {
+    const key = instanceKey(info);
+    let row = instanceView.cache.get(key);
+    if (!row) {
+      row = h('li', {className: 'instance-row'});
+      row.append(h('div', {className: 'instance-info'}, row.pid = h('strong'), row.url = h('p', {className: 'mono'}),
+        h('p', {className: 'value'}, row.started = h('time'))),
+      row.stop = h('button', {type: 'button', className: 'button secondary compact'}),
+      row.error = h('p', {className: 'error-text', role: 'alert', hidden: true}));
+      row.stop.addEventListener('click', () => { if (!isDisabled(row.stop)) stopInstances([row.info]); });
+      instanceView.cache.set(key, row);
+    }
+    row.info = info;
+    const busy = info.state === 'stopping' || instanceView.pending.has(key);
+    setText(row.pid, t('instance.pid', {pid: info.pid}));
+    setText(row.url, info.url);
+    row.started.dateTime = info.started;
+    setText(row.started, t('instance.started', {ago: instanceAge(info.started)}));
+    setText(row.stop, t(busy ? 'state.instanceRowStopping' : 'action.instanceStop'));
+    row.stop.setAttribute('aria-label', t('label.instanceStop', {pid: info.pid}));
+    setDisabled(row.stop, busy || blocked);
+    const error = busy ? '' : info.error ? errorText(info.code, info.error) :
+      row.refusal ? (row.refusal.status ? errorText(row.refusal.code, row.refusal.message) : t('error.request')) : '';
+    if (error && (row.error.hidden || row.error.textContent !== error)) $('instance-details').open = true;
+    setText(row.error, error || '');
+    row.error.hidden = !error;
+    return row;
+  });
+  const list = $('instance-list'), focused = document.activeElement;
+  if (rows.length !== list.children.length || rows.some((row, i) => list.children[i] !== row)) list.replaceChildren(...rows);
+  for (const [key, row] of instanceView.cache) if (!rows.includes(row)) instanceView.cache.delete(key);
+  if (dialog.open && focused !== document.body && !focused.isConnected) $('instance-details').querySelector('summary').focus();
+  if (!dialog.open) {
+    dialog.opener = document.activeElement === document.body ? null : document.activeElement;
+    dialog.showModal();
+    $('instance-replace').focus();
+  }
+  if (!instanceView.timer) instanceView.timer = setTimeout(() => { instanceView.timer = 0; renderInstances(); }, 1000);
+}
+
+async function stopInstances(infos) {
+  if (exitState || state?.instance?.state !== 'waiting') return;
+  infos = infos.filter(info => info.state !== 'stopping' && !instanceView.pending.has(instanceKey(info)));
+  if (!infos.length) return;
+  setError($('instance-error'), null);
+  for (const info of infos) {
+    instanceView.pending.add(instanceKey(info));
+    const row = instanceView.cache.get(instanceKey(info));
+    if (row) row.refusal = null;
+  }
+  renderInstances();
+  await Promise.all(infos.map(async info => {
+    try {
+      await api('instance/stop/' + info.slot, {method: 'POST'});
+    } catch (e) {
+      const row = instanceView.cache.get(instanceKey(info));
+      if (row) row.refusal = e;
+    }
+  }));
+  await refresh().catch(() => {});
+  for (const info of infos) instanceView.pending.delete(instanceKey(info));
+  renderInstances();
+}
+
+async function startInstanceBeside() {
+  if (isDisabled($('instance-start')) || exitState) return;
+  instanceView.starting = true;
+  setError($('instance-error'), null);
+  renderInstances();
+  try {
+    apply(await (await api('instance/start', {method: 'POST'})).json());
+  } catch (e) {
+    setError($('instance-error'), () => e.status ? errorText(e.code, e.message) : t('error.request'));
+    $('instance-details').open = true;
+  } finally {
+    instanceView.starting = false;
+    renderInstances();
+  }
+}
+
 // Delete dialog
 
 function openDelete(id, opener) {
@@ -2028,6 +2147,7 @@ function render() {
   renderDownloads();
   renderAbout();
   renderMenu();
+  renderInstances();
   // A row that moves to another list leaves the document for a moment, which drops its focus. Focus goes back to the
   // same control, or to its row when the move also took the control away.
   if (focused !== document.body && document.activeElement === document.body && focused.isConnected) {
@@ -2037,6 +2157,7 @@ function render() {
 }
 
 function apply(next) {
+  if (exitState === 'exited') return;
   // A later launch can reuse this page's port. Its event IDs restart at 1, so this page would skip them as seen.
   if (state && next.launch !== state.launch) {
     location.reload();
@@ -2133,14 +2254,12 @@ function buildMenu() {
 // Connection
 
 function showConnection() {
-  // After the player presses Exit, the connection drops as the server stops. A refused exit shows the bar again.
+  // A refused exit shows the connection bar again.
   if (exitState) return;
   lockControls();
   const bar = $('connection');
   bar.hidden = connection === 'ok';
-  bar.dataset.kind = connection;
-  setText($('connection-text'), {reconnecting: t('state.reconnecting'), down: t('error.notAnswering')}[connection] || '');
-  $('connection-text').setAttribute('role', connection === 'reconnecting' ? 'status' : 'alert');
+  setText($('connection-text'), connection === 'reconnecting' ? t('state.reconnecting') : '');
 }
 
 function setConnection(kind) {
@@ -2152,9 +2271,13 @@ function setConnection(kind) {
 
 async function stream() {
   let failures = 0, first = true;
-  for (;;) {
+  while (exitState !== 'exited') {
     try {
       const response = await api('events');
+      if (exitState === 'exited') {
+        await response.body.cancel();
+        return;
+      }
       failures = 0;
       // History from before this moment loads silently.
       liveSince = Date.now() - 500;
@@ -2166,6 +2289,7 @@ async function stream() {
       let buffered = '';
       for (;;) {
         const {done, value} = await reader.read();
+        if (exitState === 'exited') return;
         if (done) throw new RequestError(0, 'closed');
         buffered += value;
         let newline;
@@ -2174,6 +2298,12 @@ async function stream() {
           buffered = buffered.slice(newline + 1);
           if (!line) continue;
           const event = JSON.parse(line);
+          if (event.kind === 'exit') {
+            exitNotice = true;
+            beginExit();
+            await waitForExit();
+            return;
+          }
           if (event.id <= lastEvent) continue;
           // IDs count up by one, so a jump means the history no longer held what this page missed.
           if (lastEvent && event.id > lastEvent + 1) closePending('');
@@ -2185,7 +2315,11 @@ async function stream() {
     } catch (e) {
       if (exitState === 'exited') return;
       failures++;
-      setConnection(failures > 2 ? 'down' : 'reconnecting');
+      if (failures === 3) {
+        showExited();
+        return;
+      }
+      setConnection('reconnecting');
       await sleep(2000);
     }
   }
@@ -2193,53 +2327,92 @@ async function stream() {
 
 // Exit
 
-// '' until the player presses Exit, then 'waiting' until the server stops, then 'exited'.
+// The server can announce shutdown before cleanup finishes, so the page waits until it stops answering.
 let exitState = '';
+let exitWait = null;
+let exitNotice = false;
 
-// Once the connection bar reports that the server is not answering, its error disables the controls below it, and Exit too.
-// A pending exit disables every control but Exit.
 function lockControls() {
-  const blocked = connection === 'down', waiting = exitState === 'waiting';
-  $('main').inert = blocked || waiting;
+  const waiting = exitState === 'waiting';
+  $('main').inert = waiting;
   $('tabs').inert = waiting;
   document.querySelector('.menu').inert = waiting;
-  setDisabled($('exit'), blocked);
   const mark = $('exit').querySelector('.icon');
   setIcon(mark, waiting ? 'loader-circle' : 'power');
   mark.classList.toggle('spin', waiting);
 }
 
-async function exitApp() {
-  if (exitState || isDisabled($('exit'))) return;
+function beginExit() {
+  if (exitState) return false;
   exitState = 'waiting';
+  for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+  renderInstances();
   setError($('exit-error'), null);
   lockControls();
+  return true;
+}
+
+async function exitApp() {
+  if (!beginExit()) return;
   try {
     await api('exit', {method: 'POST'});
   } catch (e) {
+    if (exitWait) return exitWait;
+    if (exitState === 'exited') return;
     exitState = '';
     showConnection();
+    renderInstances();
     if (e.status) {
       setError($('exit-error'), () => errorText(e.code, e.message));
       announce($('exit-error').textContent);
     }
     return;
   }
+  await waitForExit();
+}
+
+function waitForExit() {
+  if (exitState === 'exited') return;
+  if (!exitWait) exitWait = waitForServer();
+  return exitWait;
+}
+
+async function waitForServer() {
   // The server answers before it shuts down, and has stopped once a request gets no answer.
   // Cleanup can outlast any fixed limit, such as a model that is still loading, so the page waits for the server.
-  for (;;) {
-    try {
-      await fetch('/', {method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(1000)});
-    } catch {
-      break;
-    }
+  while (exitState !== 'exited') {
+    if (!await serverAnswers()) break;
+    if (exitState === 'exited') return;
     await sleep(250);
   }
   showExited();
 }
 
+async function serverAnswers() {
+  try {
+    await fetch('/', {method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(1000)});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function reloadWhenServerAnswers() {
+  for (;;) {
+    await sleep(2000);
+    if (await serverAnswers()) {
+      location.reload();
+      return;
+    }
+  }
+}
+
 function showExited() {
+  if (exitState === 'exited') return;
   exitState = 'exited';
+  for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+  clearTimeout(refreshTimer);
+  renderInstances();
   syncLevelPolling();
   for (const node of [$('tabs'), $('connection'), $('main'), ...document.querySelectorAll('.bar-item')]) node.hidden = true;
   $('screen-exited').hidden = false;
@@ -2250,6 +2423,7 @@ function showExited() {
     window.close();
     setTimeout(() => setText($('exited-close'), t('action.closeTab')), 500);
   }, 3000);
+  if (!exitNotice) reloadWhenServerAnswers();
 }
 
 // Start
@@ -2261,6 +2435,7 @@ function bind() {
   buildChatbox();
   buildAudio();
   buildGlossary();
+  buildInstances();
   document.addEventListener('visibilitychange', syncLevelPolling);
   for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => show(tab.dataset.screen));
   for (const item of document.querySelectorAll('.rail-item[data-sub]')) item.addEventListener('click', () => show('settings', item.dataset.sub));
@@ -2295,12 +2470,13 @@ function bind() {
   });
   $('replace-confirm').addEventListener('click', replaceSettings);
   for (const dialog of document.querySelectorAll('dialog')) {
-    dialog.addEventListener('close', () => { if (dialog.id !== 'license-dialog') dialog.opener?.focus(); });
+    dialog.addEventListener('close', () => { if (!exitState && dialog.id !== 'license-dialog') dialog.opener?.focus(); });
   }
   for (const button of document.querySelectorAll('[data-close]')) button.addEventListener('click', () => button.closest('dialog').close());
 }
 
 async function start() {
+  window.addEventListener('pagehide', () => { if (exitState !== 'exited') navigator.sendBeacon('/api/closing'); });
   const [en, ja, sprite] = await Promise.all(['/i18n/en.json', '/i18n/ja.json', '/icons.svg'].map(path => fetch(path).then(r => r.text())));
   strings = {en: JSON.parse(en), ja: JSON.parse(ja)};
   const icons = new DOMParser().parseFromString(sprite, 'image/svg+xml').documentElement;

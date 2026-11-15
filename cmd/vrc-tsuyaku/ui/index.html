@@ -253,6 +253,21 @@
   </div>
 </dialog>
 
+<dialog id="instance-dialog" class="dialog" aria-labelledby="instance-title" aria-describedby="instance-description">
+  <h2 id="instance-title"></h2>
+  <p id="instance-description" data-i18n="instance.description"></p>
+  <button type="button" id="instance-replace" class="button" aria-labelledby="instance-replace-text"><span id="instance-replace-text" role="status"></span></button>
+  <details id="instance-details" class="instance-details">
+    <summary data-i18n="instance.details"></summary>
+    <ul id="instance-list" class="instance-list"></ul>
+    <p id="instance-error" class="error-text" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" id="instance-start" class="button danger" data-i18n="action.instanceStart"></button>
+      <button type="button" id="instance-exit" class="button secondary" data-i18n="action.instanceExit"></button>
+    </div>
+  </details>
+</dialog>
+
 <div id="announce" class="visually-hidden" aria-live="polite"></div>
 </body>
 </html>

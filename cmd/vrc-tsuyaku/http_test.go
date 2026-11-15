@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
@@ -22,6 +24,42 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
+
+func TestEventStreamExit(t *testing.T) {
+	a := testApp(t)
+	server := httptest.NewServer(a.handler())
+	defer server.Close()
+	client := server.Client()
+	client.Timeout = 5 * time.Second
+	a.emit("self", "state", "stopped")
+	var readers []*json.Decoder
+	for range 2 {
+		response, err := client.Get(server.URL + "/api/events")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.Header.Get("Content-Type") != "application/x-ndjson" {
+			t.Fatal("unexpected stream content type", response.Header)
+		}
+		reader := json.NewDecoder(response.Body)
+		var first event
+		if err := reader.Decode(&first); err != nil || first.Kind != "state" || first.ID != 1 {
+			t.Fatal("stream did not open with its history", first, err)
+		}
+		readers = append(readers, reader)
+	}
+	a.cancel()
+	for i, reader := range readers {
+		var last map[string]json.RawMessage
+		if err := reader.Decode(&last); err != nil || len(last) != 1 || string(last["kind"]) != `"exit"` {
+			t.Fatalf("stream %d ended without the exit record: %s, %v", i, last, err)
+		}
+		if err := reader.Decode(&last); err != io.EOF {
+			t.Fatalf("stream %d continued after exit: %s, %v", i, last, err)
+		}
+	}
+}
 
 func TestFullGlossaryPUT(t *testing.T) {
 	a := testApp(t)
@@ -285,7 +323,7 @@ func TestFetchSiteCheck(t *testing.T) {
 
 func TestHeaderChecksBeforeEveryRoute(t *testing.T) {
 	a := testApp(t)
-	for _, path := range []string{"/", "/app.js", "/notices.txt", "/api/state", "/api/levels", "/api/events", "/api/settings", "/api/microphones", "/api/downloads/unknown", "/api/flows/self/start", "/api/chatbox/preview", "/api/open/data", "/api/exit", "/api/unknown"} {
+	for _, path := range []string{"/", "/app.js", "/notices.txt", "/api/state", "/api/levels", "/api/events", "/api/settings", "/api/microphones", "/api/downloads/unknown", "/api/flows/self/start", "/api/chatbox/preview", "/api/open/data", "/api/exit", "/api/closing", "/api/instance/start", "/api/instance/stop/0", "/api/unknown"} {
 		for _, header := range []string{"Host", "Origin", "Sec-Fetch-Site"} {
 			r := localRequest("POST", path, "")
 			switch header {
