@@ -26,6 +26,10 @@ func TestLanguageSwap(t *testing.T) {
 	runNodeTest(t, "languages.cjs")
 }
 
+func TestPageClosingBeacon(t *testing.T) {
+	runNodeTest(t, "closing.cjs")
+}
+
 func runNodeTest(t *testing.T, name string) {
 	t.Helper()
 	node, err := exec.LookPath("node")

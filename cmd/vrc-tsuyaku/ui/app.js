@@ -2301,6 +2301,7 @@ function bind() {
 }
 
 async function start() {
+  window.addEventListener('pagehide', () => navigator.sendBeacon('/api/closing'));
   const [en, ja, sprite] = await Promise.all(['/i18n/en.json', '/i18n/ja.json', '/icons.svg'].map(path => fetch(path).then(r => r.text())));
   strings = {en: JSON.parse(en), ja: JSON.parse(ja)};
   const icons = new DOMParser().parseFromString(sprite, 'image/svg+xml').documentElement;

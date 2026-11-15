@@ -31,6 +31,10 @@ func (a *app) handler() http.Handler {
 		_ = http.NewResponseController(w).Flush()
 		a.cancel()
 	})
+	mux.HandleFunc("POST /api/closing", func(w http.ResponseWriter, r *http.Request) {
+		a.pageClosing()
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.snapshot()) })
 	mux.HandleFunc("GET /api/levels", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.levels()) })
 	mux.HandleFunc("GET /api/microphones", func(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +206,14 @@ func apiError(w http.ResponseWriter, err error, status int) {
 }
 
 func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	a.eventStreams++
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		a.eventStreams--
+		a.mu.Unlock()
+	}()
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	rc := http.NewResponseController(w)
 	var id uint64

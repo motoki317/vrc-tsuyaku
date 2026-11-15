@@ -5,6 +5,7 @@
 `main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It also prints the page's URL to standard output.
 The page is embedded in the executable, so rebuild after you change `ui/`.
 Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits. `POST /api/exit`, which the page's Exit button sends, does the same.
+After a page sends its closing signal, the app exits the same way if no event stream remains open after 5 s.
 
 Turning a flow's switch on saves the flow as enabled, and `main` starts every enabled flow at launch. Turning the switch off saves the flow as disabled.
 A flow saved as enabled that cannot start because its downloads are missing, for example after a language change, starts when the last of them finishes.
@@ -50,6 +51,7 @@ A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, p
 | `DELETE /api/downloads/{id}` | Delete an installed artifact's files. Returns 409 while the artifact downloads or a starting or running flow needs it. On Windows, ONNX Runtime stays loaded after a flow first uses it, so its deletion returns 500 until the app restarts |
 | `POST /api/open/{target}` | Open the data folder (`data`) or `settings.yaml` (`settings`) in the OS's file manager or default app. If `settings.yaml` is missing, the app first writes the current settings to it. Returns 204 |
 | `POST /api/exit` | Exit the app as Ctrl+C does. Returns 202 before the app shuts down |
+| `POST /api/closing` | Signal that a page is closing. Returns 204 and restarts the 5 s wait before the app checks for open event streams |
 | `GET /api/events` | Newline-delimited JSON events: the latest 256 events, then new ones as they happen. While idle, the server sends an empty line every 5 s, which readers skip |
 
 `{flow}` is `self` or `world`, `{action}` is `start` or `stop`, and `{id}` is a catalog artifact ID.

@@ -83,6 +83,9 @@ type app struct {
 	artifacts     map[string]artifactState
 	flows         map[string]*flowRun
 	events        events
+	eventStreams  int
+	closeGrace    time.Duration
+	closeTimer    *time.Timer
 	// operations serializes settings, flow and storage changes, including close.
 	// Callers hold it while calling start or stop.
 	operations   sync.Mutex
@@ -109,10 +112,11 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	build, _ := debug.ReadBuildInfo()
 	a := &app{ctx: ctx, cancel: cancel, dir: dir, downloads: manager,
-		launch:    rand.Text(),
-		info:      appBuildInfo(build),
-		update:    updateState{State: "checking"},
-		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
+		launch:     rand.Text(),
+		info:       appBuildInfo(build),
+		update:     updateState{State: "checking"},
+		closeGrace: 5 * time.Second,
+		artifacts:  make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
 		source: flowSource, open: openFile,
 	}
 	a.prepare = a.prepareModels
@@ -657,8 +661,39 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	return stages, nil
 }
 
+func (a *app) pageClosing() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.ctx.Err() != nil {
+		return
+	}
+	if a.closeTimer != nil {
+		a.closeTimer.Stop()
+	}
+	var timer *time.Timer
+	timer = time.AfterFunc(a.closeGrace, func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		// Stop cannot prevent a callback that already waits for the lock.
+		if a.closeTimer != timer {
+			return
+		}
+		a.closeTimer = nil
+		if a.eventStreams == 0 {
+			a.cancel()
+		}
+	})
+	a.closeTimer = timer
+}
+
 func (a *app) close() error {
 	a.cancel()
+	a.mu.Lock()
+	if a.closeTimer != nil {
+		a.closeTimer.Stop()
+		a.closeTimer = nil
+	}
+	a.mu.Unlock()
 	a.updateWG.Wait()
 	a.settingsWG.Wait()
 	a.operations.Lock()
