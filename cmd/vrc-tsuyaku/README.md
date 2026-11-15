@@ -2,7 +2,7 @@
 
 [Usage](../../docs/usage.md) covers using the app.
 
-`main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It also prints the page's URL to standard output.
+`main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It prints the app's name, version (when set) and page URL to standard output, with browser status and exit instructions in English and Japanese.
 The page is embedded in the executable, so rebuild after you change `ui/`.
 Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits. `POST /api/exit`, which the page's Exit button sends, does the same.
 After a page sends its closing signal, the app exits the same way if no event stream remains open after 5 s.

@@ -64,6 +64,8 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 	}
 	server := &http.Server{Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	defer func() {
+		// Selecting text in a Windows console can block writes, so cleanup cannot wait for this one.
+		go fmt.Fprintln(out, consoleExiting)
 		// Keep Exit available until model and download cleanup finishes.
 		_ = a.close()
 		err = errors.Join(err, server.Close())
@@ -76,10 +78,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 	go func() { done <- server.Serve(listener) }()
 	a.checkUpdate(latestReleaseURL, &http.Client{})
 	url := "http://" + listener.Addr().String() + "/"
-	fmt.Fprintln(out, url)
-	if err := openBrowser(url); err != nil {
-		fmt.Fprintf(errout, "Open the printed URL in a browser: %v\n", err)
-	}
+	printStartup(out, a.info.Version, url, openBrowser(url) == nil)
 	a.startEnabled()
 	a.watchSettings()
 	select {
