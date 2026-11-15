@@ -7,6 +7,7 @@ Download the latest version from the [Releases page](https://github.com/motoki31
 ![The Translation screen: other players' translated voices on the left, yours on the right, and a switch for each](docs/assets/translation.png)
 
 - [Usage](docs/usage.md): the two translations, languages, the translation model, and the chatbox message
+- [Glossary](docs/glossary.md): how the words that you register help recognition and translation
 - [Models and data](docs/models.md): the model for each language, what the app downloads and stores, and its network use
 - [Development](docs/development.md): run from source, checks, and releases
 

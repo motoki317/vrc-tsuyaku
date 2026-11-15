@@ -52,7 +52,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function h(tag, props = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
-    if (value == null || value === false) continue;
+    if (value == null) continue;
     if (/^(aria-|data-|role$|lang$|for$)/.test(key)) node.setAttribute(key, value);
     else node[key] = value;
   }
@@ -187,10 +187,11 @@ function errorText(code, text) {
 // API
 
 class RequestError extends Error {
-  constructor(status, message, code = '') {
+  constructor(status, message, code = '', errorLocation = null) {
     super(message);
     this.status = status;
     this.code = code;
+    this.errorLocation = errorLocation;
   }
 }
 
@@ -205,7 +206,7 @@ async function api(path, options = {}) {
   if (connection === 'reconnecting') setConnection('ok');
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new RequestError(response.status, body.error || `HTTP ${response.status}`, body.code);
+    throw new RequestError(response.status, body.error || `HTTP ${response.status}`, body.code, body.location);
   }
   return response;
 }
@@ -639,7 +640,7 @@ const usedByHead = () => h('li', {className: 'download download-head', 'aria-hid
 // Language plan: one instance, shown in Setup and in Settings → Languages and models. Settings adds each flow's
 // recognizer.
 
-const plan = {rows: {}, cache: new Map(), settingsCache: new Map(), head: usedByHead()};
+const plan = {rows: {}, cache: new Map()};
 
 function commitOnSettle(field, commit, read = () => field.value) {
   let timer = 0, revision = 0;
@@ -669,6 +670,21 @@ function commitOnSettle(field, commit, read = () => field.value) {
   // Arrow keys move focus between a group's radios, so only focus that leaves the field commits.
   field.addEventListener('focusout', event => { if (!field.contains(event.relatedTarget)) settle(); });
   field.settle = settle;
+  return () => { changed(); settle(); };
+}
+
+function swappedLanguages(languages, flow, {Spoken, Target}, settingsError) {
+  const spoken = languages.variants[Target] || Target;
+  if (settingsError || languages.spoken.some(language => language.code === Spoken && language.auto) ||
+      !languages.targets.includes(Spoken) ||
+      !languages.spoken.some(language => language.code === spoken && (flow === 'world' || !language.auto))) return null;
+  return {Spoken: spoken, Target: Spoken};
+}
+
+function renderSwap(flow) {
+  const row = plan.rows[flow];
+  row.swap.setAttribute('aria-label', t('action.swapLanguages'));
+  row.swap.disabled = !swappedLanguages(state.languages, flow, row.readPair(), state.settingsError);
 }
 
 function buildPlan() {
@@ -676,7 +692,12 @@ function buildPlan() {
     const control = new FlowControl(flow, 'plan');
     const spoken = h('select', {className: 'select'});
     const target = h('select', {className: 'select'});
-    const row = {control, spoken, target, label: h('span', {className: 'row-label'}), saveError: h('p', {className: 'error-text', hidden: true})};
+    const row = {control, spoken, target, label: h('span', {className: 'row-label'}),
+      saveError: h('p', {className: 'error-text', id: uid('language-error'), hidden: true})};
+    row.swap = h('button', {type: 'button', className: 'icon-button swap'}, icon('arrow-left-right'));
+    for (const input of [spoken, row.swap, target]) input.setAttribute('aria-describedby', row.saveError.id);
+    row.chain = h('div', {className: 'chain'}, spoken, row.swap, target);
+    row.readPair = () => ({Spoken: spoken.value, Target: target.value});
     // The spoken language selects the recognizer, so its group lists one choice, checked, in the same radio form as
     // the translator choices.
     row.recognizer = modelCard('recognizer-' + flow);
@@ -684,18 +705,22 @@ function buildPlan() {
     row.recognizerLabel = h('span', {className: 'model-label'});
     row.recognizerGroup = h('div', {className: 'options', role: 'radiogroup'}, row.recognizer.root);
     row.model = h('div', {className: 'model'}, row.recognizerLabel, row.recognizerGroup);
-    for (const [select, field] of [[spoken, 'Spoken'], [target, 'Target']]) {
-      commitOnSettle(select, value => saveSettings(s => { s.Flows[KEY[flow]][field] = value; })
-        .then(() => setError(row.saveError, null))
-        .catch(e => {
-          delete select.dataset.dirty;
-          setError(row.saveError, () => e.status ? errorText(e.code, e.message) : t('error.request'));
-        }));
-    }
+    const savePair = commitOnSettle(row.chain, pair => saveSettings(s => { Object.assign(s.Flows[KEY[flow]], pair); })
+      .then(() => setError(row.saveError, null))
+      .catch(e => setError(row.saveError, () => e.status ? errorText(e.code, e.message) : t('error.request'))), row.readPair);
+    for (const event of ['input', 'change']) row.chain.addEventListener(event, () => renderSwap(flow));
+    row.swap.addEventListener('click', () => {
+      const pair = swappedLanguages(state.languages, flow, row.readPair(), state.settingsError);
+      if (!pair) return;
+      spoken.value = pair.Spoken;
+      target.value = pair.Target;
+      savePair();
+      renderSwap(flow);
+    });
     plan.rows[flow] = row;
     return h('div', {className: 'plan-row', 'data-flow': flow},
       h('div', {className: 'plan-head'}, icon(ICON[flow], 'flow-icon'), row.label, control.button),
-      h('div', {className: 'chain'}, spoken, h('span', {className: 'link'}, icon('arrow-right', 'muted'), target)),
+      row.chain,
       control.error, row.saveError, row.model);
   });
   plan.all = h('button', {type: 'button', className: 'button download-all'},
@@ -708,13 +733,9 @@ function buildPlan() {
   });
   plan.summaryLabel = h('span');
   plan.list = h('ul', {className: 'download-list'});
-  plan.more = h('button', {type: 'button', className: 'button secondary compact more'}, plan.moreLabel = h('span'), icon('arrow-right'));
-  plan.more.addEventListener('click', () => {
-    show('settings', 'downloads');
-    $('sub-downloads').querySelector('.sub-title').focus();
-  });
   plan.details = h('details', {className: 'plan-downloads'},
-    h('summary', {}, icon('chevron-down', 'chevron'), plan.summaryLabel), plan.list, plan.more);
+    h('summary', {}, icon('chevron-down', 'chevron'), plan.summaryLabel), plan.list);
+  $('screen-setup').querySelector('.plan-foot').append(plan.details);
   plan.rowsRoot = h('div', {className: 'plan-rows'}, rows);
 }
 
@@ -748,9 +769,10 @@ function renderPlan() {
   const parent = setup ? $('screen-setup') : $('sub-models');
   const slot = parent.querySelector('.plan-slot'), foot = parent.querySelector('.plan-foot');
   if (plan.rowsRoot.parentNode !== slot) slot.append(plan.rowsRoot);
-  if (plan.all.parentNode !== foot) foot.append(plan.all, plan.details);
+  if (plan.all.parentNode !== foot) foot.prepend(plan.all);
   for (const flow of FLOWS) {
     const row = plan.rows[flow];
+    const pair = row.chain.dataset.dirty ? row.readPair() : settingsOf(flow);
     setText(row.label, flowLabel(flow));
     row.spoken.setAttribute('aria-label', t('label.spoken', {flow: flowLabel(flow)}));
     row.target.setAttribute('aria-label', t('label.target', {flow: flowLabel(flow)}));
@@ -758,13 +780,14 @@ function renderPlan() {
     const option = language => new Option(languageName(language.code), language.code);
     fillSelect(row.spoken, JSON.stringify([lang, [...first, ...rest].map(language => language.code)]),
       () => [...first.map(option), rest.length ? h('optgroup', {label: t('label.european')}, rest.map(option)) : null].filter(Boolean),
-      settingsOf(flow).Spoken);
+      pair.Spoken);
     const targets = state.languages.targets;
     const top = FIRST_TARGETS.filter(code => targets.includes(code));
     const others = targets.filter(code => !top.includes(code)).sort((a, b) => collator.compare(languageName(a), languageName(b)));
     fillSelect(row.target, JSON.stringify([lang, targets]),
       () => [...top.map(code => new Option(languageName(code), code)), h('hr'), ...others.map(code => new Option(languageName(code), code))],
-      settingsOf(flow).Target);
+      pair.Target);
+    renderSwap(flow);
     row.control.update();
     row.model.hidden = setup;
     setText(row.recognizerLabel, t('label.recognizer'));
@@ -773,18 +796,9 @@ function renderPlan() {
   }
   setText($('memory-total'), formatSize(memoryEstimate()));
   renderDownloadAll();
-  // The list holds what Download all fetches. Settings adds any download in progress, so its progress stays in view
-  // after a language change, and leaves every other download to Settings → Downloads.
-  const needed = neededIds();
-  const ids = byName(setup ? needed : Object.keys(state.artifacts).filter(id => needed.includes(id) || inProgress(id)));
+  const ids = byName(neededIds());
   setText(plan.summaryLabel, t('label.downloads'));
-  plan.more.hidden = setup;
-  if (setup) renderList(plan.list, plan.cache, ids, 'plan');
-  else {
-    setText(plan.head.firstChild, t('label.usedBy'));
-    setText(plan.moreLabel, t('action.allDownloads'));
-    renderList(plan.list, plan.settingsCache, ids, 'settings', plan.head);
-  }
+  renderList(plan.list, plan.cache, ids, 'plan');
   // A failure, or a refused request, opens the section that holds it, once per failure.
   for (const id of ids) {
     if (artifactKind(state.artifacts[id]) !== 'failed' && !requestError(id)) knownFailures.delete(id);
@@ -820,7 +834,7 @@ function renderDownloadAll() {
   const view = downloadAllView(), button = plan.all;
   if (view.kind !== 'running') rate.total = 0;
   if (view.kind === 'none') {
-    if (document.activeElement === button) (screen === 'setup' ? $('next') : plan.details.querySelector('summary')).focus();
+    if (document.activeElement === button) (screen === 'setup' ? $('next') : $('model-downloads-label')).focus();
     button.hidden = true;
     return;
   }
@@ -1302,6 +1316,234 @@ function renderAudio() {
   syncLevelPolling();
 }
 
+// Settings: Glossary
+
+// Drafts stay in this page. An error's index counts the sent rows,
+// so a save remembers which screen row each sent entry comes from.
+const glossaryEditor = {rows: [], dirty: false, revision: 0, pending: new Set(), refusal: null, timer: 0};
+const GLOSSARY_LABELS = {
+  SourceLang: 'label.language', Source: 'label.word',
+  TargetLang: 'label.language', Target: 'label.word', Reading: 'label.reading',
+};
+const GLOSSARY_FIELDS = Object.keys(GLOSSARY_LABELS);
+
+function glossaryFieldName(row, field) {
+  const first = field.startsWith('Source') || (field === 'Reading' && row.inputs.SourceLang.value === 'ja');
+  return t('label.glossaryField', {field: t(GLOSSARY_LABELS[field]), n: first ? 1 : 2});
+}
+
+function glossaryLanguages() {
+  return state.languages.targets.filter(code => !state.languages.variants[code])
+    .sort((a, b) => collator.compare(languageName(a), languageName(b)));
+}
+
+function newGlossaryEntry() {
+  const self = settingsOf('self'), codes = glossaryLanguages();
+  const base = code => state.languages.variants[code] || code;
+  const source = codes.includes(base(self.Spoken)) ? base(self.Spoken) : codes[0];
+  const target = base(self.Target);
+  return {SourceLang: source, TargetLang: codes.includes(target) && target !== source ? target : codes.find(code => code !== source)};
+}
+
+function readGlossaryRow(row) {
+  return Object.fromEntries(GLOSSARY_FIELDS.map(field => [field,
+    field.endsWith('Lang') ? row.inputs[field].value : row.inputs[field].value.trim()]));
+}
+
+const completeGlossaryRow = entry => !!entry.Source && !!entry.Target;
+
+function writeGlossaryRow(row, entry) {
+  for (const field of GLOSSARY_FIELDS) {
+    const input = row.inputs[field], value = entry[field] || '';
+    if (field.endsWith('Lang') && ![...input.options].some(option => option.value === value)) {
+      input.add(new Option(languageName(value), value));
+    }
+    input.value = value;
+  }
+}
+
+function glossaryChanged() {
+  clearTimeout(glossaryEditor.timer);
+  if (glossaryEditor.refusal?.error.code?.startsWith('glossary_') &&
+      glossaryEditor.refusal.entries === JSON.stringify(glossaryEditor.rows.map(readGlossaryRow))) return;
+  glossaryEditor.revision++;
+  glossaryEditor.dirty = true;
+  glossaryEditor.refusal = null;
+}
+
+function glossaryRow(entry) {
+  const row = {inputs: {}, fields: {}, labels: {}, errors: {}, required: new Set(), legend: h('span', {id: uid('glossary-entry')})};
+  for (const field of GLOSSARY_FIELDS) {
+    const id = uid('glossary'), errorId = id + '-error';
+    const input = row.inputs[field] = h(field.endsWith('Lang') ? 'select' : 'input', {
+      id, className: field.endsWith('Lang') ? 'select' : 'input', autocomplete: 'off', spellcheck: false,
+      'aria-describedby': errorId,
+    });
+    row.labels[field] = h('label', {className: 'field-label', for: id});
+    row.errors[field] = h('p', {id: errorId, className: 'error-text', hidden: true});
+    row.fields[field] = h('div', {className: 'glossary-field'}, row.labels[field], input, row.errors[field]);
+  }
+  row.source = h('div', {className: 'glossary-words'}, row.fields.Source);
+  row.target = h('div', {className: 'glossary-words'}, row.fields.Target);
+  row.remove = h('button', {type: 'button', className: 'icon-button'}, icon('trash-2'));
+  row.root = h('li', {}, h('fieldset', {className: 'glossary-entry', 'aria-labelledby': row.legend.id},
+    h('legend', {}, row.legend, row.remove),
+    h('div', {className: 'glossary-pair'},
+      h('div', {className: 'glossary-side'}, row.fields.SourceLang, row.source),
+      icon('arrow-left-right', 'glossary-link'),
+      h('div', {className: 'glossary-side'}, row.fields.TargetLang, row.target))));
+  row.remove.addEventListener('click', () => {
+    const index = glossaryEditor.rows.indexOf(row);
+    glossaryEditor.rows.splice(index, 1);
+    row.root.remove();
+    glossaryChanged();
+    renderGlossary();
+    (glossaryEditor.rows[index]?.inputs.Source || $('glossary-add')).focus();
+    saveGlossary();
+  });
+  writeGlossaryRow(row, entry);
+  return row;
+}
+
+function buildGlossary() {
+  $('glossary-add').addEventListener('click', () => {
+    const row = glossaryRow(newGlossaryEntry());
+    glossaryEditor.rows.push(row);
+    glossaryChanged();
+    renderGlossary();
+    row.inputs.Source.focus();
+  });
+  const list = $('glossary-list');
+  list.addEventListener('input', () => {
+    glossaryChanged();
+    queueMicrotask(renderGlossary);
+  });
+  list.addEventListener('change', () => {
+    glossaryChanged();
+    // Moving the focused reading input can fire change again. Queue the render to finish the move before another render or save.
+    queueMicrotask(renderGlossary);
+    // A closed select can step through languages with the keyboard.
+    glossaryEditor.timer = setTimeout(saveGlossary, 500);
+  });
+  list.addEventListener('focusout', event => {
+    const row = glossaryEditor.rows.find(row => row.root.contains(event.target));
+    queueMicrotask(() => {
+      if (row && !row.root.contains(event.relatedTarget)) {
+        const entry = readGlossaryRow(row);
+        for (const field of ['Source', 'Target']) if (!entry[field]) row.required.add(field);
+        renderGlossary();
+      }
+      saveGlossary();
+    });
+  });
+  list.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.isComposing && event.target.tagName === 'INPUT') {
+      event.preventDefault();
+      saveGlossary();
+    }
+  });
+}
+
+function saveGlossary() {
+  clearTimeout(glossaryEditor.timer);
+  const revision = glossaryEditor.revision;
+  if (!glossaryEditor.dirty || glossaryEditor.pending.has(revision) || glossaryEditor.refusal?.error.code?.startsWith('glossary_')) return;
+  const snapshot = glossaryEditor.rows.map(row => ({row, entry: readGlossaryRow(row)}));
+  const sent = snapshot.filter(({entry}) => completeGlossaryRow(entry));
+  const entries = sent.map(({entry}) => entry);
+  const saved = () => {
+    if (glossaryEditor.revision !== revision) return;
+    for (const {row, entry} of snapshot) writeGlossaryRow(row, entry);
+    glossaryEditor.dirty = false;
+    glossaryEditor.refusal = null;
+    return true;
+  };
+  if (!glossaryEditor.pending.size && JSON.stringify(entries) === JSON.stringify(state.settings.Glossary)) {
+    saved();
+    return;
+  }
+  glossaryEditor.pending.add(revision);
+  saveSettings(s => { s.Glossary = entries; })
+    .then(() => { if (saved()) flashSaved('glossary'); })
+    .catch(error => {
+      if (glossaryEditor.revision !== revision) return;
+      const row = sent[error.errorLocation?.index]?.row;
+      const field = error.errorLocation?.field;
+      glossaryEditor.refusal = {error, row: row?.inputs[field] ? row : null, field,
+        entries: JSON.stringify(snapshot.map(({entry}) => entry))};
+      if (glossaryEditor.refusal.row) announce(t('value.glossaryError', {
+        entry: t('label.glossaryEntry', {n: glossaryEditor.rows.indexOf(row) + 1}),
+        field: glossaryFieldName(row, field), message: saveRefusal(error),
+      }));
+    })
+    .finally(() => {
+      glossaryEditor.pending.delete(revision);
+      render();
+    });
+}
+
+function renderGlossary() {
+  const editor = glossaryEditor, list = $('glossary-list');
+  if (!editor.dirty && !editor.pending.size) {
+    const incoming = state.settings.Glossary;
+    const complete = editor.rows.map(readGlossaryRow).filter(completeGlossaryRow);
+    if (JSON.stringify(complete) !== JSON.stringify(incoming)) {
+      let index = 0;
+      // State refreshes update saved entries without throwing away unfinished rows between them.
+      editor.rows = editor.rows.filter(row => {
+        if (!completeGlossaryRow(readGlossaryRow(row))) return true;
+        if (index === incoming.length) return false;
+        writeGlossaryRow(row, incoming[index++]);
+        return true;
+      });
+      while (index < incoming.length) editor.rows.push(glossaryRow(incoming[index++]));
+    }
+  }
+  const roots = editor.rows.map(row => row.root);
+  if (roots.length !== list.children.length || roots.some((root, i) => list.children[i] !== root)) list.replaceChildren(...roots);
+  const codes = glossaryLanguages();
+  const targets = new Set(codes);
+  const choices = codes.map(code => ({code, name: languageName(code)}));
+  const signature = JSON.stringify([lang, codes]);
+  for (const [index, row] of editor.rows.entries()) {
+    setText(row.legend, t('label.glossaryEntry', {n: index + 1}));
+    row.remove.setAttribute('aria-label', t('action.removeEntry', {n: index + 1}));
+    row.remove.disabled = !!state.settingsError;
+    for (const field of GLOSSARY_FIELDS) {
+      const input = row.inputs[field];
+      setText(row.labels[field], t(GLOSSARY_LABELS[field]));
+      input.setAttribute('aria-label', glossaryFieldName(row, field));
+      input.disabled = !!state.settingsError;
+      if (field.endsWith('Lang')) {
+        const value = input.value;
+        const extra = targets.has(value) ? '' : value;
+        fillSelect(input, signature + extra, () => [
+          ...choices.map(({code, name}) => new Option(name, code)),
+          ...(!targets.has(value) ? [new Option(languageName(value), value)] : []),
+        ], value);
+      }
+      const refusal = editor.refusal;
+      const refused = refusal?.row === row && (refusal.field === field ||
+        (refusal.error.code === 'glossary_same_language' && field.endsWith('Lang')));
+      if (input.value.trim()) row.required.delete(field);
+      const error = refused ? () => saveRefusal(refusal.error) :
+        row.required.has(field) && (() => t('error.code.glossary_required'));
+      if (error || !row.errors[field].hidden) setFieldError(input, row.errors[field], error);
+    }
+    const source = row.inputs.SourceLang.value, target = row.inputs.TargetLang.value;
+    row.inputs.Source.lang = langAttribute(source) || '';
+    row.inputs.Target.lang = langAttribute(target) || '';
+    row.inputs.Reading.lang = 'ja';
+    const reading = row.fields.Reading, beside = source === 'ja' ? row.source : row.target;
+    if (reading.parentNode !== beside) beside.append(reading);
+    reading.hidden = source !== 'ja' && target !== 'ja';
+    if (reading.hidden) row.inputs.Reading.value = '';
+  }
+  $('glossary-add').disabled = !!state.settingsError || editor.rows.length >= state.glossaryLimit;
+  const refusal = editor.refusal;
+  setError($('glossary-error'), refusal && !refusal.row && (() => saveRefusal(refusal.error)));
+}
+
 // The last failed save, until a save succeeds.
 let microphoneRefusal = null;
 
@@ -1557,7 +1799,7 @@ function renderChatbox() {
   renderPresets();
 }
 
-// Settings: Downloads. The groups split the catalog: what the current selection needs, what else is installed, and
+// The groups split the catalog: what the current selection needs, what else is installed, and
 // the rest. A row that changes group keeps its element, so it can keep focus (see render).
 
 const downloads = {cache: new Map(), head: usedByHead()};
@@ -1607,9 +1849,6 @@ async function confirmDelete() {
   setDisabled(button, true);
   try {
     apply(await (await api('downloads/' + dialog.target, {method: 'DELETE'})).json());
-    // A selection change on another page can take the row out of Languages and models' list, so focus goes to the
-    // list's summary.
-    if (!dialog.opener.isConnected) dialog.opener = plan.details.querySelector('summary');
     dialog.close();
   } catch (e) {
     setError($('delete-error'), () => e.status === 409 ? t('error.inUse') : errorText(e.code, e.message));
@@ -1708,9 +1947,10 @@ async function replaceSettings() {
 // Screens and history
 
 function flushFields() {
-  for (const field of document.querySelectorAll('select, [role="radiogroup"], .level-control')) field.settle?.();
+  for (const field of document.querySelectorAll('select, [role="radiogroup"], .level-control, .chain')) field.settle?.();
   if ($('address').dataset.dirty) saveAddress();
   if ($('template').dataset.dirty) saveTemplate();
+  saveGlossary();
 }
 
 // A screen change adds no history entry, so Exit can close the tab (see showExited).
@@ -1767,7 +2007,7 @@ function renderFrame() {
   $('screen-setup').hidden = screen !== 'setup' || settingsError;
   $('screen-translation').hidden = screen !== 'translation' || settingsError;
   $('screen-settings').hidden = screen !== 'settings' || settingsError;
-  for (const name of ['models', 'downloads', 'audio', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
+  for (const name of ['models', 'audio', 'glossary', 'chatbox', 'about']) $('sub-' + name).hidden = sub !== name;
   $('screen-settings-error').hidden = !settingsError;
   setText($('settings-error-text'), state.settingsError || '');
   $('switchbar').hidden = !(settingsError || screen === 'translation');
@@ -1783,6 +2023,7 @@ function render() {
   renderTranslator();
   renderMicrophone();
   renderAudio();
+  renderGlossary();
   renderChatbox();
   renderDownloads();
   renderAbout();
@@ -2019,6 +2260,7 @@ function bind() {
   buildSwitchBar();
   buildChatbox();
   buildAudio();
+  buildGlossary();
   document.addEventListener('visibilitychange', syncLevelPolling);
   for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => show(tab.dataset.screen));
   for (const item of document.querySelectorAll('.rail-item[data-sub]')) item.addEventListener('click', () => show('settings', item.dataset.sub));

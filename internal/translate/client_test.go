@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
 
 type exitResponse struct{ child *child }
@@ -36,7 +37,7 @@ func (r responseTransport) RoundTrip(*http.Request) (*http.Response, error) {
 func TestTranslatorExitWhileReadingResponse(t *testing.T) {
 	process := &child{done: make(chan struct{}), log: logTail{url: "http://127.0.0.1"}}
 	s := &Supervisor{run: &serverRun{child: process, client: &http.Client{Transport: responseTransport{exitResponse{process}}}}}
-	_, err := s.Translate(t.Context(), "en", "ja", "synthetic phrase")
+	_, err := s.Translate(t.Context(), "en", "ja", "synthetic phrase", nil)
 	if errcode.Of(err) != errcode.TranslatorExited || !errors.Is(err, io.ErrUnexpectedEOF) || !strings.Contains(err.Error(), "llama-server exited") {
 		t.Fatalf("response failure lost exit cause: %v (%s)", err, errcode.Of(err))
 	}
@@ -75,7 +76,7 @@ func TestTranslationRequests(t *testing.T) {
 	s, dir := fixture(t, true, false)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	if _, err := s.Translate(ctx, "ja", "en", "hello"); err == nil {
+	if _, err := s.Translate(ctx, "ja", "en", "hello", nil); err == nil {
 		t.Fatal("translated before Start")
 	}
 	if err := s.Start(ctx); err != nil {
@@ -83,17 +84,22 @@ func TestTranslationRequests(t *testing.T) {
 	}
 	for i, tc := range []struct {
 		phrase, source, target string
+		terms                  []glossary.Term
 	}{
-		{"こんにちは、元気ですか？", "ja", "en"},
-		{"Good morning.", "en", "ja"},
-		{"次の文章です。", "ja", "en"},
-		{"The meeting was postponed.", "en", "ja-easy"},
-		{"本日の会議は延期されました。", "ja", "ja-easy"},
-		{"Hola, buenos días.", "", "ja"},
-		{"今日の会議はありません。", "ja-easy", "en"},
-		{"Hello.", "en", "zh-hans"},
+		{"こんにちは、元気ですか？", "ja", "en", nil},
+		{"Good morning.", "en", "ja", nil},
+		{"次の文章です。", "ja", "en", nil},
+		{"The meeting was postponed.", "en", "ja-easy", nil},
+		{"本日の会議は延期されました。", "ja", "ja-easy", nil},
+		{"Hola, buenos días.", "", "ja", nil},
+		{"今日の会議はありません。", "ja-easy", "en", nil},
+		{"Hello.", "en", "zh-hans", nil},
+		{"No hints.", "en", "ja", []glossary.Term{}},
+		{"桔梗とlilToon", "ja", "en", []glossary.Term{{Source: "桔梗", Reading: "ききょう", Target: "Kikyo"}, {Source: "lilToon", Target: "lilToon"}}},
+		{"Kikyo", "en", "ja-easy", []glossary.Term{{Source: "Kikyo", Target: "桔梗"}}},
+		{"Kikyo", "", "ja", []glossary.Term{{Source: "Kikyo", Target: "桔梗"}}},
 	} {
-		got, err := s.Translate(ctx, tc.source, tc.target, tc.phrase)
+		got, err := s.Translate(ctx, tc.source, tc.target, tc.phrase, tc.terms)
 		if err != nil || got != "translated text" {
 			t.Fatalf("Translate = %q, %v", got, err)
 		}
@@ -109,6 +115,13 @@ func TestTranslationRequests(t *testing.T) {
 		if tc.source != "" {
 			languages["source_lang"] = tc.source
 		}
+		if len(tc.terms) > 0 {
+			var pairs []any
+			for _, term := range tc.terms {
+				pairs = append(pairs, map[string]any{"source": term.Source, "target": term.Target})
+			}
+			languages["glossary"] = pairs
+		}
 		want := map[string]any{
 			"model":                "plamo-3-translate",
 			"messages":             []any{map[string]any{"role": "user", "content": tc.phrase}},
@@ -120,14 +133,14 @@ func TestTranslationRequests(t *testing.T) {
 			t.Fatalf("request body = %s", record.Body)
 		}
 	}
-	if _, err := s.Translate(ctx, "ja", "en", " \n"); err == nil {
+	if _, err := s.Translate(ctx, "ja", "en", " \n", nil); err == nil {
 		t.Fatal("accepted empty phrase")
 	}
-	if _, err := s.Translate(ctx, "unknown", "en", "text"); err == nil {
+	if _, err := s.Translate(ctx, "unknown", "en", "text", nil); err == nil {
 		t.Fatal("accepted invalid source")
 	}
 	for _, target := range []string{"", "auto", "invalid"} {
-		if _, err := s.Translate(ctx, "ja", target, "text"); err == nil {
+		if _, err := s.Translate(ctx, "ja", target, "text", nil); err == nil {
 			t.Fatalf("accepted invalid target %q", target)
 		}
 	}
@@ -136,7 +149,7 @@ func TestTranslationRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-old.child.done
-	if _, err := s.Translate(ctx, "ja", "en", "text"); err == nil || !strings.Contains(err.Error(), "llama-server exited") {
+	if _, err := s.Translate(ctx, "ja", "en", "text", nil); err == nil || !strings.Contains(err.Error(), "llama-server exited") {
 		t.Fatalf("request after exit: %v", err)
 	}
 	if s.run != old {
@@ -145,7 +158,7 @@ func TestTranslationRequests(t *testing.T) {
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Translate(ctx, "en", "ja", "Another phrase."); err != nil {
+	if _, err := s.Translate(ctx, "en", "ja", "Another phrase.", nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -163,14 +176,30 @@ func TestConcurrentTranslation(t *testing.T) {
 	}
 	done := make(chan error, 2)
 	for _, source := range []string{"ja", "en"} {
-		go func() { _, err := s.Translate(ctx, source, "ja", "phrase"); done <- err }()
+		go func() {
+			_, err := s.Translate(ctx, source, "ja", "phrase", []glossary.Term{{Source: source, Target: "target"}})
+			done <- err
+		}()
 	}
 	for range 2 {
 		if err := <-done; err != nil {
 			t.Fatal(err)
 		}
 	}
-	requests(t, dir, 2)
+	for _, record := range requests(t, dir, 2) {
+		var body struct {
+			Kwargs struct {
+				Source string                            `json:"source_lang"`
+				Terms  []struct{ Source, Target string } `json:"glossary"`
+			} `json:"chat_template_kwargs"`
+		}
+		if err := json.Unmarshal(record.Body, &body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Kwargs.Terms) != 1 || body.Kwargs.Terms[0].Source != body.Kwargs.Source {
+			t.Fatalf("concurrent request mixed its terms: %s", record.Body)
+		}
+	}
 }
 
 func TestTranslationFailures(t *testing.T) {
@@ -194,7 +223,7 @@ func TestTranslationFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setReply(t, dir, tc.reply)
-			if text, err := s.Translate(ctx, "ja", "en", "phrase"); err == nil || !strings.Contains(err.Error(), tc.want) || text != "" {
+			if text, err := s.Translate(ctx, "ja", "en", "phrase", nil); err == nil || !strings.Contains(err.Error(), tc.want) || text != "" {
 				t.Fatalf("text = %q, error = %v", text, err)
 			}
 		})
@@ -211,7 +240,7 @@ func TestTranslationCancellation(t *testing.T) {
 	setReply(t, dir, fakeReply{Block: true})
 	reqCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
-	go func() { _, err := s.Translate(reqCtx, "ja", "en", "phrase"); done <- err }()
+	go func() { _, err := s.Translate(reqCtx, "ja", "en", "phrase", nil); done <- err }()
 	requests(t, dir, 1)
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
@@ -221,7 +250,7 @@ func TestTranslationCancellation(t *testing.T) {
 		t.Fatalf("request cancellation stopped shared server: %v", err)
 	}
 	setReply(t, dir, fakeReply{Status: 200, Body: `{"choices":[{"message":{"content":"OK"}}]}`})
-	if _, err := s.Translate(ctx, "en", "ja", "phrase"); err != nil {
+	if _, err := s.Translate(ctx, "en", "ja", "phrase", nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -237,7 +266,7 @@ func TestTranslationRejectsRedirect(t *testing.T) {
 		t.Fatal(err)
 	}
 	setReply(t, dir, fakeReply{Status: http.StatusTemporaryRedirect, Location: other.URL})
-	if _, err := s.Translate(ctx, "ja", "en", "private phrase"); err == nil || !strings.Contains(err.Error(), "HTTP 307") {
+	if _, err := s.Translate(ctx, "ja", "en", "private phrase", nil); err == nil || !strings.Contains(err.Error(), "HTTP 307") {
 		t.Fatalf("redirect error: %v", err)
 	}
 	if forwarded.Load() != 0 {

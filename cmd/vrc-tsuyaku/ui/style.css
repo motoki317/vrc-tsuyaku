@@ -75,13 +75,13 @@ a { color: var(--link); }
 }
 .button.secondary { background: transparent; color: var(--fg); border-color: var(--outline); }
 .button.danger { background: var(--error); border-color: var(--error); color: var(--surface); }
-.button[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+.button[aria-disabled="true"], .button:disabled { opacity: 0.45; cursor: default; }
 .icon-button {
   display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0;
   border: 0; border-radius: 18px; background: transparent; color: var(--fg);
 }
 .icon-button:hover { background: var(--surface-2); }
-.icon-button[aria-disabled="true"] { color: var(--muted); cursor: default; background: transparent; }
+.icon-button[aria-disabled="true"], .icon-button:disabled { color: var(--muted); cursor: default; background: transparent; }
 .button.compact { min-height: 32px; padding: 4px 14px 4px 10px; gap: 6px; font-size: 0.9rem; }
 .button.compact .icon { width: 16px; height: 16px; }
 .error-text { margin: 4px 0 0; color: var(--error); font-size: 0.9em; }
@@ -148,24 +148,26 @@ main[inert], .topbar [inert] { opacity: 0.5; }
 
 /* Language plan */
 .plan { display: flex; flex-direction: column; gap: 12px; }
-/* The one plan moves between Setup and Settings: its rows go in .plan-slot, and Download all and the list in
-   .plan-foot. Neither slot draws a box. */
+/* The flow rows and Download all move between Setup and Settings. Neither slot draws a box. */
 .plan-slot, .plan-foot { display: contents; }
 .plan-rows { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
-.plan-row { padding: 14px 16px; }
+.plan-row { padding: 14px 16px; container-type: inline-size; }
 .plan-row + .plan-row { border-top: 1px solid var(--line); }
 .plan-head { display: flex; align-items: center; gap: 10px; min-height: 40px; }
 .row-label { font-weight: 700; margin-right: auto; }
-.chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
-.chain > .select { flex: 1 1 11.5em; min-width: 0; }
-.chain .link { flex: 1 1 calc(9.5em + 28px); min-width: 0; display: flex; align-items: center; gap: 8px; }
-.chain .link .select { flex: 1; min-width: 0; }
+.chain { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 8px; }
+.chain > .select { width: 100%; min-width: 0; }
+.chain .swap { justify-self: center; }
+@container (max-width: 440px) {
+  .chain { grid-template-columns: minmax(0, 1fr); }
+  .chain .swap .icon { transform: rotate(90deg); }
+}
 option, optgroup { background: var(--surface); color: var(--fg); }
 .select, .input {
   min-height: 40px; padding: 7px 10px; border: 1px solid var(--outline); border-radius: 8px;
   background: var(--surface); color: var(--fg);
 }
-.input[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }
+.input[aria-invalid="true"], .select[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }
 
 .download-all {
   position: relative; overflow: hidden; width: 100%; min-height: 44px; justify-content: flex-start;
@@ -189,8 +191,6 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .plan-downloads summary::-webkit-details-marker { display: none; }
 .plan-downloads .chevron { transform: rotate(-90deg); transition: transform 0.15s; }
 .plan-downloads[open] .chevron { transform: none; }
-/* The arrow ends the label, so the padding mirrors .compact's. */
-.plan-downloads .more { margin-top: 8px; padding: 4px 10px 4px 14px; }
 
 /* Flow control */
 .fc {
@@ -255,7 +255,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .download-list, .license-list { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .download-list { list-style: none; margin: 0; padding: 4px 12px; }
 .download-list, .download-groups { display: grid; grid-template-columns: minmax(24px, auto) minmax(0, 1fr) auto auto minmax(36px, auto); column-gap: 12px; }
-/* Settings → Downloads splits its rows into groups that share one set of columns. The lists' padding and border
+/* Settings splits its downloads into groups that share one set of columns. The lists' padding and border
    take room from the edge columns, so those grow with their content. */
 .download-group, .download-groups .download-list { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
 .download-group { margin-top: 20px; }
@@ -432,10 +432,23 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .field-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .field-row .select { flex: 1 1 14em; min-width: 0; }
 .field-row .input { flex: 1 1 14em; min-width: 0; }
+.glossary-list { list-style: none; margin: 0; padding: 0; }
+.glossary-description { margin: 0 0 20px; }
+.glossary-entry { min-width: 0; margin: 0 0 16px; padding: 12px 16px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.glossary-entry legend { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0 4px; font-weight: 700; }
+.glossary-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 16px; margin-top: 12px; }
+.glossary-side, .glossary-words { display: grid; gap: 12px; min-width: 0; }
+.glossary-link { align-self: center; color: var(--muted); }
+.glossary-field { min-width: 0; }
+.glossary-field .input, .glossary-field .select { width: 100%; min-width: 0; }
+@media (max-width: 600px) {
+  .glossary-pair { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .glossary-link { justify-self: center; transform: rotate(90deg); }
+}
 .field-state { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.9em; }
 .field-state.warning { color: var(--warning); }
-.audio-group { margin-bottom: 32px; }
-.audio-group h3 { margin: 0 0 16px; font-size: 1.05em; }
+.settings-group { margin-bottom: 32px; }
+.settings-group > h3 { margin: 0 0 16px; font-size: 1.05em; }
 .level-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .automatic { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
 .automatic input { width: 18px; height: 18px; margin: 0; accent-color: var(--self); }
@@ -493,11 +506,10 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 /* Languages and models */
 .model { margin-top: 12px; }
 .model-label { display: block; margin: 0 0 6px; color: var(--muted); font-size: 0.9em; font-weight: 600; }
-.translator { margin-top: 12px; }
 .shared { display: inline-flex; gap: 4px; color: var(--muted); }
 .shared .icon { width: 18px; height: 18px; }
 .memory-total {
-  display: flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 12px 14px;
+  display: flex; align-items: center; gap: 8px; margin: 0 0 32px; padding: 12px 14px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-weight: 700;
 }
 .memory-total .icon { flex: none; }

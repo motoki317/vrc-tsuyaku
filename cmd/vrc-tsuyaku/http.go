@@ -61,7 +61,7 @@ func (a *app) handler() http.Handler {
 	})
 	mux.HandleFunc("PUT /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		var s config.Settings
-		if err := readJSON(w, r, &s); err != nil {
+		if err := readLimitedJSON(w, r, &s, config.MaxSettingsJSONBytes); err != nil {
 			apiError(w, err, http.StatusBadRequest)
 			return
 		}
@@ -170,7 +170,11 @@ func (a *app) handler() http.Handler {
 }
 
 func readJSON(w http.ResponseWriter, r *http.Request, v any) error {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+	return readLimitedJSON(w, r, v, 64<<10)
+}
+
+func readLimitedJSON(w http.ResponseWriter, r *http.Request, v any, limit int64) error {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		return err
@@ -190,7 +194,11 @@ func writeJSON(w http.ResponseWriter, v any) {
 func apiError(w http.ResponseWriter, err error, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": withDataDirHint(err).Error(), "code": string(errcode.Of(err))})
+	_ = json.NewEncoder(w).Encode(struct {
+		Error    string            `json:"error"`
+		Code     errcode.Code      `json:"code"`
+		Location *errcode.Location `json:"location,omitempty"`
+	}{withDataDirHint(err).Error(), errcode.Of(err), errcode.LocationOf(err)})
 }
 
 func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {

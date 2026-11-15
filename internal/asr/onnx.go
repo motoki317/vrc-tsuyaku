@@ -2,9 +2,50 @@ package asr
 
 import (
 	"fmt"
+	"slices"
 
 	ort "github.com/getcharzp/onnxruntime_purego"
 )
+
+type floatTensorSnapshot struct {
+	shape []int64
+	data  []float32
+}
+
+func snapshotFloats(values map[string]*ort.Value, names ...string) (map[string]floatTensorSnapshot, error) {
+	state := make(map[string]floatTensorSnapshot, len(names))
+	for _, name := range names {
+		value := values[name]
+		if value == nil {
+			return nil, fmt.Errorf("checkpoint tensor %q is missing", name)
+		}
+		shape, err := value.GetShape()
+		if err != nil {
+			return nil, err
+		}
+		data, err := ort.GetTensorData[float32](value)
+		if err != nil {
+			return nil, err
+		}
+		// Own the shape and data because the decoder's Accept method closes the source tensors.
+		state[name] = floatTensorSnapshot{slices.Clone(shape), slices.Clone(data)}
+	}
+	return state, nil
+}
+
+func restoreFloats(state map[string]floatTensorSnapshot) (map[string]*ort.Value, error) {
+	values := make(map[string]*ort.Value, len(state))
+	for name, tensor := range state {
+		// NewTensor aliases tensor.data. Use the checkpoint only once because decoding can mutate that buffer.
+		value, err := ort.NewTensor(tensor.shape, tensor.data)
+		if err != nil {
+			closeValues(values)
+			return nil, err
+		}
+		values[name] = value
+	}
+	return values, nil
+}
 
 // encoderFrames trims and transposes [1,1024,paddedFrames] to [validFrames,1024].
 func encoderFrames(encoded map[string]*ort.Value) ([]float32, error) {

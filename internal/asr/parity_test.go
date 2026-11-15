@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -115,11 +116,14 @@ func TestHaasCPUParity(t *testing.T) {
 			var errors, characters int
 			for i, ref := range refs {
 				audio := readTestWAV(t, wavDir, ref.ID)
-				tokens, err := h.tokens(t.Context(), audio)
+				tokens, err := h.tokens(t.Context(), audio, nil)
 				if err != nil {
 					t.Fatalf("%s: %v", ref.ID, err)
 				}
 				text, err := h.vocab.decode(tokens)
+				if ref.Tokens != nil && !slices.Equal(tokens, ref.Tokens) {
+					t.Fatalf("%s: tokens %v, want %v", ref.ID, tokens, ref.Tokens)
+				}
 				if err != nil || text != ref.Hyp {
 					t.Fatalf("%s: got %q, want %q, tokens %v, error %v", ref.ID, text, ref.Hyp, tokens, err)
 				}

@@ -26,6 +26,7 @@ const haasBlank = 3072
 // Haas recognizes Japanese with the exported Haas encoder, prediction and joint
 // networks.
 type Haas struct {
+	hints                          *hintVocabulary
 	mu                             sync.RWMutex
 	engine                         *Engine
 	vocab                          vocabulary
@@ -45,7 +46,7 @@ func newHaas(engine *Engine, files catalog.HaasFiles) (*Haas, error) {
 	if len(vocab) != haasBlank+1 || vocab[haasBlank] != "<blk>" {
 		return nil, fmt.Errorf("Haas vocabulary must have %d entries ending with <blk>", haasBlank+1)
 	}
-	h := &Haas{engine: engine, vocab: vocab}
+	h := &Haas{engine: engine, vocab: vocab, hints: newHintVocabulary(vocab, false)}
 	for _, spec := range []struct {
 		name, path string
 		session    **ort.Session
@@ -76,15 +77,15 @@ func (h *Haas) close() {
 }
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
-func (h *Haas) Transcribe(ctx context.Context, audio []float32) (string, error) {
-	tokens, err := h.tokens(ctx, audio)
+func (h *Haas) Transcribe(ctx context.Context, audio []float32, words []string) (string, error) {
+	tokens, err := h.tokens(ctx, audio, words)
 	if err != nil {
 		return "", err
 	}
 	return h.vocab.decode(tokens)
 }
 
-func (h *Haas) tokens(ctx context.Context, audio []float32) ([]int, error) {
+func (h *Haas) tokens(ctx context.Context, audio []float32, words []string) ([]int, error) {
 	h.engine.mu.RLock()
 	defer h.engine.mu.RUnlock()
 	h.mu.RLock()
@@ -105,7 +106,7 @@ func (h *Haas) tokens(ctx context.Context, audio []float32) ([]int, error) {
 	}
 	defer d.close()
 	return greedyTDT(ctx, len(encoded)/1024, tdtConfig{
-		blank: haasBlank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10,
+		blank: haasBlank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: h.hints.compile(words),
 	}, d)
 }
 
@@ -186,6 +187,22 @@ func (h *Haas) decoder(encoded []float32) (*haasDecoder, error) {
 }
 
 func (d *haasDecoder) close() { closeValues(d.state) }
+
+func (d *haasDecoder) checkpoint() (func() error, error) {
+	state, err := snapshotFloats(d.state, "conv_state_out", "rec_state_out", "dec_out")
+	if err != nil {
+		return nil, err
+	}
+	return func() error {
+		restored, err := restoreFloats(state)
+		if err != nil {
+			return err
+		}
+		closeValues(d.state)
+		d.state = restored
+		return nil
+	}, nil
+}
 
 func (d *haasDecoder) Accept(token int) error {
 	label, err := ort.NewTensor([]int64{1}, []int64{int64(token)})

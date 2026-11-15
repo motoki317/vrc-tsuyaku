@@ -136,8 +136,8 @@ func levelTestApp(t *testing.T) (*app, map[string]levelFlowInput) {
 				}
 			}),
 			Probability: func(_ context.Context, window []float32) (float32, error) { input.scores <- window[0]; return 0, nil },
-			Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
-			Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+			Recognize:   func(context.Context, []float32, pipeline.PhraseSettings) (string, error) { return "", nil },
+			Translate:   func(context.Context, string, pipeline.PhraseSettings) (string, error) { return "", nil },
 		}, nil
 	}
 	return a, inputs
@@ -413,8 +413,8 @@ func TestFlowReleasesModelsBeforeFinalStatus(t *testing.T) {
 						return tc.captureErr
 					}),
 					Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
-					Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
-					Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+					Recognize:   func(context.Context, []float32, pipeline.PhraseSettings) (string, error) { return "", nil },
+					Translate:   func(context.Context, string, pipeline.PhraseSettings) (string, error) { return "", nil },
 				}
 				close(prepared)
 				if tc.cancelPrepare {
@@ -482,8 +482,8 @@ func TestFlowReleasesModelsAfterStopOrRestart(t *testing.T) {
 						return ctx.Err()
 					}),
 					Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
-					Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
-					Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+					Recognize:   func(context.Context, []float32, pipeline.PhraseSettings) (string, error) { return "", nil },
+					Translate:   func(context.Context, string, pipeline.PhraseSettings) (string, error) { return "", nil },
 				}
 				if phase == "starting" {
 					prepared <- s.Flows.Self.Spoken
@@ -605,8 +605,8 @@ func TestStopRacesNormalCompletion(t *testing.T) {
 					}
 				}),
 				Probability: func(context.Context, []float32) (float32, error) { return 0, nil },
-				Recognize:   func(context.Context, []float32) (string, error) { return "", nil },
-				Translate:   func(context.Context, string, string, string) (string, error) { return "", nil },
+				Recognize:   func(context.Context, []float32, pipeline.PhraseSettings) (string, error) { return "", nil },
+				Translate:   func(context.Context, string, pipeline.PhraseSettings) (string, error) { return "", nil },
 			}, nil
 		}
 		if err := a.changeFlow("world", "start"); err != nil {

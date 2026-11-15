@@ -40,7 +40,7 @@ A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, p
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/state` | `launch` (a value that differs between launches), `app` (build information), `update` (the update check: `state`, `version` and `url`), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators) and `defaultTemplate` |
+| `GET /api/state` | `launch` (a value that differs between launches), `app` (build information), `update` (the update check: `state`, `version` and `url`), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators), `glossaryLimit` (the most glossary entries that the settings accept) and `defaultTemplate` |
 | `PUT /api/settings` | Save a complete `config.Settings` JSON object. Invalid input returns 400. A failed write returns 500. If another program changed `settings.yaml` after the app last read it, the app reads the file again, writes nothing and returns 409 with code `settings_changed`. The page then fetches the state and repeats the player's change once |
 | `GET /api/microphones` | Microphone IDs and names |
 | `GET /api/levels` | Each running flow's input level in dBFS, such as `{"self": -41.5, "world": -30.2}`. The level is the RMS of a 32 ms window of captured audio. A flow has an entry from its first window until its pipeline ends. The value jumps to a louder window's level at once and falls by at most 1.5 dB per window, so the page, which polls every 100 ms, still shows a short sound. The levels are not `/api/events` events: 31 windows per second for each flow would push phrases out of the 256 events that the stream keeps |
@@ -55,13 +55,23 @@ A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, p
 `{flow}` is `self` or `world`, `{action}` is `start` or `stop`, and `{id}` is a catalog artifact ID.
 The app checks artifact files once at startup and updates their state after each download or deletion.
 Apart from 403 and 404, which have plain-text bodies, an error response is a JSON object with the diagnostic text in `error` and an [`errcode`](../../internal/errcode/errcode.go) value in `code`.
+An error response about one glossary entry, with a `glossary_…` code, also has `location`: the entry's zero-based `index` in the request's `Glossary` list and the `field`, such as `Reading`.
 Each code names the user's next step, so the page shows its own message for a known code and the diagnostic text for `unknown`.
 Artifact and flow states and `error` events carry the same `code` field.
 
 A settings save restarts a starting or running flow when the change needs another recognizer, for example from Japanese to English.
 A changed microphone or chatbox address also restarts the self flow.
 A changed `Translator` restarts both flows when they are starting or running. An enabled flow that waits for the old translator's download starts with the new one if it is installed.
-Other changes, such as the target language or the chatbox template, apply from the flow's next phrase, except `CutLevel`: it applies from the next 32 ms window of audio.
+Other changes, such as the target language, the glossary or the chatbox template, apply from the flow's next phrase, except `CutLevel`: it applies from the next 32 ms window of audio.
+
+`Glossary` in the settings JSON is a list of entries with `SourceLang`, `Source`, `TargetLang`, `Target` and `Reading`. `settings.yaml` names them `source_lang`, `source`, `target_lang`, `target` and `reading`. [`glossary.Validate`](../../internal/glossary/glossary.go) holds the rules for an entry.
+For each phrase, [`glossary.Terms`](../../internal/glossary/terms.go) turns the entries into the flow's terms. An entry applies when its two languages are the flow's spoken and target languages, in either order. When the spoken language is one that an entry cannot name ("Detect", Portuguese or Swedish), every entry with the target language on either side applies.
+A term has a source word, which is the entry's word in the spoken language whichever side of the entry holds it, and the entry's word in the target language. It has the kana reading only when the flow's spoken language is Japanese.
+The recognizer gets the source words and readings as [hints](../../internal/asr/README.md#word-hints).
+[`glossary.Rewrite`](../../internal/glossary/rewrite.go) then finds each source word or reading in the recognized phrase, without regard to case or to hiragana against katakana, and writes the source word there in the entry's spelling.
+When the flow's spoken language is English, it also finds a word whose [sound key](../../internal/glossary/sound.go) equals the key of a one-word source word.
+The translator gets the terms that `glossary.Rewrite` found in the phrase.
+The page sends only the rows that have both words, so `location.index` counts the entries in the request, not the rows on the screen.
 
 Each event has an `id`, which orders all events, a `time` and a `kind`. Events about one flow also name it in `flow`:
 
@@ -69,7 +79,7 @@ Each event has an `id`, which orders all events, a `time` and a `kind`. Events a
 | --- | --- |
 | `state` | The flow's new state: `starting`, `running` or `stopped`. A flow that fails sends an `error` event instead, and `GET /api/state` shows it as `error` |
 | `speech` | `start` when the flow hears speech begin, and `end` when it ends |
-| `recognized` | The recognized phrase |
+| `recognized` | The recognized phrase, after the glossary rewrote its words. The app drops a phrase whose text holds no letter and no digit, such as `――`: it emits no `recognized` and no later event for that phrase |
 | `translated` | The translation, with the recognized phrase in `original` |
 | `page` | One chatbox page written to VRChat. When the phrase joined an earlier message, as described below, the text also holds that message's earlier phrases |
 | `merged` | The phrase joined an earlier message, as described below. `text` holds the message's translations, joined, and `original` its recognized phrases, joined. `into` holds the `phraseId` of the message's first phrase |

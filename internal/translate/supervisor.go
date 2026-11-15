@@ -13,10 +13,38 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
+
+const (
+	translationSlots = 2
+	slotTokens       = 2048
+	answerTokens     = 512
+	// A term costs its two words' Unicode code points plus one. A budget of 240
+	// such units allows at most 4*240 = 960 tokens: at most four per code point
+	// and about three per pair. The rest of the slot holds the phrase and answer.
+	termBudget = 240
+)
+
+// budgetTerms keeps terms in list order within the translator's context budget.
+// It skips a term that does not fit and considers later terms.
+func budgetTerms(terms []glossary.Term) []glossary.Term {
+	var kept []glossary.Term
+	remaining := termBudget
+	for _, term := range terms {
+		cost := utf8.RuneCountInString(term.Source) + utf8.RuneCountInString(term.Target) + 1
+		if cost > remaining {
+			continue
+		}
+		remaining -= cost
+		kept = append(kept, term)
+	}
+	return kept
+}
 
 // Supervisor owns one server shared by both flows. Start and Close serialize
 // lifecycle changes.
@@ -65,7 +93,7 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	// Endpoint discovery needs plain INFO logging regardless of inherited logging settings.
 	p, err := launch(s.serverPath, []string{
 		"-m", s.modelPath, "--alias", catalog.TranslationAlias,
-		"--jinja", "--no-prefill-assistant", "-c", "4096", "-np", "2",
+		"--jinja", "--no-prefill-assistant", "-c", strconv.Itoa(slotTokens * translationSlots), "-np", strconv.Itoa(translationSlots),
 		"--cache-ram", "0", "-t", "8",
 		"--no-log-jsonl", "--log-colors", "off", "--log-verbosity", "3",
 		"--host", "127.0.0.1", "--port", "0",

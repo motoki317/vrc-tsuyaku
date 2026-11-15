@@ -70,8 +70,9 @@ func TestLanguageChangesReachRunningPipeline(t *testing.T) {
 						}
 					}),
 					Probability: func(_ context.Context, samples []float32) (float32, error) { return samples[0], nil },
-					Recognize:   func(context.Context, []float32) (string, error) { return "original", nil },
-					Translate: func(_ context.Context, source, target, phrase string) (string, error) {
+					Recognize:   func(context.Context, []float32, pipeline.PhraseSettings) (string, error) { return "original", nil },
+					Translate: func(_ context.Context, phrase string, settings pipeline.PhraseSettings) (string, error) {
+						source, target := settings.SourceLang, settings.TargetLang
 						requests <- translationRequest{source, target, phrase}
 						return "translation", nil
 					},

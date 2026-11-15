@@ -7,7 +7,7 @@
 | My voice | your microphone | in your VRChat chatbox, over OSC, and on the page |
 | Others' voices | everything that VRChat plays: voices, world music and video players | on the page |
 
-Each has its own spoken language and target language, which Settings → Languages and models changes.
+Each has its own spoken language and target language, which Settings → Languages and models changes. The button between the two languages swaps them. The app disables it when it does not offer the swapped pair: for example, "Detect" cannot be a target language.
 
 The app remembers each switch: a switch that you leave on starts again the next time you open the app. "Others' voices" needs VRChat to be running, so if you leave it on, start VRChat before you open the app.
 
@@ -27,6 +27,10 @@ If speech hardly moves the meter at all, no setting helps. Raise the microphone'
 ## Translation model
 
 My voice and Others' voices share the translator that Settings → Languages and models picks: PLaMo 3 Translate 2B, the default, or 0.8B. The 2B model needs about 3.2 GB of RAM. The 0.8B model needs about 1.0 GB and translates a sentence about three times as fast, but less accurately. Try 0.8B if VRChat lags or translations fall behind.
+
+## Glossary
+
+Settings → Glossary holds words that speech recognition does not know, such as avatar names. The app then recognizes and translates them the way that you wrote them more often. [Glossary](glossary.md) describes an entry, what the app does with it in each language, and its side effects.
 
 ## Chatbox message
 
@@ -54,4 +58,4 @@ What does not fit waits for its turn. When you keep talking, a message waits abo
 
 ## Memory
 
-Every model runs on the CPU, alongside VRChat. Settings → Languages and models shows how much RAM each model needs, and an estimate for both switches on. When you turn a switch off or change its spoken language, the app frees the speech recognition model that no switch uses any more. The translation model stays in memory until you exit the app.
+Every model runs on the CPU, alongside VRChat. Settings → Languages and models shows how much RAM each model needs. "Estimated memory use" at its top is the total with both switches on. When you turn a switch off or change its spoken language, the app frees the speech recognition model that no switch uses any more. The translation model stays in memory until you pick the other one or exit the app.

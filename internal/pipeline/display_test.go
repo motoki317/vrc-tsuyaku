@@ -177,7 +177,7 @@ func TestDisplayBacklog(t *testing.T) {
 		s := fakeStages()
 		s.Source = fakeSource(20)
 		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
-		s.Translate = func(context.Context, string, string, string) (string, error) {
+		s.Translate = func(context.Context, string, PhraseSettings) (string, error) {
 			time.Sleep(8 * time.Second)
 			return strings.Repeat("a", 154), nil
 		}
@@ -198,14 +198,14 @@ func TestDisplayBacklog(t *testing.T) {
 }
 
 func TestDisplaySkippedPhrasePreservesMessage(t *testing.T) {
-	for _, skipped := range []string{"bad", " \t\n"} {
+	for _, skipped := range []string{"bad", "blank"} {
 		t.Run(skipped, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				a, last := strings.Repeat("a", 100), strings.Repeat("z", 100)
 				originals := []string{a, skipped, "b", last}
 				s := timedStages(originals, 0)
 				s.Settings = func() PhraseSettings {
-					return PhraseSettings{Template: `{{if eq .Original "bad"}}{{index .Translation 1000}}{{else}}{{.Original}}{{end}}`}
+					return PhraseSettings{Template: `{{if eq .Original "bad"}}{{index .Translation 1000}}{{else if eq .Original "blank"}} {{else}}{{.Original}}{{end}}`}
 				}
 				r := displayRecord{start: time.Now()}
 				s.Send = r.send
@@ -236,7 +236,7 @@ func TestDisplayCancellationDuringReadingTime(t *testing.T) {
 		s := fakeStages()
 		s.Source = fakeSource(2)
 		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
-		s.Translate = func(context.Context, string, string, string) (string, error) { return strings.Repeat("a", 100), nil }
+		s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return strings.Repeat("a", 100), nil }
 		r := displayRecord{start: time.Now()}
 		s.Send = r.send
 		ctx, cancel := context.WithCancelCause(t.Context())
@@ -276,7 +276,7 @@ func TestDisplayStateEndsWithRun(t *testing.T) {
 			s := fakeStages()
 			s.Source = fakeSource(1)
 			s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
-			s.Translate = func(context.Context, string, string, string) (string, error) { return text, nil }
+			s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return text, nil }
 			s.Send = r.send
 			if err := Run(t.Context(), s); err != nil {
 				t.Fatal(err)

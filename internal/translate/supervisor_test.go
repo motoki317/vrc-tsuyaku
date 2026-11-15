@@ -322,7 +322,7 @@ func TestStartupWithTakenPort(t *testing.T) {
 	if record.TakenAddress == "" || record.TakenAddress == record.Address {
 		t.Fatalf("server did not avoid the occupied port: %+v", record)
 	}
-	if _, err := s.Translate(ctx, "ja", "en", "hello"); err != nil {
+	if _, err := s.Translate(ctx, "ja", "en", "hello", nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -349,7 +349,7 @@ func TestStartupFailureAndCancellation(t *testing.T) {
 			go func() { started <- s.Start(ctx) }()
 			readRecord(t, dir)
 			if noAddress {
-				if _, err := s.Translate(ctx, "ja", "en", "hello"); err == nil || !strings.Contains(err.Error(), "listening address") {
+				if _, err := s.Translate(ctx, "ja", "en", "hello", nil); err == nil || !strings.Contains(err.Error(), "listening address") {
 					t.Fatalf("translated before the address arrived: %v", err)
 				}
 			}

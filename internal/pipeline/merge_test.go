@@ -58,9 +58,13 @@ func timedStages(originals []string, interval time.Duration) Stages {
 	s := fakeStages()
 	s.Source = fakeSource(len(originals))
 	i := 0
-	s.Recognize = func(context.Context, []float32) (string, error) { text := originals[i]; i++; return text, nil }
+	s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
+		text := originals[i]
+		i++
+		return text, nil
+	}
 	translated := 0
-	s.Translate = func(_ context.Context, _, _, text string) (string, error) {
+	s.Translate = func(_ context.Context, text string, _ PhraseSettings) (string, error) {
 		if translated > 0 {
 			time.Sleep(interval)
 		}
@@ -139,7 +143,7 @@ func TestWithoutSendRenderFailuresAndEmptyPages(t *testing.T) {
 				s.Settings = func() PhraseSettings {
 					return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
 				}
-				s.Translate = func(_ context.Context, _, _, text string) (string, error) {
+				s.Translate = func(_ context.Context, text string, _ PhraseSettings) (string, error) {
 					if text == "bad" {
 						return tc.text, nil
 					}

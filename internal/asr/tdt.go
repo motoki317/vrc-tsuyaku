@@ -13,7 +13,7 @@ import (
 )
 
 // A decoder owns one phrase's prediction state. Scores computes candidate token
-// and duration scores. Only Accept commits a token to that state.
+// and duration scores. Accept commits a token. A checkpoint restore replaces the state.
 // The Scores slice remains valid until the next Scores or Accept call.
 // greedyTDT calls Accept to commit every nonblank token.
 type tdtDecoder interface {
@@ -25,9 +25,13 @@ type tdtConfig struct {
 	blank      int
 	durations  []int
 	maxSymbols int
+	hints      *compiledHints
 }
 
 func greedyTDT(ctx context.Context, frames int, cfg tdtConfig, decoder tdtDecoder) ([]int, error) {
+	if cfg.hints != nil {
+		return speculativeTDT(ctx, frames, cfg, decoder)
+	}
 	var tokens []int
 	lastFrame, symbols := -1, 0
 	for frame := 0; frame < frames; {

@@ -12,7 +12,8 @@ Load either bundle with `Engine.LoadParakeet(files)`.
 The recognizer takes no language: v3 transcribes any of its languages from the audio alone.
 `catalog.Spoken(code)` names the recognizer for each spoken language.
 
-Call `Transcribe(ctx, audio)` for each phrase of 16 kHz mono `float32` audio produced by [vad.Segmenter](../vad/segmenter.go).
+Call `Transcribe(ctx, audio, words)` for each phrase of 16 kHz mono `float32` audio produced by [vad.Segmenter](../vad/segmenter.go).
+`words` holds the [word hints](#word-hints) for the phrase, or nothing.
 
 Haas uses the decoding algorithm in [the Python reference](../../tools/haas-export/haas_full_onnx.py).
 Parakeet uses the same [SentencePiece detokenization rule as Haas](../../tools/haas-export/README.md#vocabulary-and-detokenization).
@@ -20,6 +21,30 @@ Its vocabulary has no byte pieces.
 
 Call `Engine.LoadSilero(catalog.SileroModel(directory))` once, then `NewStream()` for each audio stream.
 Pass each 512-sample window to `Probability(ctx, audio)` and reset the stream when capture restarts.
+
+## Word hints
+
+Haas and Parakeet take no prompt, so `Transcribe` favours the words in `words` while it decodes.
+A token that starts a word earns a bonus of 1 on its logit, and a token that continues a word that the decoder is writing earns 8.
+Where the decoder picks the blank token, which writes nothing, while it is writing a word, the token that continues the word replaces the blank if its logit plus 4 exceeds the blank's logit. So a name that the model breaks apart, such as "VRC Fury" for "VRCFury", can complete.
+The decoder compares spellings, not token sequences: after [`glossary.Fold`](../glossary/glossary.go), which ignores case and the difference between hiragana and katakana, a token continues a word when its text is a prefix of the rest of the word.
+In Parakeet's vocabulary, a word starts only at a token with the word-start mark `▁`. Haas's vocabulary does not mark words, so a word starts at any token.
+
+A hint changes the transcript only if its word completes.
+When the bonus changes a token and every word that used the token then breaks off, the decoder returns to that token, takes the token that it picks without the bonus, and decodes on from there.
+After eight such returns in one phrase, it decodes the rest of the phrase without hints.
+
+Three kinds of word have no effect.
+
+- A word of fewer than three characters. The decoder leaves it out, because one token that the bonus picks can complete it.
+- A word with a character that no token spells, such as 桔 in Haas's vocabulary. The entry's kana reading is a hint too, and [`glossary.Rewrite`](../glossary/rewrite.go) turns it into the word.
+- A word at whose first token the decoder picks a blank, or at whose place in the audio it skips ahead. The bonus never starts a word at a blank and never changes how many frames a token skips.
+
+The three bonuses come from a sweep on synthesized speech, Japanese and English sentences with names, against a glossary of 200 entries.
+At these values, the hints changed no sentence that has no name, in clean audio, with white noise 15 dB under the speech, and after an Opus round trip.
+On clean sentences that the sweep did not use, the transcript after `glossary.Rewrite` held the name in 63 % of the Japanese ones (53 % with the rewrite alone) and in 73 % of the English ones (40 % with the rewrite alone).
+On 92 clips of audiobook speech, the hints changed one transcript.
+Parakeet v3 uses the same values. It was measured only on the English sentences.
 
 ## Checks
 

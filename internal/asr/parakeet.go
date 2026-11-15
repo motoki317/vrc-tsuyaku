@@ -20,6 +20,7 @@ type Parakeet struct {
 	mu                              sync.RWMutex
 	engine                          *Engine
 	vocab                           vocabulary
+	hints                           *hintVocabulary
 	blank                           int
 	features, encoder, decoderJoint *ort.Session
 }
@@ -37,7 +38,7 @@ func newParakeet(engine *Engine, files catalog.ParakeetFiles) (*Parakeet, error)
 	if (len(vocab) != 1025 && len(vocab) != 8193) || vocab[len(vocab)-1] != "<blk>" {
 		return nil, fmt.Errorf("Parakeet vocabulary must have 1025 (v2) or 8193 (v3) entries ending with <blk>")
 	}
-	p := &Parakeet{engine: engine, vocab: vocab, blank: len(vocab) - 1}
+	p := &Parakeet{engine: engine, vocab: vocab, blank: len(vocab) - 1, hints: newHintVocabulary(vocab, true)}
 	for _, spec := range []struct {
 		name, path string
 		session    **ort.Session
@@ -67,15 +68,15 @@ func (p *Parakeet) close() {
 }
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
-func (p *Parakeet) Transcribe(ctx context.Context, audio []float32) (string, error) {
-	tokens, err := p.tokens(ctx, audio)
+func (p *Parakeet) Transcribe(ctx context.Context, audio []float32, words []string) (string, error) {
+	tokens, err := p.tokens(ctx, audio, words)
 	if err != nil {
 		return "", err
 	}
 	return p.vocab.decode(tokens)
 }
 
-func (p *Parakeet) tokens(ctx context.Context, audio []float32) ([]int, error) {
+func (p *Parakeet) tokens(ctx context.Context, audio []float32, words []string) ([]int, error) {
 	p.engine.mu.RLock()
 	defer p.engine.mu.RUnlock()
 	p.mu.RLock()
@@ -96,7 +97,7 @@ func (p *Parakeet) tokens(ctx context.Context, audio []float32) ([]int, error) {
 	}
 	defer d.close()
 	return greedyTDT(ctx, len(encoded)/1024, tdtConfig{
-		blank: p.blank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10,
+		blank: p.blank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: p.hints.compile(words),
 	}, d)
 }
 
@@ -156,6 +157,24 @@ func (p *Parakeet) decoder(encoded []float32) (*parakeetDecoder, error) {
 func (d *parakeetDecoder) close() {
 	closeValues(d.state)
 	closeValues(d.next)
+}
+
+func (d *parakeetDecoder) checkpoint() (func() error, error) {
+	state, err := snapshotFloats(d.state, "output_states_1", "output_states_2")
+	if err != nil {
+		return nil, err
+	}
+	last := d.last
+	return func() error {
+		restored, err := restoreFloats(state)
+		if err != nil {
+			return err
+		}
+		closeValues(d.state)
+		closeValues(d.next)
+		d.state, d.next, d.last = restored, nil, last
+		return nil
+	}, nil
 }
 
 func (d *parakeetDecoder) Scores(frame int) ([]float32, error) {

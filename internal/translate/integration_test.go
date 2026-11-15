@@ -3,9 +3,12 @@ package translate
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 	"unicode"
+
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
 
 func TestPLaMoTranslation(t *testing.T) {
@@ -39,7 +42,7 @@ func TestPLaMoTranslation(t *testing.T) {
 		{"en", "ja-easy", "The meeting has been postponed until further notice.", true},
 		{"", "ja", "La reunión se ha pospuesto hasta nuevo aviso.", true},
 	} {
-		text, err := s.Translate(ctx, tc.source, tc.target, tc.phrase)
+		text, err := s.Translate(ctx, tc.source, tc.target, tc.phrase, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -57,4 +60,17 @@ func TestPLaMoTranslation(t *testing.T) {
 		}
 		t.Logf("%s -> %s: %s -> %s", tc.source, tc.target, tc.phrase, text)
 	}
+	t.Run("glossary", func(t *testing.T) {
+		terms := []glossary.Term{{Source: "Qlo", Target: "九狼"}, {Source: "Poppy Alley", Target: "ポピー横丁"}}
+		text, err := s.Translate(ctx, "en", "ja", "Qlo and I went to Poppy Alley last night.", terms)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, term := range terms {
+			if !strings.Contains(text, term.Target) {
+				t.Fatalf("translation %q lacks glossary target %q", text, term.Target)
+			}
+		}
+		t.Logf("glossary translation: %s", text)
+	})
 }

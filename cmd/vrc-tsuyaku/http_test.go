@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,9 +18,97 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/download"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
+
+func TestFullGlossaryPUT(t *testing.T) {
+	a := testApp(t)
+	s := cloneSettings(a.settings)
+	s.Glossary = slices.Repeat([]glossary.Entry{{
+		SourceLang: "ja", Source: strings.Repeat("😀", glossary.MaxRunes),
+		TargetLang: "en", Target: strings.Repeat("😀", glossary.MaxRunes),
+		Reading: strings.Repeat("キ", glossary.MaxRunes),
+	}}, glossary.MaxEntries)
+	body, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	escaped := strings.NewReplacer("😀", `\ud83d\ude00`, "キ", `\u30ad`).Replace(string(body))
+	if len(escaped) <= 64<<10 {
+		t.Fatal("full glossary did not exceed the old body limit", len(escaped))
+	}
+	w := request(a, "PUT", "/api/settings", escaped)
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var state struct {
+		Settings config.Settings `json:"settings"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil || !reflect.DeepEqual(state.Settings, s) {
+		t.Fatal("full glossary differs in response", err)
+	}
+	if !strings.Contains(w.Body.String(), `"Glossary":[{"SourceLang":"ja","Source":`) || !strings.Contains(w.Body.String(), `"TargetLang":"en","Target":`) || !strings.Contains(w.Body.String(), `"Reading":`) {
+		t.Fatal("glossary JSON field names differ from the page's settings contract")
+	}
+	if saved, err := config.Load(a.dir); err != nil || !reflect.DeepEqual(saved, s) {
+		t.Fatal("full glossary differs on disk", err)
+	}
+	before := cloneSettings(a.settings)
+	w = request(a, "PUT", "/api/settings", escaped+strings.Repeat(" ", config.MaxSettingsJSONBytes))
+	if w.Code != http.StatusBadRequest || !reflect.DeepEqual(a.settings, before) {
+		t.Fatal("oversized request accepted or changed settings", w.Code)
+	}
+}
+
+func TestGlossaryValidationHTTP(t *testing.T) {
+	a := testApp(t)
+	if err := a.saveSettings(config.Defaults()); err != nil {
+		t.Fatal(err)
+	}
+	valid := glossary.Entry{SourceLang: "ja", Source: "桔梗", TargetLang: "en", Target: "Kikyo", Reading: "ききょう"}
+	for _, tc := range []struct {
+		entry glossary.Entry
+		field string
+		code  errcode.Code
+	}{
+		{glossary.Entry{SourceLang: "auto", TargetLang: "en", Source: "word", Target: "word"}, "SourceLang", errcode.GlossaryLanguage},
+		{glossary.Entry{SourceLang: "ja", TargetLang: "ja", Source: "word", Target: "word"}, "TargetLang", errcode.GlossarySameLanguage},
+		{glossary.Entry{SourceLang: "ja", TargetLang: "en", Target: "word"}, "Source", errcode.GlossaryRequired},
+		{glossary.Entry{SourceLang: "ja", TargetLang: "en", Source: "word", Target: "word\n"}, "Target", errcode.GlossaryControl},
+		{glossary.Entry{SourceLang: "ja", TargetLang: "en", Source: "word", Target: "word", Reading: "word"}, "Reading", errcode.GlossaryReading},
+	} {
+		for _, index := range []int{0, 1} {
+			s := config.Defaults()
+			s.Glossary = []glossary.Entry{valid, valid}
+			s.Glossary[index] = tc.entry
+			body, _ := json.Marshal(s)
+			w := request(a, "PUT", "/api/settings", string(body))
+			var failure struct {
+				Error    string            `json:"error"`
+				Code     errcode.Code      `json:"code"`
+				Location *errcode.Location `json:"location"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &failure); err != nil || w.Code != http.StatusBadRequest || failure.Code != tc.code || failure.Location == nil || failure.Location.Index != index || failure.Location.Field != tc.field || failure.Error == "" {
+				t.Fatalf("validation response = %d %s, decode error %v", w.Code, w.Body.String(), err)
+			}
+		}
+	}
+	if saved, err := config.Load(a.dir); err != nil || !reflect.DeepEqual(saved, config.Defaults()) || !reflect.DeepEqual(a.settings, config.Defaults()) {
+		t.Fatal("invalid glossary changed settings", saved, err)
+	}
+}
+
+func TestGlossaryLimitForPage(t *testing.T) {
+	w := request(testApp(t), "GET", "/api/state", "")
+	var state struct {
+		GlossaryLimit int `json:"glossaryLimit"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil || w.Code != http.StatusOK || state.GlossaryLimit != glossary.MaxEntries {
+		t.Fatalf("glossary limit: %d %s, decode error %v", w.Code, w.Body.String(), err)
+	}
+}
 
 type exitResponseWriter struct {
 	*httptest.ResponseRecorder

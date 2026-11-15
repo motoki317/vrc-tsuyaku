@@ -21,6 +21,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/download"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
@@ -166,6 +167,7 @@ func (a *app) emitError(flow string, err error) {
 }
 
 func cloneSettings(s config.Settings) config.Settings {
+	s.Glossary = append([]glossary.Entry{}, s.Glossary...)
 	s.LicensesAccepted = maps.Clone(s.LicensesAccepted)
 	if s.LicensesAccepted == nil {
 		s.LicensesAccepted = make(map[string]string)
@@ -193,8 +195,9 @@ func (a *app) snapshot() any {
 		Flows           map[string]flowState     `json:"flows"`
 		Required        map[string][]string      `json:"required"`
 		Languages       catalog.LanguageCatalog  `json:"languages"`
+		GlossaryLimit   int                      `json:"glossaryLimit"`
 		DefaultTemplate string                   `json:"defaultTemplate"`
-	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), chatbox.DefaultTemplate}
+	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), glossary.MaxEntries, chatbox.DefaultTemplate}
 }
 
 func (a *app) levels() map[string]float64 {
@@ -258,7 +261,11 @@ func (a *app) start(name string, s config.Settings) error {
 				if name == "world" {
 					format = chatbox.DefaultTemplate
 				}
-				return pipeline.PhraseSettings{SourceLang: source, TargetLang: target, Template: format}
+				terms := glossary.Terms(a.settings.Glossary, source, target)
+				return pipeline.PhraseSettings{
+					SourceLang: source, TargetLang: target, Template: format,
+					Terms: terms,
+				}
 			}
 			stages.CutLevel = func() float64 {
 				a.mu.Lock()
@@ -641,8 +648,12 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	}
 	stages.Source = a.source(name, s.Flows.Self.Microphone)
 	stages.Probability = silero.NewStream().Probability
-	stages.Recognize = recognizer.Transcribe
-	stages.Translate = a.translator.Translate
+	stages.Recognize = func(ctx context.Context, samples []float32, settings pipeline.PhraseSettings) (string, error) {
+		return recognizer.Transcribe(ctx, samples, glossary.Words(settings.Terms))
+	}
+	stages.Translate = func(ctx context.Context, phrase string, settings pipeline.PhraseSettings) (string, error) {
+		return a.translator.Translate(ctx, settings.SourceLang, settings.TargetLang, phrase, settings.Terms)
+	}
 	return stages, nil
 }
 

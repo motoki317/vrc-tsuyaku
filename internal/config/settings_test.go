@@ -12,10 +12,101 @@ import (
 	"testing"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 )
+
+func TestGlossaryRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	s := Defaults()
+	s.Glossary = []glossary.Entry{
+		{SourceLang: "ja", Source: "桔梗", TargetLang: "en", Target: "Kikyo", Reading: "ききょう"},
+		{SourceLang: "en", Source: "Manuka", TargetLang: "ja", Target: "マヌカ"},
+		{SourceLang: "fr", Source: "word", TargetLang: "de", Target: "Wort"},
+	}
+	if err := Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(dir)
+	if err != nil || !reflect.DeepEqual(got, s) {
+		t.Fatalf("glossary round trip: %+v, %v", got.Glossary, err)
+	}
+	body, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"glossary:", "source_lang:", "source:", "target_lang:", "target:"} {
+		if !strings.Contains(string(body), key) {
+			t.Fatalf("YAML lacks %q: %s", key, body)
+		}
+	}
+	if strings.Count(string(body), "reading:") != 1 {
+		t.Fatalf("empty readings must be omitted: %s", body)
+	}
+}
+
+func TestEmptyGlossary(t *testing.T) {
+	for _, body := range []string{"", "glossary: []\n", "glossary: null\n"} {
+		t.Run(body, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := Load(dir)
+			if err != nil || got.Glossary == nil || !reflect.DeepEqual(got, Defaults()) {
+				t.Fatalf("empty glossary differs from defaults: %+v, %v", got.Glossary, err)
+			}
+			for _, entries := range [][]glossary.Entry{nil, {}} {
+				got.Glossary = entries
+				if err := Save(dir, got); err != nil {
+					t.Fatal(err)
+				}
+				saved, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))
+				if err != nil || strings.Contains(string(saved), "glossary") {
+					t.Fatalf("empty glossary not omitted: %s, %v", saved, err)
+				}
+				loaded, err := Load(dir)
+				if err != nil || !reflect.DeepEqual(loaded, Defaults()) {
+					t.Fatalf("empty glossary changed on reload: %+v, %v", loaded.Glossary, err)
+				}
+			}
+		})
+	}
+}
+
+func TestGlossaryValidationAtLoadAndSave(t *testing.T) {
+	dir := t.TempDir()
+	s := Defaults()
+	if err := Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	s.Glossary = []glossary.Entry{{SourceLang: "en", Source: "word", TargetLang: "ja", Target: "単語", Reading: "word"}}
+	err := Save(dir, s)
+	if !errors.Is(err, ErrInvalidSettings) || errcode.Of(err) != errcode.GlossaryReading {
+		t.Fatal("Save lost the glossary validation error", err)
+	}
+	if loaded, err := Load(dir); err != nil || !reflect.DeepEqual(loaded, Defaults()) {
+		t.Fatal("invalid glossary replaced saved settings", loaded, err)
+	}
+	for _, body := range []string{
+		"glossary: [{source_lang: en, source: word, target_lang: ja, target: 単語, reading: word}]\n",
+		"glossary: [{source_lang: en, source: word, target_lang: ja, target: 単語, typo: value}]\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(dir); err == nil {
+			t.Fatal("invalid glossary loaded", body)
+		} else if !strings.Contains(body, "typo") {
+			location := errcode.LocationOf(err)
+			if errcode.Of(err) != errcode.GlossaryReading || location == nil || location.Index != 0 || location.Field != "Reading" {
+				t.Fatalf("Load lost the glossary error's location: %v (%+v)", err, location)
+			}
+		}
+	}
+}
 
 func TestLoadDefaultsAndPartial(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")

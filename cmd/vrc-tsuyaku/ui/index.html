@@ -76,55 +76,53 @@
   <section id="screen-settings" class="screen settings" hidden>
     <nav class="rail" data-i18n-aria-label="label.settingsSections">
       <button type="button" class="rail-item" data-sub="models"><svg class="icon" aria-hidden="true"><use href="#i-languages"></use></svg><span data-i18n="label.languagesModels"></span></button>
-      <button type="button" class="rail-item" data-sub="downloads"><svg class="icon" aria-hidden="true"><use href="#i-hard-drive-download"></use></svg><span data-i18n="label.downloads"></span></button>
       <button type="button" class="rail-item" data-sub="audio"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="label.audio"></span></button>
+      <button type="button" class="rail-item" data-sub="glossary"><svg class="icon" aria-hidden="true"><use href="#i-book-a"></use></svg><span data-i18n="label.glossary"></span></button>
       <button type="button" class="rail-item" data-sub="chatbox"><svg class="icon" aria-hidden="true"><use href="#i-message-square-text"></use></svg><span data-i18n="label.chatbox"></span></button>
       <button type="button" class="rail-item" data-sub="about"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span data-i18n="label.about"></span><span class="update-dot" aria-hidden="true" hidden></span></button>
     </nav>
 
-    <!-- The language plan fills the two slots: the flows' rows, then Download all and the downloads list. -->
     <div id="sub-models" class="sub" hidden>
       <h2 class="sub-title" tabindex="-1" data-i18n="label.languagesModels"></h2>
-      <div class="plan">
+      <p class="memory-total"><svg class="icon" aria-hidden="true"><use href="#i-memory-stick"></use></svg><span data-i18n="label.memoryTotal"></span><span id="memory-total" class="value"></span></p>
+      <section class="settings-group" aria-labelledby="languages-label">
+        <h3 id="languages-label" data-i18n="label.languages"></h3>
         <div class="plan-slot"></div>
-        <div class="translator">
-          <div class="label-row">
-            <h3 class="field-label" id="translator-label" data-i18n="label.translator"></h3>
-            <span class="shared" aria-hidden="true"><svg class="icon"><use href="#i-mic"></use></svg><svg class="icon"><use href="#i-users"></use></svg></span>
-            <span class="saved" id="translator-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span>
-          </div>
-          <div id="translators" class="options" role="radiogroup" aria-labelledby="translator-label" aria-describedby="translator-hint"></div>
-          <p id="translator-error" class="error-text" hidden></p>
-          <p id="translator-hint" class="hint" data-i18n="note.translatorHint"></p>
-        </div>
-        <p class="memory-total"><svg class="icon" aria-hidden="true"><use href="#i-memory-stick"></use></svg><span data-i18n="label.memoryTotal"></span><span id="memory-total" class="value"></span></p>
+      </section>
+      <section class="settings-group" aria-labelledby="translator-label">
+        <h3 class="label-row" id="translator-label">
+          <span data-i18n="label.translator"></span>
+          <span class="shared" aria-hidden="true"><svg class="icon"><use href="#i-mic"></use></svg><svg class="icon"><use href="#i-users"></use></svg></span>
+          <span class="saved" id="translator-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span>
+        </h3>
+        <div id="translators" class="options" role="radiogroup" aria-labelledby="translator-label" aria-describedby="translator-hint"></div>
+        <p id="translator-error" class="error-text" hidden></p>
+        <p id="translator-hint" class="hint" data-i18n="note.translatorHint"></p>
+      </section>
+      <section class="settings-group" aria-labelledby="model-downloads-label">
+        <h3 id="model-downloads-label" tabindex="-1" data-i18n="label.modelDownloads"></h3>
         <div class="plan-foot"></div>
-      </div>
-    </div>
-
-    <!-- Every catalog file shows once, in the first group that holds it. -->
-    <div id="sub-downloads" class="sub" hidden>
-      <h2 class="sub-title" tabindex="-1" data-i18n="label.downloads"></h2>
-      <p class="installed-total"><span data-i18n="label.installed"></span> <span id="installed-size" class="value"></span></p>
-      <div class="download-groups">
-        <div id="downloads-needed" class="download-group">
-          <h3 class="field-label" id="downloads-needed-label" data-i18n="label.neededDownloads"></h3>
-          <ul class="download-list" aria-labelledby="downloads-needed-label"></ul>
+        <p class="installed-total"><span data-i18n="label.installed"></span> <span id="installed-size" class="value"></span></p>
+        <div class="download-groups">
+          <div id="downloads-needed" class="download-group">
+            <h4 class="field-label" id="downloads-needed-label" data-i18n="label.neededDownloads"></h4>
+            <ul class="download-list" aria-labelledby="downloads-needed-label"></ul>
+          </div>
+          <div id="downloads-unneeded" class="download-group">
+            <h4 class="field-label" id="downloads-unneeded-label" data-i18n="label.unneededDownloads"></h4>
+            <ul class="download-list" aria-labelledby="downloads-unneeded-label"></ul>
+          </div>
+          <div id="downloads-missing" class="download-group">
+            <h4 class="field-label" id="downloads-missing-label" data-i18n="label.missingDownloads"></h4>
+            <ul class="download-list" aria-labelledby="downloads-missing-label"></ul>
+          </div>
         </div>
-        <div id="downloads-unneeded" class="download-group">
-          <h3 class="field-label" id="downloads-unneeded-label" data-i18n="label.unneededDownloads"></h3>
-          <ul class="download-list" aria-labelledby="downloads-unneeded-label"></ul>
-        </div>
-        <div id="downloads-missing" class="download-group">
-          <h3 class="field-label" id="downloads-missing-label" data-i18n="label.missingDownloads"></h3>
-          <ul class="download-list" aria-labelledby="downloads-missing-label"></ul>
-        </div>
-      </div>
+      </section>
     </div>
 
     <div id="sub-audio" class="sub" hidden>
       <h2 class="sub-title" tabindex="-1" data-i18n="label.audio"></h2>
-      <section class="audio-group" aria-labelledby="audio-self-label">
+      <section class="settings-group" aria-labelledby="audio-self-label">
         <h3 id="audio-self-label" data-i18n="label.self"></h3>
         <div class="field-group">
           <div class="label-row"><label class="field-label" for="microphone" data-i18n="label.microphone"></label><span class="saved" id="microphone-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
@@ -137,10 +135,21 @@
         </div>
         <div id="level-self" class="level-control"></div>
       </section>
-      <section class="audio-group" aria-labelledby="audio-world-label">
+      <section class="settings-group" aria-labelledby="audio-world-label">
         <h3 id="audio-world-label" data-i18n="label.world"></h3>
         <div id="level-world" class="level-control"></div>
       </section>
+    </div>
+
+    <div id="sub-glossary" class="sub" hidden>
+      <h2 id="glossary-label" class="sub-title" tabindex="-1" data-i18n="label.glossary"></h2>
+      <p id="glossary-description" class="hint glossary-description" data-i18n="note.glossary"></p>
+      <ul id="glossary-list" class="glossary-list" aria-labelledby="glossary-label" aria-describedby="glossary-description glossary-error"></ul>
+      <p id="glossary-error" class="error-text" role="status" hidden></p>
+      <div class="field-row">
+        <button type="button" id="glossary-add" class="button secondary" data-i18n="action.addEntry"></button>
+        <span class="saved" id="glossary-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span>
+      </div>
     </div>
 
     <div id="sub-chatbox" class="sub" hidden>

@@ -43,7 +43,7 @@ func TestNewEngineRequiresLibraryPath(t *testing.T) {
 
 func TestClosedEngine(t *testing.T) {
 	h := &Haas{engine: &Engine{}}
-	if _, err := h.Transcribe(t.Context(), []float32{0}); err == nil {
+	if _, err := h.Transcribe(t.Context(), []float32{0}, nil); err == nil {
 		t.Fatal("accepted transcription after close")
 	}
 }
@@ -71,11 +71,11 @@ func TestHaasLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := h.Transcribe(ctx, []float32{0}); !errors.Is(err, context.Canceled) {
+	if _, err := h.Transcribe(ctx, []float32{0}, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation = %v", err)
 	}
 	for _, audio := range [][]float32{nil, {float32(math.NaN())}, {float32(math.Inf(1))}} {
-		if _, err := h.Transcribe(t.Context(), audio); err == nil {
+		if _, err := h.Transcribe(t.Context(), audio, nil); err == nil {
 			t.Fatalf("accepted audio %v", audio)
 		}
 	}
@@ -84,7 +84,7 @@ func TestHaasLifecycle(t *testing.T) {
 	results := make(chan error, 2)
 	for range 2 {
 		go func() {
-			text, err := h.Transcribe(t.Context(), audio)
+			text, err := h.Transcribe(t.Context(), audio, nil)
 			if err == nil && text != refs[0].Hyp {
 				err = errors.New("concurrent transcription differs from reference: " + text)
 			}
@@ -98,7 +98,7 @@ func TestHaasLifecycle(t *testing.T) {
 	}
 	e.Close()
 	e.Close()
-	if _, err := h.Transcribe(t.Context(), audio); err == nil {
+	if _, err := h.Transcribe(t.Context(), audio, nil); err == nil {
 		t.Fatal("transcription succeeded after close")
 	}
 	if _, _, err := e.LoadHaas(catalog.HaasBundle(bundle, false)); err == nil {

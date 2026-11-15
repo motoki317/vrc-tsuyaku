@@ -14,10 +14,11 @@ import (
 // Recognizer consumes one phrase of 16 kHz mono float32 audio.
 // Transcribe rejects empty audio and non-finite samples. Calls can run
 // concurrently. No state carries over between calls.
+// Transcribe's words parameter lists spellings to favour during recognition.
 // Context cancellation takes effect between inference calls, so an active ONNX
 // call can delay it.
 type Recognizer interface {
-	Transcribe(context.Context, []float32) (string, error)
+	Transcribe(context.Context, []float32, []string) (string, error)
 }
 
 var processEngine struct {
