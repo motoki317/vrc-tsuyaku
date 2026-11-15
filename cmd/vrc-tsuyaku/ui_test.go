@@ -30,6 +30,10 @@ func TestPageClosingBeacon(t *testing.T) {
 	runNodeTest(t, "closing.cjs")
 }
 
+func TestInstanceDialog(t *testing.T) {
+	runNodeTest(t, "instance.cjs")
+}
+
 func runNodeTest(t *testing.T, name string) {
 	t.Helper()
 	node, err := exec.LookPath("node")
@@ -45,19 +49,22 @@ func runNodeTest(t *testing.T, name string) {
 	t.Log(string(output))
 }
 
-// The page explains itself through layout and state, so the catalogs hold no hint or description category.
+// The catalogs omit hint and description categories. instance.description is the
+// exception: the waiting modal must explain why the page is blocked.
 // A string that a usability test justifies goes in "note", with a "//note.NAME" key that names the finding.
 var stringBudgets = map[string]int{
-	"label":  40,
-	"action": 48,
-	"state":  48,
-	"value":  60,
-	"title":  64,
-	"error":  120,
-	"note":   120,
+	"label":                40,
+	"action":               48,
+	"state":                48,
+	"value":                60,
+	"title":                64,
+	"error":                120,
+	"note":                 120,
+	"instance":             60,
+	"instance.description": 140,
 }
 
-var catalogKeyPattern = regexp.MustCompile(`'((?:label|action|state|value|title|error|note)\.[A-Za-z0-9_.]*)'`)
+var catalogKeyPattern = regexp.MustCompile(`'((?:label|action|state|value|title|error|note|instance)\.[A-Za-z0-9_.]*)'`)
 
 var placeholderPattern = regexp.MustCompile(`\{\w+\}`)
 
@@ -103,9 +110,12 @@ func TestStringCatalogs(t *testing.T) {
 				continue
 			}
 			category, _, _ := strings.Cut(key, ".")
-			budget, ok := stringBudgets[category]
+			budget, ok := stringBudgets[key]
 			if !ok {
-				t.Errorf("%s.json: %q has category %q, want one of label, action, state, value, title, error, note", lang, key, category)
+				budget, ok = stringBudgets[category]
+			}
+			if !ok {
+				t.Errorf("%s.json: %q has category %q, want one of label, action, state, value, title, error, note, instance", lang, key, category)
 				continue
 			}
 			if category == "note" {

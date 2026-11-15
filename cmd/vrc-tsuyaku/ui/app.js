@@ -1822,6 +1822,125 @@ function renderDownloads() {
   }
 }
 
+// Waiting instance dialog
+
+const instanceView = {cache: new Map(), pending: new Set(), starting: false, timer: 0};
+const instanceKey = info => `${info.slot}:${info.pid}`;
+
+function buildInstances() {
+  $('instance-dialog').addEventListener('cancel', event => event.preventDefault());
+  // Ignore Escape before a repeated close request can bypass cancel prevention.
+  $('instance-dialog').addEventListener('keydown', event => { if (event.key === 'Escape') event.preventDefault(); });
+  $('instance-replace').addEventListener('click', () => {
+    if (!isDisabled($('instance-replace'))) stopInstances(state.instance.others || []);
+  });
+  $('instance-start').addEventListener('click', startInstanceBeside);
+  $('instance-exit').addEventListener('click', exitApp);
+}
+
+function instanceAge(started) {
+  const seconds = (Date.parse(started) - Date.now()) / 1000;
+  const [unit, scale] = [['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]]
+    .find(([, scale]) => Math.abs(seconds) >= scale || scale === 1);
+  return new Intl.RelativeTimeFormat(lang, {numeric: 'auto'}).format(Math.round(seconds / scale), unit);
+}
+
+function renderInstances() {
+  const dialog = $('instance-dialog');
+  if (state?.instance?.state !== 'waiting' || exitState) {
+    if (dialog.open) dialog.close();
+    clearTimeout(instanceView.timer);
+    instanceView.timer = 0;
+    return;
+  }
+  const infos = state.instance.others || [];
+  const stopping = infos.some(info => info.state === 'stopping' || instanceView.pending.has(instanceKey(info)));
+  const blocked = connection === 'down' || instanceView.starting;
+  setText($('instance-title'), t('title.instance', {n: infos.length}));
+  setText($('instance-replace-text'), t(stopping ? 'state.instanceStopping' : 'action.instanceReplace'));
+  setDisabled($('instance-replace'), stopping || blocked);
+  setDisabled($('instance-start'), blocked);
+  setDisabled($('instance-exit'), isDisabled($('exit')));
+  const rows = infos.map(info => {
+    const key = instanceKey(info);
+    let row = instanceView.cache.get(key);
+    if (!row) {
+      row = h('li', {className: 'instance-row'});
+      row.append(h('div', {className: 'instance-info'}, row.pid = h('strong'), row.url = h('p', {className: 'mono'}),
+        h('p', {className: 'value'}, row.started = h('time'))),
+      row.stop = h('button', {type: 'button', className: 'button secondary compact'}),
+      row.error = h('p', {className: 'error-text', role: 'alert', hidden: true}));
+      row.stop.addEventListener('click', () => { if (!isDisabled(row.stop)) stopInstances([row.info]); });
+      instanceView.cache.set(key, row);
+    }
+    row.info = info;
+    const busy = info.state === 'stopping' || instanceView.pending.has(key);
+    setText(row.pid, t('instance.pid', {pid: info.pid}));
+    setText(row.url, info.url);
+    row.started.dateTime = info.started;
+    setText(row.started, t('instance.started', {ago: instanceAge(info.started)}));
+    setText(row.stop, t(busy ? 'state.instanceRowStopping' : 'action.instanceStop'));
+    row.stop.setAttribute('aria-label', t('label.instanceStop', {pid: info.pid}));
+    setDisabled(row.stop, busy || blocked);
+    const error = busy ? '' : info.error ? errorText(info.code, info.error) :
+      row.refusal ? (row.refusal.status ? errorText(row.refusal.code, row.refusal.message) : t('error.request')) : '';
+    if (error && (row.error.hidden || row.error.textContent !== error)) $('instance-details').open = true;
+    setText(row.error, error || '');
+    row.error.hidden = !error;
+    return row;
+  });
+  const list = $('instance-list'), focused = document.activeElement;
+  if (rows.length !== list.children.length || rows.some((row, i) => list.children[i] !== row)) list.replaceChildren(...rows);
+  for (const [key, row] of instanceView.cache) if (!rows.includes(row)) instanceView.cache.delete(key);
+  if (dialog.open && focused !== document.body && !focused.isConnected) $('instance-details').querySelector('summary').focus();
+  if (!dialog.open) {
+    dialog.opener = document.activeElement === document.body ? null : document.activeElement;
+    dialog.showModal();
+    $('instance-replace').focus();
+  }
+  if (!instanceView.timer) instanceView.timer = setTimeout(() => { instanceView.timer = 0; renderInstances(); }, 1000);
+}
+
+async function stopInstances(infos) {
+  if (exitState || state?.instance?.state !== 'waiting') return;
+  infos = infos.filter(info => info.state !== 'stopping' && !instanceView.pending.has(instanceKey(info)));
+  if (!infos.length) return;
+  setError($('instance-error'), null);
+  for (const info of infos) {
+    instanceView.pending.add(instanceKey(info));
+    const row = instanceView.cache.get(instanceKey(info));
+    if (row) row.refusal = null;
+  }
+  renderInstances();
+  await Promise.all(infos.map(async info => {
+    try {
+      await api('instance/stop/' + info.slot, {method: 'POST'});
+    } catch (e) {
+      const row = instanceView.cache.get(instanceKey(info));
+      if (row) row.refusal = e;
+    }
+  }));
+  await refresh().catch(() => {});
+  for (const info of infos) instanceView.pending.delete(instanceKey(info));
+  renderInstances();
+}
+
+async function startInstanceBeside() {
+  if (isDisabled($('instance-start')) || exitState) return;
+  instanceView.starting = true;
+  setError($('instance-error'), null);
+  renderInstances();
+  try {
+    apply(await (await api('instance/start', {method: 'POST'})).json());
+  } catch (e) {
+    setError($('instance-error'), () => e.status ? errorText(e.code, e.message) : t('error.request'));
+    $('instance-details').open = true;
+  } finally {
+    instanceView.starting = false;
+    renderInstances();
+  }
+}
+
 // Delete dialog
 
 function openDelete(id, opener) {
@@ -2028,6 +2147,7 @@ function render() {
   renderDownloads();
   renderAbout();
   renderMenu();
+  renderInstances();
   // A row that moves to another list leaves the document for a moment, which drops its focus. Focus goes back to the
   // same control, or to its row when the move also took the control away.
   if (focused !== document.body && document.activeElement === document.body && focused.isConnected) {
@@ -2212,6 +2332,7 @@ function lockControls() {
 async function exitApp() {
   if (exitState || isDisabled($('exit'))) return;
   exitState = 'waiting';
+  renderInstances();
   setError($('exit-error'), null);
   lockControls();
   try {
@@ -2219,6 +2340,7 @@ async function exitApp() {
   } catch (e) {
     exitState = '';
     showConnection();
+    renderInstances();
     if (e.status) {
       setError($('exit-error'), () => errorText(e.code, e.message));
       announce($('exit-error').textContent);
@@ -2261,6 +2383,7 @@ function bind() {
   buildChatbox();
   buildAudio();
   buildGlossary();
+  buildInstances();
   document.addEventListener('visibilitychange', syncLevelPolling);
   for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => show(tab.dataset.screen));
   for (const item of document.querySelectorAll('.rail-item[data-sub]')) item.addEventListener('click', () => show('settings', item.dataset.sub));
