@@ -167,6 +167,8 @@
   "error.code.glossary_reading": "Use only hiragana, katakana and ー for a word in Japanese.",
   "error.code.glossary_required": "Enter a word.",
   "error.code.glossary_same_language": "Choose two different languages.",
+  "error.code.instance_not_stopped": "It did not stop. Close its console window.",
+  "error.code.instance_pending": "First stop the earlier VRC\u00a0Tsuyaku, or start this one beside it.",
   "error.code.microphone_unavailable": "The microphone is unavailable. Choose another in Audio, then try again.",
   "error.code.missing_downloads": "Downloads are missing. Download them, then try again.",
   "error.code.multiple_applications": "More than one VRChat is running. Close the extra ones, then try again.",

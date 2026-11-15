@@ -9,6 +9,7 @@ import (
 	"math"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +23,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/download"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
+	"github.com/motoki317/vrc-tsuyaku/internal/instance"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
@@ -86,12 +88,20 @@ type app struct {
 	eventStreams  int
 	closeGrace    time.Duration
 	closeTimer    *time.Timer
+	instance      instanceState
+	membership    *instance.Membership
+	instanceHost  string
+	instancePoll  time.Duration
+	stopGrace     time.Duration
+	killGrace     time.Duration
+	kill          func(int) error
 	// operations serializes settings, flow and storage changes, including close.
 	// Callers hold it while calling start or stop.
 	operations   sync.Mutex
 	settingsWG   sync.WaitGroup
 	downloadsWG  sync.WaitGroup
 	updateWG     sync.WaitGroup
+	instanceWG   sync.WaitGroup
 	modelTurn    chan struct{}
 	engine       *asr.Engine
 	translator   *translate.Supervisor
@@ -112,11 +122,13 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	build, _ := debug.ReadBuildInfo()
 	a := &app{ctx: ctx, cancel: cancel, dir: dir, downloads: manager,
-		launch:     rand.Text(),
-		info:       appBuildInfo(build),
-		update:     updateState{State: "checking"},
-		closeGrace: 5 * time.Second,
-		artifacts:  make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
+		launch:       rand.Text(),
+		info:         appBuildInfo(build),
+		update:       updateState{State: "checking"},
+		closeGrace:   5 * time.Second,
+		instancePoll: time.Second, stopGrace: 10 * time.Second, killGrace: 5 * time.Second,
+		kill:      killProcess,
+		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
 		source: flowSource, open: openFile,
 	}
 	a.prepare = a.prepareModels
@@ -201,7 +213,9 @@ func (a *app) snapshot() any {
 		Languages       catalog.LanguageCatalog  `json:"languages"`
 		GlossaryLimit   int                      `json:"glossaryLimit"`
 		DefaultTemplate string                   `json:"defaultTemplate"`
-	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), glossary.MaxEntries, chatbox.DefaultTemplate}
+		Instance        instanceState            `json:"instance"`
+	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), glossary.MaxEntries, chatbox.DefaultTemplate,
+		instanceState{State: a.instance.State, Others: slices.Clone(a.instance.Others)}}
 }
 
 func (a *app) levels() map[string]float64 {
@@ -221,7 +235,7 @@ func (a *app) startEnabled() {
 	defer a.operations.Unlock()
 	a.mu.Lock()
 	s := a.settings
-	valid := a.settingsError == ""
+	valid := a.settingsError == "" && a.instance.State != "waiting"
 	a.mu.Unlock()
 	if !valid {
 		return
@@ -310,6 +324,9 @@ func (a *app) start(name string, s config.Settings) error {
 func (a *app) checkStart(name string, s config.Settings) error {
 	if err := a.ctx.Err(); err != nil {
 		return err
+	}
+	if a.instance.State == "waiting" {
+		return errInstancePending
 	}
 	var missing []string
 	spoken, _ := s.Flows.Languages(name)
@@ -438,7 +455,7 @@ func (a *app) changeFlow(name, action string) error {
 		startErr = a.checkStart(name, s)
 	}
 	a.mu.Unlock()
-	if settingsError != "" && action != "stop" {
+	if settingsError != "" && action != "stop" && errcode.Of(startErr) != errcode.InstancePending {
 		return fmt.Errorf("save valid settings before changing a flow: %s", settingsError)
 	}
 	if startErr != nil {
@@ -475,6 +492,10 @@ func (a *app) startDownload(id string, accept bool) error {
 	defer a.operations.Unlock()
 	a.reloadSettingsLocked()
 	a.mu.Lock()
+	if a.instance.State == "waiting" {
+		a.mu.Unlock()
+		return errInstancePending
+	}
 	state, ok := a.artifacts[id]
 	s := cloneSettings(a.settings)
 	settingsError := a.settingsError
@@ -696,6 +717,7 @@ func (a *app) close() error {
 	a.mu.Unlock()
 	a.updateWG.Wait()
 	a.settingsWG.Wait()
+	a.instanceWG.Wait()
 	a.operations.Lock()
 	for _, name := range []string{"self", "world"} {
 		a.stop(name)

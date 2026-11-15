@@ -29,6 +29,12 @@ The check compares the release tag with the module version that Go stamped into 
 `version` is that module version when it comes from a tag, such as `v0.1.0`, and is empty for a pseudo-version or a build without version information.
 `revision`, `time` and `modified` come from the `vcs.*` settings that `go build` records only in a git checkout.
 
+`instance.state` in `GET /api/state` is `waiting` while this instance waits for earlier instances, or an empty string when it can start flows.
+Only a waiting instance has `instance.others`: rows with `slot`, `url`, `pid`, `started`, `state`, `error` and `code`.
+A row's `state` is `stopping` during a stop, or an empty string otherwise.
+Its `error` and `code` describe its last failed stop.
+The app starts its enabled flows when no other instance remains, or after `POST /api/instance/start`.
+
 `GET /notices.txt`, which Settings → About links to, returns the license texts in `notices/` as plain text: those of Go, of each Go module in `go.mod`, and of the other code that the executable contains or reimplements.
 After you change `go.mod`, run `just notices`, which copies each module's license texts from the module cache. `TestModuleNoticesMatchGoMod` fails until `notices/modules/` matches `go.mod`.
 The texts in `notices/other/` are copied by hand, and each one's `SOURCE` file names where it came from.
@@ -41,7 +47,7 @@ A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, p
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/state` | `launch` (a value that differs between launches), `app` (build information), `update` (the update check: `state`, `version` and `url`), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators), `glossaryLimit` (the most glossary entries that the settings accept) and `defaultTemplate` |
+| `GET /api/state` | `launch` (a value that differs between launches), `app` (build information), `update` (the update check: `state`, `version` and `url`), `instance` (the waiting state and other instances), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators), `glossaryLimit` (the most glossary entries that the settings accept) and `defaultTemplate` |
 | `PUT /api/settings` | Save a complete `config.Settings` JSON object. Invalid input returns 400. A failed write returns 500. If another program changed `settings.yaml` after the app last read it, the app reads the file again, writes nothing and returns 409 with code `settings_changed`. The page then fetches the state and repeats the player's change once |
 | `GET /api/microphones` | Microphone IDs and names |
 | `GET /api/levels` | Each running flow's input level in dBFS, such as `{"self": -41.5, "world": -30.2}`. The level is the RMS of a 32 ms window of captured audio. A flow has an entry from its first window until its pipeline ends. The value jumps to a louder window's level at once and falls by at most 1.5 dB per window, so the page, which polls every 100 ms, still shows a short sound. The levels are not `/api/events` events: 31 windows per second for each flow would push phrases out of the 256 events that the stream keeps |
@@ -52,6 +58,8 @@ A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, p
 | `POST /api/open/{target}` | Open the data folder (`data`) or `settings.yaml` (`settings`) in the OS's file manager or default app. If `settings.yaml` is missing, the app first writes the current settings to it. Returns 204 |
 | `POST /api/exit` | Exit the app as Ctrl+C does. Returns 202 before the app shuts down |
 | `POST /api/closing` | Signal that a page is closing. Returns 204 and restarts the 5 s wait before the app checks for open event streams |
+| `POST /api/instance/start` | Start this instance beside the others. Returns 200 with the state snapshot, or 409 unless waiting |
+| `POST /api/instance/stop/{slot}` | Stop one listed instance. Returns 202, 404 for an unknown slot, or 409 unless waiting or while that row already stops |
 | `GET /api/events` | Newline-delimited JSON events: the latest 256 events, then new ones as they happen. While idle, the server sends an empty line every 5 s, which readers skip |
 
 `{flow}` is `self` or `world`, `{action}` is `start` or `stop`, and `{id}` is a catalog artifact ID.

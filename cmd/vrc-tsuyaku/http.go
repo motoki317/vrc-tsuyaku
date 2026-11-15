@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,29 @@ func (a *app) handler() http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.snapshot()) })
+	mux.HandleFunc("POST /api/instance/start", func(w http.ResponseWriter, r *http.Request) {
+		if !a.startInstance() {
+			apiError(w, errors.New("this instance is not waiting"), http.StatusConflict)
+			return
+		}
+		writeJSON(w, a.snapshot())
+	})
+	mux.HandleFunc("POST /api/instance/stop/{slot}", func(w http.ResponseWriter, r *http.Request) {
+		slot, err := strconv.Atoi(r.PathValue("slot"))
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if err := a.stopInstance(slot); err != nil {
+			if errors.Is(err, errInstanceNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			apiError(w, err, http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
 	mux.HandleFunc("GET /api/levels", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.levels()) })
 	mux.HandleFunc("GET /api/microphones", func(w http.ResponseWriter, r *http.Request) {
 		devices, err := audio.Microphones(r.Context())

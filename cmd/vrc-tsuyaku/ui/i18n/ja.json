@@ -167,6 +167,8 @@
   "error.code.glossary_reading": "日本語の単語に、ひらがな・カタカナ・ーだけで読みを入力してください。",
   "error.code.glossary_required": "単語を入力してください。",
   "error.code.glossary_same_language": "2つの言語には異なる言語を選んでください。",
+  "error.code.instance_not_stopped": "終了できませんでした。そのコンソールウィンドウを閉じてください。",
+  "error.code.instance_pending": "先に、前のVRC\u00a0Tsuyakuを終了するか、こちらも起動するかを選んでください。",
   "error.code.microphone_unavailable": "マイクを使用できません。［音声］で別のマイクを選んでから再試行してください。",
   "error.code.missing_downloads": "ダウンロードが足りません。ダウンロードしてから再試行してください。",
   "error.code.multiple_applications": "VRChatが複数起動しています。1つだけ残してから再試行してください。",

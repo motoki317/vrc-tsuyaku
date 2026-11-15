@@ -12,7 +12,11 @@ const (
 		"ブラウザーを開けませんでした。次のアドレスをブラウザーで開いてください。"
 	consoleExitHint = "The app exits when you close the browser tab or this window.\n" +
 		"ブラウザーのタブか、このウィンドウを閉じると、終了します。"
-	consoleExiting = "Exiting...\n終了しています..."
+	consoleExiting         = "Exiting...\n終了しています..."
+	consoleInstanceWaiting = "A VRC Tsuyaku that was started earlier is still running. Choose what to do on the page.\n" +
+		"前に起動したVRC Tsuyakuが動いたままです。どうするかを操作画面で選んでください。"
+	consoleInstanceFailed = "The app could not check for other running VRC Tsuyaku: %v\n" +
+		"起動中のほかのVRC Tsuyakuを確認できませんでした: %v"
 )
 
 func printStartup(out io.Writer, version, url string, browserOpened bool) {

@@ -69,17 +69,29 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 		// Keep Exit available until model and download cleanup finishes.
 		_ = a.close()
 		err = errors.Join(err, server.Close())
+		if a.membership != nil {
+			err = errors.Join(err, a.membership.Close())
+		}
 	}()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
+	url := "http://" + listener.Addr().String() + "/"
+	if err := a.joinInstance(url); err != nil {
+		fmt.Fprintf(errout, consoleInstanceFailed+"\n", err, err)
+	}
+	waiting := a.instance.State == "waiting"
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	a.checkUpdate(latestReleaseURL, &http.Client{})
-	url := "http://" + listener.Addr().String() + "/"
 	printStartup(out, a.info.Version, url, openBrowser(url) == nil)
-	a.startEnabled()
+	if waiting {
+		fmt.Fprintln(out, consoleInstanceWaiting)
+		a.watchInstances()
+	} else {
+		a.startEnabled()
+	}
 	a.watchSettings()
 	select {
 	case err = <-done:

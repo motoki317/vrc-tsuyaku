@@ -12,6 +12,10 @@ const (
 	SettingsChanged Code = "settings_changed"
 	// MissingDownloads asks the player to download the flow's missing artifacts.
 	MissingDownloads Code = "missing_downloads"
+	// InstancePending asks the player to stop earlier instances or start beside them.
+	InstancePending Code = "instance_pending"
+	// InstanceNotStopped asks the player to close the earlier instance's console window.
+	InstanceNotStopped Code = "instance_not_stopped"
 	// MicrophoneUnavailable asks the player to select an available microphone in Audio settings and retry.
 	MicrophoneUnavailable Code = "microphone_unavailable"
 	// ApplicationNotRunning asks the player to start VRChat and its playback, then retry the world flow.
