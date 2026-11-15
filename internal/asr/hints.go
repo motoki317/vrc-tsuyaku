@@ -17,6 +17,7 @@ import (
 const (
 	firstHintBonus = 1.0
 	laterHintBonus = 8.0
+	blankHintBonus = 4.0
 )
 
 type pieceTrie struct {
@@ -166,6 +167,18 @@ func (s *hintState) choose(logits []float32, token int) int {
 		s.bonuses[candidate] = 0
 	}
 	s.touched = s.touched[:0]
+	return token
+}
+
+func (s *hintState) continueOverBlank(logits []float32, blank int) int {
+	token, best := blank, logits[blank]
+	for _, match := range s.live {
+		for _, edge := range s.hints.nodes[match.node].edges {
+			if score := logits[edge.token] + blankHintBonus; score > best {
+				token, best = edge.token, score
+			}
+		}
+	}
 	return token
 }
 

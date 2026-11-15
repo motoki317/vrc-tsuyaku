@@ -84,8 +84,13 @@ func speculativeTDT(ctx context.Context, frames int, cfg tdtConfig, decoder tdtD
 		if token == cfg.blank && duration == 0 {
 			duration = 1
 		}
-		if token != cfg.blank && hints != nil && !unbiasedNext {
-			biased := hints.choose(logits[:cfg.blank], token)
+		if hints != nil && !unbiasedNext && (token != cfg.blank || len(hints.live) > 0) {
+			var biased int
+			if token == cfg.blank {
+				biased = hints.continueOverBlank(logits[:cfg.blank+1], cfg.blank)
+			} else {
+				biased = hints.choose(logits[:cfg.blank], token)
+			}
 			if biased != token && checkpoint == nil {
 				restore, err := d.checkpoint()
 				if err != nil {

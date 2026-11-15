@@ -45,7 +45,7 @@ func TestHintGreedyTDT(t *testing.T) {
 		want  []int
 	}{
 		{"near tie and blank preserves progress", []string{"abc"}, [][]float32{{0, -.5, -9, -9, -10}, {0, -9, -9, -9, 1}, {0, -9, -1, -9, -10}}, []int{1, 2}},
-		{"blank cannot be promoted", []string{"abc"}, [][]float32{{-9, -.5, -9, -9, 0}}, nil},
+		{"blank cannot start a hint", []string{"abc"}, [][]float32{{-9, -.5, -9, -9, 0}}, nil},
 		{"failed partial stops its bonus", []string{"abc"}, [][]float32{{0, -.5, -9, -9, -10}, {0, -9, -9, -9, -10}, {0, -9, -.5, -9, -10}}, []int{0, 0, 0}},
 		{"overlapping hints take maximum", []string{"abc", "abcd", "abc"}, [][]float32{{0, -1.5, -9, -9, -10}}, []int{0}},
 		{"empty words preserve tokens", nil, [][]float32{{0, -.5, -9, -9, -10}, {0, -9, -9, -9, 1}, {0, -9, -1, -9, -10}}, []int{0, 0}},
@@ -79,6 +79,35 @@ func TestHintGreedyTDT(t *testing.T) {
 	got, err := greedyTDT(t.Context(), 4, tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}, d)
 	if err != nil || !slices.Equal(got, []int{1, 2}) || !slices.Equal(d.frames, []int{0, 2}) {
 		t.Fatalf("duration changed: %v frames %v err %v", got, d.frames, err)
+	}
+}
+
+func TestHintContinueOverBlank(t *testing.T) {
+	h := newHintVocabulary(vocabulary{"a", "bc", "bd", "xyz", "<blk>"}, false).compile([]string{"abc", "abd", "abc", "xyz"})
+	for _, tc := range []struct {
+		name   string
+		prefix []int
+		logits []float32
+		want   int
+	}{
+		{"no live hint", nil, []float32{-.5, -.5, -.5, -.5, 1}, 4},
+		{"beats blank", []int{0}, []float32{-9, -.5, -9, -9, 1}, 1},
+		{"ties blank", []int{0}, []float32{-9, -3, -9, -9, 1}, 4},
+		{"loses to blank", []int{0}, []float32{-9, -3.25, -9, -9, 1}, 4},
+		{"best continuation", []int{0}, []float32{-9, -.5, 0, -9, 1}, 2},
+		{"unrelated start", []int{0}, []float32{-9, -9, -9, .5, 1}, 4},
+		{"overlapping bonuses do not add", []int{0}, []float32{-9, -5, -9, -9, 1}, 4},
+		{"completed hint", []int{0, 1}, []float32{-.5, -.5, -.5, -.5, 1}, 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := newHintState(h, 4)
+			for i, token := range tc.prefix {
+				state.accept(token, i)
+			}
+			if got := state.continueOverBlank(tc.logits, 4); got != tc.want {
+				t.Fatalf("token %d, want %d", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -52,12 +52,30 @@ func TestSpeculativeHints(t *testing.T) {
 		{"completed prefix survives later failure", []string{"abc", "abcdef"}, [][]float32{{0, -.5, -9, -9, -9, -10}, {0, -9, -.5, -9, -9, -10}, {0, -9, -9, -.5, -9, -10}, {0, -9, -9, -9, -9, -10}}, []int{1, 2, 0, 0}, 1},
 		{"unbiased prefix before changed token", []string{"abc"}, [][]float32{{0, 1, -9, -9, -9, -10}, {0, -9, -.5, -9, -9, -10}}, []int{1, 2}, 0},
 		{"blank keeps speculation until EOF", []string{"abc"}, [][]float32{{0, -.5, -9, -9, -9, -10}, {0, -9, -9, -9, -9, 1}}, []int{0}, 1},
+		{"blank completes unbiased prefix", []string{"abc"}, [][]float32{{0, 1, -9, -9, -9, -10}, {0, -9, -.5, -9, -9, 1}}, []int{1, 2}, 0},
+		{"blank completes biased prefix", []string{"abc"}, [][]float32{{0, -.5, -9, -9, -9, -10}, {0, -9, -.5, -9, -9, 1}}, []int{1, 2}, 0},
+		{"blank continuation rolls back at EOF", []string{"abcdef"}, [][]float32{{0, 1, -9, -9, -9, -10}, {0, -9, -.5, -9, -9, 1}}, []int{1}, 1},
+		{"blank continuation rolls back on mismatch", []string{"abcdef"}, [][]float32{{0, 1, -9, -9, -9, -10}, {0, -9, -.5, -9, -9, 1}, {1, -9, -9, -9, -9, -10}}, []int{1, 0}, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &replayDecoder{score: func(frame int, _ []int) ([]float32, int) { return tc.scores[frame], 1 }}
 			got, err := greedyTDT(t.Context(), len(tc.scores), tdtConfig{blank: 5, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile(tc.words)}, d)
 			if err != nil || !slices.Equal(got, tc.want) || !slices.Equal(got, d.accepted) || d.restores != tc.rollbacks {
 				t.Fatalf("tokens %v state %v err %v rollbacks %d, want %v / %d", got, d.accepted, err, d.restores, tc.want, tc.rollbacks)
+			}
+		})
+	}
+}
+
+func TestBlankContinuationDuration(t *testing.T) {
+	v := newHintVocabulary(vocabulary{"x", "a", "bc", "<blk>"}, false)
+	for _, duration := range []int{0, 1, 2, 4} {
+		t.Run(fmt.Sprint(duration), func(t *testing.T) {
+			d := &hintDecoder{t: t, steps: [][]float32{{0, 1, -9, -10}, {0, -9, -.5, 1}}, duration: duration, vocabulary: 4}
+			cfg := tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}
+			got, err := greedyTDT(t.Context(), max(1, 2*duration), cfg, d)
+			if err != nil || !slices.Equal(got, []int{1, 2}) || !slices.Equal(d.accepted, got) || !slices.Equal(d.frames, []int{0, duration}) {
+				t.Fatalf("tokens %v state %v frames %v err %v", got, d.accepted, d.frames, err)
 			}
 		})
 	}
