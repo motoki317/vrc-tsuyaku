@@ -191,7 +191,6 @@
   "error.inUse": "このダウンロードは使用中です。使っているスイッチをオフにしてから再試行してください。",
   "error.leftover": "古いファイルが残っています。データフォルダーを開いて削除してください。",
   "error.microphones": "マイクの一覧を取得できません。{refresh}を押して再試行してください。",
-  "error.notAnswering": "VRC\u00a0Tsuyakuが応答しません。起動するか、VRC\u00a0Tsuyakuが最後に開いた画面を使ってください。",
   "error.notSaved": "保存できませんでした。再試行してください。",
   "error.request": "VRC\u00a0Tsuyakuが応答しません。再試行してください。",
   "error.templateInvalid": "テンプレートを修正してください。{{.Translation}}のような項目を使います。",

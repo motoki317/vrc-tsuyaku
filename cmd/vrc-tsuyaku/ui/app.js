@@ -216,6 +216,7 @@ async function refresh() {
 }
 
 function scheduleRefresh() {
+  if (exitState === 'exited') return;
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => refresh().catch(() => {}), 100);
 }
@@ -364,7 +365,7 @@ function confirmLicense(ids, opener) {
     dialog.addEventListener('close', () => {
       $('license-accept').removeEventListener('click', accept);
       // Cancel returns focus to the control that opened the dialog. Accept keeps it there for the progress.
-      opener?.focus();
+      if (!exitState) opener?.focus();
       resolve(dialog.returnValue === 'accept');
     }, {once: true});
     dialog.returnValue = '';
@@ -1855,12 +1856,11 @@ function renderInstances() {
   }
   const infos = state.instance.others || [];
   const stopping = infos.some(info => info.state === 'stopping' || instanceView.pending.has(instanceKey(info)));
-  const blocked = connection === 'down' || instanceView.starting;
+  const blocked = instanceView.starting;
   setText($('instance-title'), t('title.instance', {n: infos.length}));
   setText($('instance-replace-text'), t(stopping ? 'state.instanceStopping' : 'action.instanceReplace'));
   setDisabled($('instance-replace'), stopping || blocked);
   setDisabled($('instance-start'), blocked);
-  setDisabled($('instance-exit'), isDisabled($('exit')));
   const rows = infos.map(info => {
     const key = instanceKey(info);
     let row = instanceView.cache.get(key);
@@ -2157,6 +2157,7 @@ function render() {
 }
 
 function apply(next) {
+  if (exitState === 'exited') return;
   // A later launch can reuse this page's port. Its event IDs restart at 1, so this page would skip them as seen.
   if (state && next.launch !== state.launch) {
     location.reload();
@@ -2253,14 +2254,12 @@ function buildMenu() {
 // Connection
 
 function showConnection() {
-  // After the player presses Exit, the connection drops as the server stops. A refused exit shows the bar again.
+  // A refused exit shows the connection bar again.
   if (exitState) return;
   lockControls();
   const bar = $('connection');
   bar.hidden = connection === 'ok';
-  bar.dataset.kind = connection;
-  setText($('connection-text'), {reconnecting: t('state.reconnecting'), down: t('error.notAnswering')}[connection] || '');
-  $('connection-text').setAttribute('role', connection === 'reconnecting' ? 'status' : 'alert');
+  setText($('connection-text'), connection === 'reconnecting' ? t('state.reconnecting') : '');
 }
 
 function setConnection(kind) {
@@ -2272,9 +2271,13 @@ function setConnection(kind) {
 
 async function stream() {
   let failures = 0, first = true;
-  for (;;) {
+  while (exitState !== 'exited') {
     try {
       const response = await api('events');
+      if (exitState === 'exited') {
+        await response.body.cancel();
+        return;
+      }
       failures = 0;
       // History from before this moment loads silently.
       liveSince = Date.now() - 500;
@@ -2286,6 +2289,7 @@ async function stream() {
       let buffered = '';
       for (;;) {
         const {done, value} = await reader.read();
+        if (exitState === 'exited') return;
         if (done) throw new RequestError(0, 'closed');
         buffered += value;
         let newline;
@@ -2294,6 +2298,12 @@ async function stream() {
           buffered = buffered.slice(newline + 1);
           if (!line) continue;
           const event = JSON.parse(line);
+          if (event.kind === 'exit') {
+            exitNotice = true;
+            beginExit();
+            await waitForExit();
+            return;
+          }
           if (event.id <= lastEvent) continue;
           // IDs count up by one, so a jump means the history no longer held what this page missed.
           if (lastEvent && event.id > lastEvent + 1) closePending('');
@@ -2305,7 +2315,11 @@ async function stream() {
     } catch (e) {
       if (exitState === 'exited') return;
       failures++;
-      setConnection(failures > 2 ? 'down' : 'reconnecting');
+      if (failures === 3) {
+        showExited();
+        return;
+      }
+      setConnection('reconnecting');
       await sleep(2000);
     }
   }
@@ -2313,31 +2327,38 @@ async function stream() {
 
 // Exit
 
-// '' until the player presses Exit, then 'waiting' until the server stops, then 'exited'.
+// The server can announce shutdown before cleanup finishes, so the page waits until it stops answering.
 let exitState = '';
+let exitWait = null;
+let exitNotice = false;
 
-// Once the connection bar reports that the server is not answering, its error disables the controls below it, and Exit too.
-// A pending exit disables every control but Exit.
 function lockControls() {
-  const blocked = connection === 'down', waiting = exitState === 'waiting';
-  $('main').inert = blocked || waiting;
+  const waiting = exitState === 'waiting';
+  $('main').inert = waiting;
   $('tabs').inert = waiting;
   document.querySelector('.menu').inert = waiting;
-  setDisabled($('exit'), blocked);
   const mark = $('exit').querySelector('.icon');
   setIcon(mark, waiting ? 'loader-circle' : 'power');
   mark.classList.toggle('spin', waiting);
 }
 
-async function exitApp() {
-  if (exitState || isDisabled($('exit'))) return;
+function beginExit() {
+  if (exitState) return false;
   exitState = 'waiting';
+  for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
   renderInstances();
   setError($('exit-error'), null);
   lockControls();
+  return true;
+}
+
+async function exitApp() {
+  if (!beginExit()) return;
   try {
     await api('exit', {method: 'POST'});
   } catch (e) {
+    if (exitWait) return exitWait;
+    if (exitState === 'exited') return;
     exitState = '';
     showConnection();
     renderInstances();
@@ -2347,21 +2368,51 @@ async function exitApp() {
     }
     return;
   }
+  await waitForExit();
+}
+
+function waitForExit() {
+  if (exitState === 'exited') return;
+  if (!exitWait) exitWait = waitForServer();
+  return exitWait;
+}
+
+async function waitForServer() {
   // The server answers before it shuts down, and has stopped once a request gets no answer.
   // Cleanup can outlast any fixed limit, such as a model that is still loading, so the page waits for the server.
-  for (;;) {
-    try {
-      await fetch('/', {method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(1000)});
-    } catch {
-      break;
-    }
+  while (exitState !== 'exited') {
+    if (!await serverAnswers()) break;
+    if (exitState === 'exited') return;
     await sleep(250);
   }
   showExited();
 }
 
+async function serverAnswers() {
+  try {
+    await fetch('/', {method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(1000)});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function reloadWhenServerAnswers() {
+  for (;;) {
+    await sleep(2000);
+    if (await serverAnswers()) {
+      location.reload();
+      return;
+    }
+  }
+}
+
 function showExited() {
+  if (exitState === 'exited') return;
   exitState = 'exited';
+  for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+  clearTimeout(refreshTimer);
+  renderInstances();
   syncLevelPolling();
   for (const node of [$('tabs'), $('connection'), $('main'), ...document.querySelectorAll('.bar-item')]) node.hidden = true;
   $('screen-exited').hidden = false;
@@ -2372,6 +2423,7 @@ function showExited() {
     window.close();
     setTimeout(() => setText($('exited-close'), t('action.closeTab')), 500);
   }, 3000);
+  if (!exitNotice) reloadWhenServerAnswers();
 }
 
 // Start
@@ -2418,13 +2470,13 @@ function bind() {
   });
   $('replace-confirm').addEventListener('click', replaceSettings);
   for (const dialog of document.querySelectorAll('dialog')) {
-    dialog.addEventListener('close', () => { if (dialog.id !== 'license-dialog') dialog.opener?.focus(); });
+    dialog.addEventListener('close', () => { if (!exitState && dialog.id !== 'license-dialog') dialog.opener?.focus(); });
   }
   for (const button of document.querySelectorAll('[data-close]')) button.addEventListener('click', () => button.closest('dialog').close());
 }
 
 async function start() {
-  window.addEventListener('pagehide', () => navigator.sendBeacon('/api/closing'));
+  window.addEventListener('pagehide', () => { if (exitState !== 'exited') navigator.sendBeacon('/api/closing'); });
   const [en, ja, sprite] = await Promise.all(['/i18n/en.json', '/i18n/ja.json', '/icons.svg'].map(path => fetch(path).then(r => r.text())));
   strings = {en: JSON.parse(en), ja: JSON.parse(ja)};
   const icons = new DOMParser().parseFromString(sprite, 'image/svg+xml').documentElement;

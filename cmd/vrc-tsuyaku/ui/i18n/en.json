@@ -191,7 +191,6 @@
   "error.inUse": "This download is in use. Turn off the switches that use it, then try again.",
   "error.leftover": "Old files remain. Open the data folder to delete them.",
   "error.microphones": "Could not list the microphones. Press {refresh} to try again.",
-  "error.notAnswering": "VRC\u00a0Tsuyaku is not responding. Start it, or use the page that it opened last.",
   "error.notSaved": "Not saved. Try again.",
   "error.request": "VRC\u00a0Tsuyaku did not respond. Try again.",
   "error.templateInvalid": "Fix the template. Use fields such as {{.Translation}}.",

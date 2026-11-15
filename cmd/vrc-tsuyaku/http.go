@@ -264,6 +264,12 @@ func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-a.ctx.Done():
+			if err := rc.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				return
+			}
+			if _, err := io.WriteString(w, "{\"kind\":\"exit\"}\n"); err == nil {
+				_ = rc.Flush()
+			}
 			return
 		case <-changed:
 		case <-time.After(5 * time.Second):

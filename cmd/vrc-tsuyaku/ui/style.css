@@ -130,8 +130,6 @@ a { color: var(--link); }
   display: flex; align-items: center; gap: 8px; padding: 10px 16px;
   background: var(--surface-2); border-bottom: 1px solid var(--line); font-weight: 600;
 }
-.connection:not([data-kind="reconnecting"]) { color: var(--error); }
-.connection:not([data-kind="reconnecting"]) .spinner-slot { display: none; }
 main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 main[inert], .topbar [inert] { opacity: 0.5; }
 .screen { flex: 1; min-height: 0; }

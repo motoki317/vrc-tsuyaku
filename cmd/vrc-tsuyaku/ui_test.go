@@ -34,6 +34,10 @@ func TestInstanceDialog(t *testing.T) {
 	runNodeTest(t, "instance.cjs")
 }
 
+func TestPageExit(t *testing.T) {
+	runNodeTest(t, "exit.cjs")
+}
+
 func runNodeTest(t *testing.T, name string) {
 	t.Helper()
 	node, err := exec.LookPath("node")

@@ -68,7 +68,10 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 		go fmt.Fprintln(out, consoleExiting)
 		// Keep Exit available until model and download cleanup finishes.
 		_ = a.close()
-		err = errors.Join(err, server.Close())
+		// Let event streams flush their exit record before closing their connections.
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err = errors.Join(err, server.Shutdown(shutdownCtx), server.Close())
 		if a.membership != nil {
 			err = errors.Join(err, a.membership.Close())
 		}

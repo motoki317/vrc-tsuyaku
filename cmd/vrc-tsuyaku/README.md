@@ -83,7 +83,12 @@ When the flow's spoken language is English, it also finds a word whose [sound ke
 The translator gets the terms that `glossary.Rewrite` found in the phrase.
 The page sends only the rows that have both words, so `location.index` counts the entries in the request, not the rows on the screen.
 
-Each event has an `id`, which orders all events, a `time` and a `kind`. Events about one flow also name it in `flow`:
+When the app begins shutdown, each open event stream ends with `{"kind":"exit"}`, without an `id` or `time`.
+The page shows exit progress, waits until the server stops answering, then shows the exited screen.
+Without an exit record, three consecutive failed reconnects also show the exited screen.
+The page then stops reconnecting and polling and tries to close its tab after 3 s.
+
+Every other event has an `id`, which orders all events, a `time` and a `kind`. Events about one flow also name it in `flow`:
 
 | Kind | `text` |
 | --- | --- |

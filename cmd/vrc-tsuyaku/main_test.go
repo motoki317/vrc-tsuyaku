@@ -264,6 +264,75 @@ func TestRunExit(t *testing.T) {
 	}
 }
 
+func TestRunEventStreamExit(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	original := http.DefaultTransport
+	transport := original.(*http.Transport).Clone()
+	transport.RegisterProtocol("https", updateTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusNotFound, Body: http.NoBody}, nil
+	}))
+	http.DefaultTransport = transport
+	t.Cleanup(func() { http.DefaultTransport = original; transport.CloseIdleConnections() })
+	ctx, cancel := context.WithCancel(t.Context())
+	out := &startupWriter{url: make(chan string, 1), exiting: make(chan struct{}), written: make(chan struct{})}
+	var runErr error
+	done := make(chan struct{})
+	dir := t.TempDir()
+	go func() {
+		defer close(done)
+		runErr = run(ctx, []string{"-data-dir", dir}, out, io.Discard)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("run did not stop")
+		}
+	})
+	var address string
+	select {
+	case address = <-out.url:
+	case <-done:
+		t.Fatalf("run stopped before startup: %v", runErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not report startup")
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	var streams []*http.Response
+	for range 8 {
+		req, err := http.NewRequestWithContext(t.Context(), "GET", address+"api/events", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		streams = append(streams, response)
+	}
+	cancel()
+	select {
+	case <-done:
+		if runErr != nil {
+			t.Fatal(runErr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not stop")
+	}
+	for i, response := range streams {
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatalf("stream %d ended before its exit record: %v", i, err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+		if lines[len(lines)-1] != `{"kind":"exit"}` {
+			t.Fatalf("stream %d ended with %q", i, body)
+		}
+	}
+}
+
 func TestRunInstanceStartup(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	original := http.DefaultTransport
