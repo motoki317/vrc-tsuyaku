@@ -23,7 +23,7 @@ type display struct {
 	readUntil time.Time
 }
 
-func (d *display) show(ctx context.Context, id uint64, format string, message chatbox.Message, queued time.Time) error {
+func (d *display) show(ctx context.Context, id uint64, format string, reading chatbox.ReadingTime, message chatbox.Message, queued time.Time) error {
 	shown := time.Now()
 	pages, err := chatbox.Render(format, message)
 	if err != nil {
@@ -45,10 +45,11 @@ func (d *display) show(ctx context.Context, id uint64, format string, message ch
 			message, pages, merged = joined, joinedPages, true
 		}
 	}
+	durations := reading.PageDurations(message, pages)
 	for i, page := range pages {
 		if d.send != nil && !merged {
 			due := d.readUntil
-			if limit := queued.Add(time.Duration(i+1) * chatbox.PageReadingTime); limit.Before(due) {
+			if limit := queued.Add(time.Duration(i+1) * reading.BacklogBound()); limit.Before(due) {
 				due = limit
 			}
 			if delay := time.Until(due); delay > 0 {
@@ -70,7 +71,10 @@ func (d *display) show(ctx context.Context, id uint64, format string, message ch
 		if !merged {
 			d.since, d.firstID = shown, id
 		}
-		d.readUntil = chatbox.ReadUntil(page, d.since, shown)
+		d.readUntil = d.since.Add(durations[i])
+		if floor := shown.Add(chatbox.PageInterval); floor.After(d.readUntil) {
+			d.readUntil = floor
+		}
 		d.message = nil
 		if len(pages) == 1 {
 			d.format, d.message = format, &message

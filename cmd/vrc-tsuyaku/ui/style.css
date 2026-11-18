@@ -451,6 +451,8 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .automatic { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
 .automatic input { width: 18px; height: 18px; margin: 0; accent-color: var(--self); }
 .level-control .hint { margin: 4px 0; }
+.reading-control { margin-top: 16px; }
+.reading-control input { width: 100%; height: 32px; margin: 0; accent-color: var(--self); }
 .level-scale { position: relative; height: 40px; padding: 0 10px; }
 .level-meter { position: absolute; top: 15px; left: 10px; right: 10px; height: 10px; border-radius: 5px; background: #000; overflow: hidden; }
 .level-fill { height: 100%; width: 0; background: #555c66; }
@@ -477,10 +479,15 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .preview { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .page {
   position: relative; width: min(100%, 300px); padding: 10px 14px; border-radius: 14px;
-  border: 1px solid var(--chatbox-edge); background: var(--chatbox); color: #ffffff;
+  border: 1px solid var(--chatbox-edge); background: var(--chatbox); color: #ffffff; overflow: hidden;
 }
 .page p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .page-count { float: right; margin-left: 8px; font-size: 0.8em; color: #c9ced6; font-variant-numeric: tabular-nums; }
+.page-timer {
+  position: absolute; inset: auto 0 0; height: 3px; background: var(--self);
+  transform-origin: left; animation: page-fill linear infinite;
+}
+@keyframes page-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 /* Model cards: a radio group of cards. The whole card selects, so the card shows the focus ring. */
 .options { display: flex; flex-direction: column; gap: 8px; }
 .option {
@@ -613,7 +620,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 
 @media (prefers-reduced-motion: reduce) {
   .saved { transition: none; }
-  .spin, .fc[data-kind="starting"] .thumb .icon, .fc.next .track { animation: none; }
+  .spin, .fc[data-kind="starting"] .thumb .icon, .fc.next .track, .page-timer { animation: none; }
   .dots i { animation: none; opacity: 0.7; }
   .download[data-kind="verifying"] .bar .fill { animation: none; left: 0; width: 100%; opacity: 0.4; }
   .thumb, .plan-downloads .chevron { transition: none; }

@@ -51,24 +51,63 @@ func TestMessageJoin(t *testing.T) {
 	}
 }
 
-func TestReadUntil(t *testing.T) {
-	since := time.Unix(100, 0)
+func TestReadingTime(t *testing.T) {
 	for _, tc := range []struct {
-		name, page string
-		shown, end time.Duration
+		name, original, translation string
+		want                        time.Duration
 	}{
-		{"long page", strings.Repeat("猫", 100), 0, 12 * time.Second},
-		{"full page", strings.Repeat("a", 144), 0, 17280 * time.Millisecond},
-		{"short page", "hi", 0, 1500 * time.Millisecond},
-		{"merged long page", strings.Repeat("猫", 100) + " hm", time.Second, 12360 * time.Millisecond},
-		{"merged short page", "a b", time.Second, 2500 * time.Millisecond},
-		{"late merge", strings.Repeat("a", 101), 12 * time.Second, 13500 * time.Millisecond},
+		{"greeting", "こんにちは", "Hello", 3700 * time.Millisecond},
+		{"weather", "今日は寒いですね。", "It's cold today.", 5060 * time.Millisecond},
+		{"longer original", strings.Repeat("猫", 25), strings.Repeat("a", 60), 10500 * time.Millisecond},
+		{"longer translation", "猫", "It's cold today.", 3600 * time.Millisecond},
+		{"original only", "猫", "", 2340 * time.Millisecond},
+		{"translation only", "", "a b!", 2400 * time.Millisecond},
+		{"empty", "", "", 2 * time.Second},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := ReadUntil(tc.page, since, since.Add(tc.shown)); !got.Equal(since.Add(tc.end)) {
-				t.Fatalf("ReadUntil = %s after first showing, want %s", got.Sub(since), tc.end)
+			m := Message{Original: tc.original, Translation: tc.translation, SourceLang: "ja", TargetLang: "en"}
+			if got := DefaultReadingTime().Duration(m); got != tc.want {
+				t.Fatalf("Duration = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestReadingTimeSettings(t *testing.T) {
+	m := Message{Original: "猫", SourceLang: "ja"}
+	for _, tc := range []struct {
+		reading        ReadingTime
+		message, bound time.Duration
+	}{
+		{ReadingTime{Base: time.Second, Factor: 1}, 1170 * time.Millisecond, 7 * time.Second},
+		{ReadingTime{Base: 10 * time.Second, Factor: 1}, 10170 * time.Millisecond, 16 * time.Second},
+		{ReadingTime{Base: time.Second, Factor: 8}, 2360 * time.Millisecond, 49 * time.Second},
+		{ReadingTime{Base: 10 * time.Second, Factor: 8}, 11360 * time.Millisecond, 58 * time.Second},
+		{DefaultReadingTime(), 2340 * time.Millisecond, 14 * time.Second},
+	} {
+		if got := tc.reading.Duration(m); got != tc.message {
+			t.Errorf("%+v: Duration = %s, want %s", tc.reading, got, tc.message)
+		}
+		if got := tc.reading.BacklogBound(); got != tc.bound {
+			t.Errorf("%+v: BacklogBound = %s, want %s", tc.reading, got, tc.bound)
+		}
+	}
+}
+
+func TestReadingTimePageShares(t *testing.T) {
+	m := Message{Original: "こんにちは", Translation: "Hello", SourceLang: "ja", TargetLang: "en"}
+	reading := DefaultReadingTime()
+	for _, tc := range []struct {
+		pages []string
+		want  []time.Duration
+	}{
+		{[]string{}, []time.Duration{}},
+		{[]string{"[en] Hello"}, []time.Duration{3700 * time.Millisecond}},
+		{[]string{"猫", "abc"}, []time.Duration{2425 * time.Millisecond, 3275 * time.Millisecond}},
+	} {
+		if got := reading.PageDurations(m, tc.pages); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("PageDurations(%q) = %v, want %v", tc.pages, got, tc.want)
+		}
 	}
 }
 

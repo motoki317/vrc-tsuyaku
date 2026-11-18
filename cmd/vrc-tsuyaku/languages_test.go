@@ -8,14 +8,16 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
 
-func TestLanguageChangesReachRunningPipeline(t *testing.T) {
+func TestLanguageAndReadingTimeChangesReachRunningPipeline(t *testing.T) {
 	type pair struct{ source, target string }
 	for _, tc := range []struct {
 		name, flow, spoken string
@@ -49,7 +51,10 @@ func TestLanguageChangesReachRunningPipeline(t *testing.T) {
 				t.Fatal(err)
 			}
 			input := make(chan struct{})
-			type translationRequest struct{ source, target, phrase string }
+			type translationRequest struct {
+				source, target, phrase string
+				reading                chatbox.ReadingTime
+			}
 			requests := make(chan translationRequest, 1)
 			a.prepare = func(context.Context, string, config.Settings) (pipeline.Stages, error) {
 				return pipeline.Stages{
@@ -73,7 +78,7 @@ func TestLanguageChangesReachRunningPipeline(t *testing.T) {
 					Recognize:   func(context.Context, []float32, pipeline.PhraseSettings) (string, error) { return "original", nil },
 					Translate: func(_ context.Context, phrase string, settings pipeline.PhraseSettings) (string, error) {
 						source, target := settings.SourceLang, settings.TargetLang
-						requests <- translationRequest{source, target, phrase}
+						requests <- translationRequest{source, target, phrase, settings.ReadingTime}
 						return "translation", nil
 					},
 				}, nil
@@ -88,6 +93,8 @@ func TestLanguageChangesReachRunningPipeline(t *testing.T) {
 			a.mu.Unlock()
 			for i, change := range tc.changes {
 				source, target := change.source, change.target
+				reading := chatbox.ReadingTime{Base: 1500*time.Millisecond + time.Duration(i)*time.Second, Factor: 1.2 + float64(i)}
+				s.Chatbox.ReadingBase, s.Chatbox.ReadingFactor = reading.Base.Seconds(), reading.Factor
 				if flow == "self" {
 					s.Flows.Self.Spoken, s.Flows.Self.Target = source, target
 				} else {
@@ -99,8 +106,8 @@ func TestLanguageChangesReachRunningPipeline(t *testing.T) {
 				}
 				input <- struct{}{}
 				got := <-requests
-				if got != (translationRequest{catalog.TranslatorSource(source), target, "original"}) {
-					t.Fatal(got)
+				if want := (translationRequest{catalog.TranslatorSource(source), target, "original", reading}); got != want {
+					t.Fatalf("translation request = %+v, want %+v", got, want)
 				}
 				waitFor(t, func() bool {
 					history, _ := a.events.after(0)

@@ -76,8 +76,10 @@ func (f Flows) CutLevel(name string) float64 {
 }
 
 type Chatbox struct {
-	Address  string `yaml:"address"`
-	Template string `yaml:"template"`
+	Address       string  `yaml:"address"`
+	Template      string  `yaml:"template"`
+	ReadingBase   float64 `yaml:"reading_base_seconds"`
+	ReadingFactor float64 `yaml:"reading_factor"`
 }
 
 // Defaults leaves both flows stopped and uses the local VRChat address.
@@ -88,7 +90,10 @@ func Defaults() Settings {
 			Self:  SelfFlow{Spoken: catalog.Japanese, Target: catalog.English},
 			World: WorldFlow{Spoken: catalog.English, Target: catalog.Japanese},
 		},
-		Chatbox:          Chatbox{Address: "127.0.0.1:9000", Template: chatbox.DefaultTemplate},
+		Chatbox: Chatbox{
+			Address: "127.0.0.1:9000", Template: chatbox.DefaultTemplate,
+			ReadingBase: chatbox.DefaultReadingBaseSeconds, ReadingFactor: chatbox.DefaultReadingFactor,
+		},
 		Glossary:         []glossary.Entry{},
 		LicensesAccepted: make(map[string]string),
 	}
@@ -121,6 +126,9 @@ func (s Settings) Validate() error {
 	if err := chatbox.ValidateTemplate(s.Chatbox.Template); err != nil {
 		return fmt.Errorf("chatbox.template: %w", err)
 	}
+	if err := ValidateReadingTime(s.Chatbox.ReadingBase, s.Chatbox.ReadingFactor, "chatbox.reading_base_seconds", "chatbox.reading_factor"); err != nil {
+		return err
+	}
 	if err := glossary.Validate(s.Glossary); err != nil {
 		return err
 	}
@@ -131,6 +139,16 @@ func (s Settings) Validate() error {
 		if _, err := time.Parse(time.RFC3339, value); err != nil {
 			return fmt.Errorf("licenses_accepted[%q]: %w", key, err)
 		}
+	}
+	return nil
+}
+
+func ValidateReadingTime(baseSeconds, factor float64, baseField, factorField string) error {
+	if !(baseSeconds >= chatbox.MinReadingBaseSeconds && baseSeconds <= chatbox.MaxReadingBaseSeconds) {
+		return fmt.Errorf("%s: must be between %g and %g seconds", baseField, chatbox.MinReadingBaseSeconds, chatbox.MaxReadingBaseSeconds)
+	}
+	if !(factor >= chatbox.MinReadingFactor && factor <= chatbox.MaxReadingFactor) {
+		return fmt.Errorf("%s: must be between %g and %g", factorField, chatbox.MinReadingFactor, chatbox.MaxReadingFactor)
 	}
 	return nil
 }

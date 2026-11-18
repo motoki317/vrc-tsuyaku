@@ -38,14 +38,14 @@ func TestDisplayReadingTime(t *testing.T) {
 		times               []time.Duration
 	}{
 		{"long page", strings.Repeat("猫", 100), strings.Repeat("b", 100), []string{strings.Repeat("猫", 100), strings.Repeat("b", 100)}, []time.Duration{0, 12 * time.Second}},
-		{"two pages", strings.Repeat("猫", 145), "", []string{strings.Repeat("猫", 144), "猫"}, []time.Duration{0, 17280 * time.Millisecond}},
+		{"two pages", strings.Repeat("猫", 145), "", []string{strings.Repeat("猫", 144), "猫"}, []time.Duration{0, 16400 * time.Millisecond}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				r := displayRecord{start: time.Now()}
 				d := display{send: r.send, emit: func(Event) {}}
 				for _, text := range []string{tc.first, tc.second} {
-					if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.Message{Original: text}, time.Now()); err != nil {
+					if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.DefaultReadingTime(), chatbox.Message{Original: text}, time.Now()); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -53,6 +53,89 @@ func TestDisplayReadingTime(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestDisplayReplacementAfterWrite(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := displayRecord{start: time.Now()}
+		d := display{emit: func(Event) {}}
+		d.send = func(ctx context.Context, page string) error {
+			if len(r.pages) == 0 {
+				time.Sleep(1500 * time.Millisecond)
+			}
+			return r.send(ctx, page)
+		}
+		m := chatbox.Message{Original: "こんにちは", Translation: "Hello", SourceLang: "ja", TargetLang: "en"}
+		for _, format := range []string{"{{.Original}}", "{{.Translation}}"} {
+			if err := d.show(t.Context(), 1, format, chatbox.DefaultReadingTime(), m, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		r.check(t, []string{"こんにちは", "Hello"}, []time.Duration{1500 * time.Millisecond, 5200 * time.Millisecond})
+	})
+}
+
+func TestDisplayJoinBoundaryAfterWrite(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := displayRecord{start: time.Now()}
+		d := display{emit: func(Event) {}, send: func(ctx context.Context, page string) error {
+			time.Sleep(1500 * time.Millisecond)
+			return r.send(ctx, page)
+		}}
+		for i, tc := range []struct {
+			text       string
+			sinceWrite time.Duration
+		}{
+			{"first", 0},
+			{"other", 2600 * time.Millisecond}, // 0.1 s after the first message expires.
+			{"third", 2400 * time.Millisecond}, // 0.1 s before the second message expires.
+		} {
+			time.Sleep(tc.sinceWrite)
+			m := chatbox.Message{Original: tc.text, SourceLang: "en"}
+			if err := d.show(t.Context(), uint64(i+1), "{{.Original}}", chatbox.DefaultReadingTime(), m, r.start); err != nil {
+				t.Fatal(err)
+			}
+		}
+		r.check(t, []string{"first", "other", "other third"}, []time.Duration{1500 * time.Millisecond, 5600 * time.Millisecond, 9500 * time.Millisecond})
+	})
+}
+
+func TestDisplayMinimumAfterJoinedWrite(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := displayRecord{start: time.Now()}
+		d := display{send: r.send, emit: func(Event) {}}
+		for i, format := range []string{"{{.Original}}", "{{.Original}}", "[{{.Original}}]"} {
+			if i == 1 {
+				time.Sleep(2 * time.Second)
+			}
+			if err := d.show(t.Context(), uint64(i+1), format, chatbox.DefaultReadingTime(), chatbox.Message{Original: "a"}, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		r.check(t, []string{"a", "a a", "[a]"}, []time.Duration{0, 2 * time.Second, 3500 * time.Millisecond})
+	})
+}
+
+func TestDisplayUsesPhraseReadingTime(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := timedStages([]string{"a", "b", "c"}, 0)
+		settings := []PhraseSettings{
+			{Template: "{{.Original}}", ReadingTime: chatbox.DefaultReadingTime()},
+			{Template: "[{{.Original}}]", ReadingTime: chatbox.ReadingTime{Base: 3 * time.Second, Factor: 1.5}},
+			{Template: "{{.Original}}", ReadingTime: chatbox.DefaultReadingTime()},
+		}
+		s.Settings = func() PhraseSettings {
+			next := settings[0]
+			settings = settings[1:]
+			return next
+		}
+		r := displayRecord{start: time.Now()}
+		s.Send = r.send
+		if err := Run(t.Context(), s); err != nil {
+			t.Fatal(err)
+		}
+		r.check(t, []string{"a", "[b]", "c"}, []time.Duration{0, 3200 * time.Millisecond, 7100 * time.Millisecond})
+	})
 }
 
 func TestDisplayMergeAndChain(t *testing.T) {
@@ -64,11 +147,11 @@ func TestDisplayMergeAndChain(t *testing.T) {
 			if i == 1 || i == 2 {
 				time.Sleep(time.Second)
 			}
-			if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.Message{Original: text}, time.Now()); err != nil {
+			if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.DefaultReadingTime(), chatbox.Message{Original: text}, time.Now()); err != nil {
 				t.Fatal(err)
 			}
 		}
-		r.check(t, []string{a, a + " hm", a + " hm c", last}, []time.Duration{0, time.Second, 2 * time.Second, 12600 * time.Millisecond})
+		r.check(t, []string{a, a + " hm", a + " hm c", last}, []time.Duration{0, time.Second, 2 * time.Second, 12500 * time.Millisecond})
 	})
 }
 
@@ -81,10 +164,10 @@ func TestDisplayDoesNotMerge(t *testing.T) {
 	}{
 		{name: "reading ended", first: a, second: "b", idle: 12 * time.Second, want: 12 * time.Second},
 		{name: "template differs", first: a, second: "b", format: "{{.Translation}}", want: 12 * time.Second},
-		{name: "source differs", first: a, second: "b", firstLang: chatbox.Message{SourceLang: "ja"}, secondLang: chatbox.Message{SourceLang: "en"}, want: 12 * time.Second},
+		{name: "source differs", first: a, second: "b", firstLang: chatbox.Message{SourceLang: "ja"}, secondLang: chatbox.Message{SourceLang: "en"}, want: 14 * time.Second},
 		{name: "target differs", first: a, second: "b", firstLang: chatbox.Message{TargetLang: "ja"}, secondLang: chatbox.Message{TargetLang: "en"}, want: 12 * time.Second},
 		{name: "joined needs two pages", first: a, second: a, want: 12 * time.Second},
-		{name: "previous has two pages", first: strings.Repeat("a", 145), second: "b", want: 18780 * time.Millisecond},
+		{name: "previous has two pages", first: strings.Repeat("a", 145), second: "b", want: 18500 * time.Millisecond},
 	} {
 		for _, mode := range []string{"with Send", "without Send"} {
 			t.Run(tc.name+"/"+mode, func(t *testing.T) {
@@ -98,7 +181,7 @@ func TestDisplayDoesNotMerge(t *testing.T) {
 					first, second := tc.firstLang, tc.secondLang
 					first.Original = tc.first
 					second.Original, second.Translation = tc.second, tc.second
-					if err := d.show(t.Context(), 1, "{{.Original}}", first, time.Now()); err != nil {
+					if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.DefaultReadingTime(), first, time.Now()); err != nil {
 						t.Fatal(err)
 					}
 					time.Sleep(tc.idle)
@@ -106,7 +189,7 @@ func TestDisplayDoesNotMerge(t *testing.T) {
 					if format == "" {
 						format = "{{.Original}}"
 					}
-					if err := d.show(t.Context(), 2, format, second, time.Now()); err != nil {
+					if err := d.show(t.Context(), 2, format, chatbox.DefaultReadingTime(), second, time.Now()); err != nil {
 						t.Fatal(err)
 					}
 					if merges := log.ofKind("merged"); len(merges) != 0 {
@@ -136,7 +219,7 @@ func TestDisplayFailedJoinedRender(t *testing.T) {
 				a := strings.Repeat("a", 100)
 				format := `{{if gt (len .Original) 100}}` + joined + `{{else}}{{.Original}}{{end}}`
 				for _, text := range []string{a, "b"} {
-					if err := d.show(t.Context(), 1, format, chatbox.Message{Original: text}, time.Now()); err != nil {
+					if err := d.show(t.Context(), 1, format, chatbox.DefaultReadingTime(), chatbox.Message{Original: text}, time.Now()); err != nil {
 						t.Fatalf("joined render failure became a template error: %v", err)
 					}
 				}
@@ -154,16 +237,16 @@ func TestDisplayMaximumWait(t *testing.T) {
 		times  []time.Duration
 	}{
 		{"one page", strings.Repeat("b", 100), []string{strings.Repeat("a", 144), strings.Repeat("b", 100)}, []time.Duration{0, 0}},
-		{"two pages", strings.Repeat("b", 154), []string{strings.Repeat("a", 144), strings.Repeat("b", 144), strings.Repeat("b", 10)}, []time.Duration{0, 0, 17280 * time.Millisecond}},
+		{"two pages", strings.Repeat("b", 154), []string{strings.Repeat("a", 144), strings.Repeat("b", 144), strings.Repeat("b", 10)}, []time.Duration{0, 0, 7 * time.Second}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				r := displayRecord{start: time.Now()}
 				d := display{send: r.send, emit: func(Event) {}}
-				if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.Message{Original: strings.Repeat("a", 144)}, time.Now()); err != nil {
+				if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.DefaultReadingTime(), chatbox.Message{Original: strings.Repeat("a", 144)}, time.Now()); err != nil {
 					t.Fatal(err)
 				}
-				if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.Message{Original: tc.second}, r.start.Add(-17280*time.Millisecond)); err != nil {
+				if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.ReadingTime{Base: time.Second, Factor: 1}, chatbox.Message{Original: tc.second}, r.start.Add(-7*time.Second)); err != nil {
 					t.Fatal(err)
 				}
 				r.check(t, tc.pages, tc.times)
@@ -176,7 +259,9 @@ func TestDisplayBacklog(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()
 		s.Source = fakeSource(20)
-		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
+		s.Settings = func() PhraseSettings {
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Translation}}"}
+		}
 		s.Translate = func(context.Context, string, PhraseSettings) (string, error) {
 			time.Sleep(8 * time.Second)
 			return strings.Repeat("a", 154), nil
@@ -190,8 +275,13 @@ func TestDisplayBacklog(t *testing.T) {
 			t.Fatalf("pages = %d, want 40", len(r.pages))
 		}
 		for i := range 20 {
-			if delay := r.times[2*i] - time.Duration(i)*8*time.Second; delay < 0 || delay > 26560*time.Millisecond {
-				t.Fatalf("message %d delayed %s", i, delay)
+			queued := time.Duration(i) * 8 * time.Second
+			firstDeadline := queued + 14*time.Second
+			if i > 0 {
+				firstDeadline = max(firstDeadline, r.times[2*i-1])
+			}
+			if first, second := r.times[2*i], r.times[2*i+1]; first < queued || first > firstDeadline || second > queued+28*time.Second {
+				t.Fatalf("message %d queued at %s, pages sent at %s and %s", i, queued, first, second)
 			}
 		}
 	})
@@ -205,7 +295,7 @@ func TestDisplaySkippedPhrasePreservesMessage(t *testing.T) {
 				originals := []string{a, skipped, "b", last}
 				s := timedStages(originals, 0)
 				s.Settings = func() PhraseSettings {
-					return PhraseSettings{Template: `{{if eq .Original "bad"}}{{index .Translation 1000}}{{else if eq .Original "blank"}} {{else}}{{.Original}}{{end}}`}
+					return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: `{{if eq .Original "bad"}}{{index .Translation 1000}}{{else if eq .Original "blank"}} {{else}}{{.Original}}{{end}}`}
 				}
 				r := displayRecord{start: time.Now()}
 				s.Send = r.send
@@ -214,7 +304,7 @@ func TestDisplaySkippedPhrasePreservesMessage(t *testing.T) {
 				if err := Run(t.Context(), s); err != nil {
 					t.Fatal(err)
 				}
-				r.check(t, []string{a, a + " b", last}, []time.Duration{0, 0, 12240 * time.Millisecond})
+				r.check(t, []string{a, a + " b", last}, []time.Duration{0, 0, 14 * time.Second})
 				ids := log.ofKind("recognized")
 				if len(ids) != len(originals) {
 					t.Fatal(ids)
@@ -235,7 +325,9 @@ func TestDisplayCancellationDuringReadingTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()
 		s.Source = fakeSource(2)
-		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
+		s.Settings = func() PhraseSettings {
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Translation}}"}
+		}
 		s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return strings.Repeat("a", 100), nil }
 		r := displayRecord{start: time.Now()}
 		s.Send = r.send
@@ -275,7 +367,9 @@ func TestDisplayStateEndsWithRun(t *testing.T) {
 		for _, text := range []string{strings.Repeat("a", 100), "b"} {
 			s := fakeStages()
 			s.Source = fakeSource(1)
-			s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Translation}}"} }
+			s.Settings = func() PhraseSettings {
+				return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Translation}}"}
+			}
 			s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return text, nil }
 			s.Send = r.send
 			if err := Run(t.Context(), s); err != nil {

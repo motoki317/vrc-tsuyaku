@@ -42,10 +42,11 @@ var nextPhraseID atomic.Uint64
 // PhraseSettings is captured before recognition and stays fixed through sending.
 // Template renders the chatbox pages. Without Send it only measures whether phrases fit in one page together.
 type PhraseSettings struct {
-	SourceLang string
-	TargetLang string
-	Template   string
-	Terms      []glossary.Term
+	SourceLang  string
+	TargetLang  string
+	Template    string
+	ReadingTime chatbox.ReadingTime
+	Terms       []glossary.Term
 }
 
 // Stages supplies the operations for one Run.
@@ -261,7 +262,7 @@ func Run(ctx context.Context, s Stages) error {
 				return err
 			}
 			message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang}
-			if err := display.show(ctx, r.id, r.settings.Template, message, r.queued); err != nil {
+			if err := display.show(ctx, r.id, r.settings.Template, r.settings.ReadingTime, message, r.queued); err != nil {
 				if ctx.Err() != nil {
 					return context.Cause(ctx)
 				}

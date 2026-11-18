@@ -134,6 +134,7 @@ function setLanguage(next) {
   setText($('ui-language-name'), name);
   $('ui-language').setAttribute('aria-label', t('label.uiLanguageName', {name}));
   for (const node of document.querySelectorAll('[data-relabel]')) node.relabel();
+  if (state) renderPreview();
   if (connection !== 'ok') showConnection();
 }
 
@@ -156,8 +157,8 @@ function langAttribute(code) {
   return code === 'ja-easy' ? 'ja' : LANGUAGE_TAGS[code] || code;
 }
 
-function number(value, digits) {
-  return new Intl.NumberFormat(lang, {minimumFractionDigits: digits, maximumFractionDigits: digits}).format(value);
+function number(value, digits, maximum = digits) {
+  return new Intl.NumberFormat(lang, {minimumFractionDigits: digits, maximumFractionDigits: maximum}).format(value);
 }
 
 function unitOf(bytes) {
@@ -1629,28 +1630,57 @@ async function saveAddress() {
   }
 }
 
+const readingFields = {base: 'ReadingBase', factor: 'ReadingFactor'};
+const secondsText = value => t('value.seconds', {n: number(value, 0, 2)});
+
+function readingValue(key) {
+  const slider = $('reading-' + key);
+  // A file can specify a value between slider steps. Keep it until the player moves the slider.
+  return slider.dataset.dirty ? slider.valueAsNumber : state.settings.Chatbox[readingFields[key]];
+}
+
+function renderReadingControl(key) {
+  const slider = $('reading-' + key), value = readingValue(key);
+  slider.min = state.reading[key].min;
+  slider.max = state.reading[key].max;
+  if (!slider.dataset.dirty) slider.value = value;
+  slider.disabled = !!state.settingsError;
+  const text = key === 'base' ? secondsText(value) : t('value.factor', {n: number(value, 1)});
+  slider.setAttribute('aria-valuetext', text);
+  setText($('reading-' + key + '-value'), text);
+}
+
 let previewTimer = 0;
 let previewRequest = 0;
-let preview = {template: null, pages: null, error: null};
+let previewBody = '';
+let preview = {template: null, example: null, error: null};
 // The last failed save, until a save succeeds. A preview error shows first.
 let templateRefusal = null;
 
 function previewMessage() {
-  const phrase = latestSelfPhrase(), settings = settingsOf('self');
+  const phrase = latestSelfPhrase();
   if (phrase) return {original: phrase.original, translation: phrase.translation, sourceLang: phrase.source, targetLang: phrase.target};
-  return {original: t('value.sampleOriginal'), translation: t('value.sampleTranslation'), sourceLang: settings.Spoken, targetLang: settings.Target};
+  return {original: t('value.sampleOriginal'), translation: t('value.sampleTranslation'), sourceLang: 'ja', targetLang: 'en'};
+}
+
+function previewInputs() {
+  return {template: $('template').value, ...previewMessage(), readingBase: readingValue('base'), readingFactor: readingValue('factor')};
 }
 
 async function runPreview() {
   clearTimeout(previewTimer);
-  const template = $('template').value, request = ++previewRequest;
-  let result;
+  previewTimer = 0;
+  const inputs = previewInputs(), request = ++previewRequest;
+  previewBody = JSON.stringify(inputs);
+  const result = {template: inputs.template, example: preview.example, error: null};
   try {
-    const response = await api('chatbox/preview', {method: 'POST', body: JSON.stringify({template, ...previewMessage()})});
-    result = {template, pages: (await response.json()).pages || [], error: null};
+    const response = await api('chatbox/preview', {method: 'POST', body: previewBody});
+    result.example = {...await response.json(), base: inputs.readingBase, factor: inputs.readingFactor};
   } catch (e) {
+    // The server never answered these inputs, so the same inputs must be able to ask again.
+    if (request === previewRequest && (!e.status || e.status >= 500)) previewBody = '';
     if (!e.status) return preview;
-    result = {template, pages: null, error: e.message};
+    result.error = e.message;
   }
   if (request === previewRequest) {
     preview = result;
@@ -1659,7 +1689,14 @@ async function runPreview() {
   return result;
 }
 
-function schedulePreview() {
+function schedulePreview(dragging = false) {
+  const body = JSON.stringify(previewInputs());
+  if (body === previewBody) return;
+  previewBody = body;
+  // A continuous drag must not postpone the example until the player releases the slider.
+  if (dragging && previewTimer) return;
+  // An answer to earlier inputs must not replace the example. During a drag it may, so that the example keeps moving.
+  if (!dragging) ++previewRequest;
   clearTimeout(previewTimer);
   previewTimer = setTimeout(runPreview, 300);
 }
@@ -1674,14 +1711,32 @@ function renderPreview() {
   } else {
     setFieldError(input, $('template-error'), refusal && (() => saveRefusal(refusal)));
   }
-  const pages = preview.pages || [];
+  const example = preview.example, line = $('reading-example');
+  line.hidden = !example?.pages.length;
+  const pages = example?.pages || [];
   const box = $('preview');
-  if (preview.pages) {
-    box.replaceChildren(...pages.map((page, i) => h('div', {className: 'page'},
-      pages.length > 1 && h('span', {className: 'page-count'}, t('value.page', {n: i + 1, total: pages.length})),
-      h('p', {}, page))));
+  while (box.children.length > pages.length) box.removeChild(box.lastElementChild);
+  for (const [i, text] of pages.entries()) {
+    // Keep each bar in the document so a state refresh cannot restart its animation.
+    let page = box.children[i];
+    if (!page) {
+      page = h('div', {className: 'page'}, h('span', {className: 'page-count'}), h('p'),
+        h('span', {className: 'page-timer', 'aria-hidden': 'true'}));
+      box.append(page);
+    }
+    const [count, message, bar] = page.children;
+    count.hidden = pages.length === 1;
+    setText(count, count.hidden ? '' : t('value.page', {n: i + 1, total: pages.length, seconds: secondsText(example.seconds[i])}));
+    setText(message, text);
+    bar.style.animationDuration = example.seconds[i] + 's';
   }
-  box.hidden = !preview.pages;
+  if (!pages.length) return;
+  const {characters, secondsPerCharacter} = example.reading;
+  const formula = t('value.readingFormula', {
+    base: secondsText(example.base), count: t(characters === 1 ? 'value.character' : 'value.characters', {n: number(characters, 0)}),
+    rate: secondsText(secondsPerCharacter), factor: number(example.factor, 0, 2),
+  });
+  setText(line, pages.length === 1 ? t('value.readingTotal', {total: secondsText(example.seconds[0]), formula}) : formula);
 }
 
 async function saveTemplate() {
@@ -1730,6 +1785,13 @@ function insertText(input, text, selectAll) {
 let customChosen = false;
 
 function buildChatbox() {
+  for (const [key, field] of Object.entries(readingFields)) {
+    const slider = $('reading-' + key), error = $('reading-' + key + '-error');
+    commitOnSettle(slider, value => saveSettings(s => { s.Chatbox[field] = value; })
+      .then(() => { setFieldError(slider, error, null); flashSaved('reading'); })
+      .catch(e => setFieldError(slider, error, () => saveRefusal(e))), () => slider.valueAsNumber);
+    slider.addEventListener('input', () => { renderReadingControl(key); schedulePreview(true); });
+  }
   const input = $('template');
   const presets = PRESETS.map(([key, template]) => {
     const button = h('button', {type: 'button', className: 'segment', 'data-i18n': key});
@@ -1791,13 +1853,14 @@ function syncField(input, value, onChange) {
 }
 
 function renderChatbox() {
+  for (const key of Object.keys(readingFields)) renderReadingControl(key);
   syncField($('address'), state.settings.Chatbox.Address);
   syncField($('template'), state.settings.Chatbox.Template, () => {
     customChosen = false;
     preview.template = null;
-    runPreview();
   });
   renderPresets();
+  if (screen === 'settings' && sub === 'chatbox') schedulePreview();
 }
 
 // The groups split the catalog: what the current selection needs, what else is installed, and
@@ -2066,7 +2129,7 @@ async function replaceSettings() {
 // Screens and history
 
 function flushFields() {
-  for (const field of document.querySelectorAll('select, [role="radiogroup"], .level-control, .chain')) field.settle?.();
+  for (const field of document.querySelectorAll('select, [role="radiogroup"], .level-control, .reading-control input, .chain')) field.settle?.();
   if ($('address').dataset.dirty) saveAddress();
   if ($('template').dataset.dirty) saveTemplate();
   saveGlossary();

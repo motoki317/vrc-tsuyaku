@@ -169,8 +169,25 @@
           <textarea id="template" class="input mono template" rows="3" spellcheck="false" aria-labelledby="message-label" aria-describedby="template-error"></textarea>
         </div>
         <div id="template-error" class="error-text" hidden></div>
-        <div id="preview" class="preview" role="group" data-i18n-aria-label="label.preview"></div>
       </div>
+      <section class="field-group" aria-labelledby="reading-label">
+        <div class="label-row"><h3 class="field-label" id="reading-label" data-i18n="label.readingTime"></h3><span class="saved" id="reading-saved" aria-hidden="true" hidden><svg class="icon"><use href="#i-check"></use></svg><span data-i18n="state.saved"></span></span></div>
+        <div class="reading-control">
+          <div class="level-heading"><label for="reading-base" data-i18n="label.readingBase"></label><span class="value" id="reading-base-value"></span></div>
+          <input type="range" id="reading-base" step="0.5" aria-describedby="reading-base-error">
+          <p class="error-text" id="reading-base-error" hidden></p>
+        </div>
+        <div class="reading-control">
+          <div class="level-heading"><label for="reading-factor" data-i18n="label.readingFactor"></label><span class="value" id="reading-factor-value"></span></div>
+          <input type="range" id="reading-factor" step="0.1" aria-describedby="reading-factor-error">
+          <p class="error-text" id="reading-factor-error" hidden></p>
+        </div>
+      </section>
+      <section class="field-group" aria-labelledby="preview-label">
+        <h3 class="field-label" id="preview-label" data-i18n="label.preview"></h3>
+        <div id="preview" class="preview"></div>
+        <p id="reading-example" class="hint" hidden></p>
+      </section>
     </div>
 
     <div id="sub-about" class="sub" hidden>

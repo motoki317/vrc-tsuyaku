@@ -201,6 +201,14 @@ func (a *app) snapshot() any {
 		spoken, _ := a.settings.Flows.Languages(name)
 		requirements[name], _ = catalog.Required(spoken, a.settings.Translator)
 	}
+	type bounds struct {
+		Min float64 `json:"min"`
+		Max float64 `json:"max"`
+	}
+	reading := map[string]bounds{
+		"base":   {chatbox.MinReadingBaseSeconds, chatbox.MaxReadingBaseSeconds},
+		"factor": {chatbox.MinReadingFactor, chatbox.MaxReadingFactor},
+	}
 	return struct {
 		Launch          string                   `json:"launch"`
 		App             appInfo                  `json:"app"`
@@ -213,8 +221,9 @@ func (a *app) snapshot() any {
 		Languages       catalog.LanguageCatalog  `json:"languages"`
 		GlossaryLimit   int                      `json:"glossaryLimit"`
 		DefaultTemplate string                   `json:"defaultTemplate"`
+		Reading         map[string]bounds        `json:"reading"`
 		Instance        instanceState            `json:"instance"`
-	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), glossary.MaxEntries, chatbox.DefaultTemplate,
+	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), glossary.MaxEntries, chatbox.DefaultTemplate, reading,
 		instanceState{State: a.instance.State, Others: slices.Clone(a.instance.Others)}}
 }
 
@@ -275,14 +284,16 @@ func (a *app) start(name string, s config.Settings) error {
 				a.mu.Lock()
 				defer a.mu.Unlock()
 				source, target := a.settings.Flows.Languages(name)
-				format := a.settings.Chatbox.Template
+				box := a.settings.Chatbox
+				format := box.Template
 				if name == "world" {
 					format = chatbox.DefaultTemplate
 				}
 				terms := glossary.Terms(a.settings.Glossary, source, target)
 				return pipeline.PhraseSettings{
 					SourceLang: source, TargetLang: target, Template: format,
-					Terms: terms,
+					ReadingTime: chatbox.NewReadingTime(box.ReadingBase, box.ReadingFactor),
+					Terms:       terms,
 				}
 			}
 			stages.CutLevel = func() float64 {

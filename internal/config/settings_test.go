@@ -205,6 +205,57 @@ func TestCutLevelSettings(t *testing.T) {
 	}
 }
 
+func TestChatboxReadingSettings(t *testing.T) {
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		fields       string
+		base, factor float64
+	}{
+		{"template: '{{.Original}}'", 2, 2},
+		{"reading_base_seconds: 1", 1, 2},
+		{"reading_factor: 1", 2, 1},
+		{"reading_base_seconds: 10, reading_factor: 8", 10, 8},
+		{"reading_base_seconds: 3.5, reading_factor: 2.7", 3.5, 2.7},
+	} {
+		body := "chatbox: {" + tc.fields + "}\n"
+		if err := os.WriteFile(filepath.Join(dir, "settings.yaml"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s, err := Load(dir)
+		if err != nil || s.Chatbox.ReadingBase != tc.base || s.Chatbox.ReadingFactor != tc.factor {
+			t.Fatalf("load %q: chatbox = %+v, err = %v", tc.fields, s.Chatbox, err)
+		}
+		if err := Save(dir, s); err != nil {
+			t.Fatal(err)
+		}
+		if saved, err := Load(dir); err != nil || saved.Chatbox != s.Chatbox {
+			t.Fatalf("round trip %q: chatbox = %+v, err = %v", tc.fields, saved.Chatbox, err)
+		}
+	}
+}
+
+func TestInvalidChatboxReadingSettings(t *testing.T) {
+	for _, tc := range []struct {
+		key          string
+		base, factor float64
+	}{
+		{"reading_base_seconds", 0, 2},
+		{"reading_base_seconds", 0.999, 2},
+		{"reading_base_seconds", 10.001, 2},
+		{"reading_base_seconds", math.NaN(), 2},
+		{"reading_factor", 2, 0},
+		{"reading_factor", 2, 0.999},
+		{"reading_factor", 2, 8.001},
+		{"reading_factor", 2, math.NaN()},
+	} {
+		s := Defaults()
+		s.Chatbox.ReadingBase, s.Chatbox.ReadingFactor = tc.base, tc.factor
+		if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "chatbox."+tc.key) {
+			t.Errorf("validate base %g, factor %g: %v", tc.base, tc.factor, err)
+		}
+	}
+}
+
 func TestTranslatorSettings(t *testing.T) {
 	dir := t.TempDir()
 	for _, translator := range catalog.Translators() {

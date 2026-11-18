@@ -14,7 +14,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
-const pageInterval = 1500 * time.Millisecond
+const PageInterval = 1500 * time.Millisecond
 
 // Queue sends messages to one UDP destination.
 // Keep one Queue while its caller stops and restarts sending so writes stay
@@ -96,7 +96,7 @@ func (q *Queue) Send(ctx context.Context, page string) (err error) {
 	}
 	packet := encodePage(page)
 	n, err := q.conn.Write(packet)
-	q.next = time.Now().Add(pageInterval)
+	q.next = time.Now().Add(PageInterval)
 	if err == nil && n != len(packet) {
 		err = io.ErrShortWrite
 	}

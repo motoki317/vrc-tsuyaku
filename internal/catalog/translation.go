@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 )
 
 // TranslationAlias is the model name shared by llama-server and translation requests.
@@ -69,6 +70,29 @@ func BaseLanguage(code string) string {
 		return base
 	}
 	return code
+}
+
+// ReadAloudRate estimates the time per rune, including spaces and punctuation.
+// The estimates use IReST and two Korean speech-rate studies. Languages
+// without a separate estimate use the alphabetic rate.
+// https://iovs.arvojournals.org/article.aspx?articleid=2166061
+// https://koreascience.or.kr/article/JAKO200215637252142.page
+// https://koreascience.kr/article/JAKO200315637253642.page
+func ReadAloudRate(code string) time.Duration {
+	switch BaseLanguage(code) {
+	case Japanese:
+		return 170 * time.Millisecond
+	case "zh-hans", "zh-hant":
+		return 240 * time.Millisecond
+	case "ko":
+		return 140 * time.Millisecond
+	case "ar", "fa", "ur":
+		return 80 * time.Millisecond
+	case "he":
+		return 60 * time.Millisecond
+	default:
+		return 50 * time.Millisecond
+	}
 }
 
 // SpokenLanguage maps a code to its recognizer. Auto marks a detection choice,

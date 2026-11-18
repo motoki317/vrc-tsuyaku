@@ -71,10 +71,16 @@ func (a *app) handler() http.Handler {
 	})
 	mux.HandleFunc("POST /api/chatbox/preview", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Template string `json:"template"`
+			Template      string  `json:"template"`
+			ReadingBase   float64 `json:"readingBase"`
+			ReadingFactor float64 `json:"readingFactor"`
 			chatbox.Message
 		}
 		if err := readJSON(w, r, &body); err != nil {
+			apiError(w, err, http.StatusBadRequest)
+			return
+		}
+		if err := config.ValidateReadingTime(body.ReadingBase, body.ReadingFactor, "readingBase", "readingFactor"); err != nil {
 			apiError(w, err, http.StatusBadRequest)
 			return
 		}
@@ -83,9 +89,24 @@ func (a *app) handler() http.Handler {
 			apiError(w, err, http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, struct {
-			Pages []string `json:"pages"`
-		}{pages})
+		var preview struct {
+			Pages   []string  `json:"pages"`
+			Seconds []float64 `json:"seconds"`
+			Reading struct {
+				Characters          int     `json:"characters"`
+				SecondsPerCharacter float64 `json:"secondsPerCharacter"`
+			} `json:"reading"`
+		}
+		preview.Pages = pages
+		preview.Seconds = make([]float64, len(pages))
+		timing := chatbox.NewReadingTime(body.ReadingBase, body.ReadingFactor)
+		for i, duration := range timing.PageDurations(body.Message, pages) {
+			preview.Seconds[i] = duration.Seconds()
+		}
+		reading := chatbox.SlowerReading(body.Message)
+		preview.Reading.Characters = reading.Characters
+		preview.Reading.SecondsPerCharacter = reading.PerCharacter.Seconds()
+		writeJSON(w, preview)
 	})
 	mux.HandleFunc("PUT /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		var s config.Settings
