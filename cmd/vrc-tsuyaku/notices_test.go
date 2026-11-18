@@ -111,8 +111,4 @@ func TestNoticesHTTP(t *testing.T) {
 	if post := request(a, "POST", "/notices.txt", ""); post.Code < http.StatusBadRequest {
 		t.Fatal("notices accepted POST", post.Code)
 	}
-	page, err := ui.ReadFile("ui/index.html")
-	if err != nil || !strings.Contains(string(page), `href="/notices.txt"`) {
-		t.Fatal("About does not link to embedded notices", err)
-	}
 }

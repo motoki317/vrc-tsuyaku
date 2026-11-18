@@ -3,7 +3,7 @@ const {readFileSync} = require('node:fs');
 const {test} = require('node:test');
 const vm = require('node:vm');
 
-const source = readFileSync('ui/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
+const source = readFileSync('public/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
 const now = Date.parse('2026-11-15T12:00:00Z');
 const info = (slot, changes = {}) => ({slot, pid: 4200 + slot, url: `http://127.0.0.1:${50000 + slot}/`,
   started: new Date(now - 37 * 60000).toISOString(), state: '', error: '', code: '', ...changes});
@@ -77,7 +77,7 @@ function page() {
     ({apply, render: renderInstances, build: buildInstances, stop: stopInstances,
       strings: value => { strings = value; }, exitState: () => exitState});
   `, context);
-  ui.strings(Object.fromEntries(['en', 'ja'].map(lang => [lang, JSON.parse(readFileSync('ui/i18n/' + lang + '.json', 'utf8'))])));
+  ui.strings(Object.fromEntries(['en', 'ja'].map(lang => [lang, JSON.parse(readFileSync('public/i18n/' + lang + '.json', 'utf8'))])));
   ui.build();
   return {...ui, node, document, requests, timers,
     update(instance, locale = 'en') {

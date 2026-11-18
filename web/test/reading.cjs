@@ -3,8 +3,8 @@ const {readFileSync} = require('node:fs');
 const {test} = require('node:test');
 const vm = require('node:vm');
 
-const source = readFileSync('ui/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
-const catalogs = Object.fromEntries(['en', 'ja'].map(lang => [lang, JSON.parse(readFileSync('ui/i18n/' + lang + '.json'))]));
+const source = readFileSync('public/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
+const catalogs = Object.fromEntries(['en', 'ja'].map(lang => [lang, JSON.parse(readFileSync('public/i18n/' + lang + '.json'))]));
 const drain = () => new Promise(resolve => setImmediate(resolve));
 
 function page() {

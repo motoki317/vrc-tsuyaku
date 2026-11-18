@@ -2,8 +2,8 @@
 
 [Usage](../../docs/usage.md) covers using the app.
 
-`main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It prints the app's name, its version when the build has one, and the page's URL to standard output. Every console message is in English and in Japanese.
-The page is embedded in the executable, so rebuild after you change `ui/`.
+`main` serves the embedded web page on `127.0.0.1` and opens it in the browser. It prints the app's name, its version when the build has one, and the page's URL to standard output. Every console message is in English and in Japanese.
+After changing the frontend in `web/`, run `nix develop -c just build` from the repository root to rebuild the page and the executable. Before running the Go checks below from a fresh checkout, build the embedded files with `nix develop -c just web`.
 Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits. `POST /api/exit`, which the page's Exit button sends, does the same.
 A page sends `POST /api/closing` when its tab closes or reloads, unless it shows the exited screen. The app then exits the same way if no event stream is open 5 s later.
 A stream that drops without that request never exits the app, because a browser can unload a background tab by itself.

@@ -1,61 +1,21 @@
-package main
+package web
 
 import (
-	"context"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"html"
-	"os/exec"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 )
-
-func TestGlossaryEditor(t *testing.T) {
-	runNodeTest(t, "glossary.cjs")
-}
-
-func TestLanguageSwap(t *testing.T) {
-	runNodeTest(t, "languages.cjs")
-}
-
-func TestReadingTimeControls(t *testing.T) {
-	runNodeTest(t, "reading.cjs")
-}
-
-func TestPageClosingBeacon(t *testing.T) {
-	runNodeTest(t, "closing.cjs")
-}
-
-func TestInstanceDialog(t *testing.T) {
-	runNodeTest(t, "instance.cjs")
-}
-
-func TestPageExit(t *testing.T) {
-	runNodeTest(t, "exit.cjs")
-}
-
-func runNodeTest(t *testing.T, name string) {
-	t.Helper()
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("install Node.js to run the UI tests")
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(ctx, node, "--test", filepath.Join("testdata", name)).CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s: %v\n%s", name, err, output)
-	}
-	t.Log(string(output))
-}
 
 // The catalogs omit hint and description categories. instance.description is the
 // exception: the waiting modal must explain why the page is blocked.
@@ -72,7 +32,7 @@ var stringBudgets = map[string]int{
 	"instance.description": 140,
 }
 
-var catalogKeyPattern = regexp.MustCompile(`'((?:label|action|state|value|title|error|note|instance)\.[A-Za-z0-9_.]*)'`)
+var catalogKeyPattern = regexp.MustCompile(`['"]((?:label|action|state|value|title|error|note|instance)\.[A-Za-z0-9_.]*)['"]`)
 
 var placeholderPattern = regexp.MustCompile(`\{\w+\}`)
 
@@ -82,7 +42,7 @@ func placeholders(text string) []string {
 
 func loadCatalog(t *testing.T, lang string) map[string]string {
 	t.Helper()
-	data, err := ui.ReadFile("ui/i18n/" + lang + ".json")
+	data, err := os.ReadFile("public/i18n/" + lang + ".json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,9 +100,12 @@ func TestStringCatalogs(t *testing.T) {
 
 // Every visible string and accessible name in index.html comes from the catalogs.
 func TestIndexHTMLHasNoText(t *testing.T) {
-	data, err := ui.ReadFile("ui/index.html")
+	data, err := os.ReadFile("index.html")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if m := titlePattern.FindString(string(data)); m != "" {
+		t.Errorf("index.html sets a title with %q, which shows a tooltip", m)
 	}
 	page := regexp.MustCompile(`(?s)<!--.*?-->|<script\b.*?</script>|<style\b.*?</style>`).ReplaceAllString(string(data), "")
 	tags := regexp.MustCompile(`<[^>]*>`)
@@ -167,50 +130,51 @@ func TestIndexHTMLHasNoText(t *testing.T) {
 }
 
 // The page has no tooltips, so nothing sets a title attribute or property. The document's <title> element stays.
-var titlePattern = regexp.MustCompile(`<[^<>]*\stitle\s*=|\.title\s*=|[{,]\s*title\s*:|['"]title['"]`)
-
-func TestNoTitleAttribute(t *testing.T) {
-	for _, name := range []string{"ui/index.html", "ui/app.js"} {
-		data, err := ui.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if m := titlePattern.FindString(string(data)); m != "" {
-			t.Errorf("%s sets a title with %q, which shows a tooltip", name, m)
-		}
-	}
-}
+var titlePattern = regexp.MustCompile(`<(?:[^<>]|\{[^}]*\})*\stitle\s*=|\.title\s*=|[{,]\s*title\s*:|['"]title['"]`)
 
 // A browser lets Exit's window.close() close the tab only while the tab's history holds one entry, so the page
 // changes screens and URLs without adding entries.
 var historyEntryPattern = regexp.MustCompile(`pushState|location\.assign|location\.(hash|href|search|pathname)\s*=[^=]|location\s*=[^=]`)
 
-func TestScreenChangesAddNoHistoryEntry(t *testing.T) {
-	data, err := ui.ReadFile("ui/app.js")
+func TestScriptSources(t *testing.T) {
+	en := loadCatalog(t, "en")
+	err := fs.WalkDir(os.DirFS("."), ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		switch name {
+		case "dist", "node_modules", "test":
+			return fs.SkipDir
+		}
+		if entry.IsDir() || name == "vite.config.js" || (filepath.Ext(name) != ".js" && filepath.Ext(name) != ".jsx") {
+			return nil
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		script := string(data)
+		if m := titlePattern.FindString(script); m != "" {
+			t.Errorf("%s sets a title with %q, which shows a tooltip", name, m)
+		}
+		if m := historyEntryPattern.FindString(script); m != "" {
+			t.Errorf("%s adds a history entry with %q, so Exit could not close the tab", name, m)
+		}
+		for _, m := range catalogKeyPattern.FindAllStringSubmatch(script, -1) {
+			// errorText completes this key with the server's code.
+			if _, ok := en[m[1]]; !ok && m[1] != "error.code." {
+				t.Errorf("%s names %q, which the catalogs lack", name, m[1])
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if m := historyEntryPattern.FindString(string(data)); m != "" {
-		t.Errorf("app.js adds a history entry with %q, so Exit could not close the tab", m)
 	}
 }
 
-func TestAppScriptStrings(t *testing.T) {
-	data, err := ui.ReadFile("ui/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	script := string(data)
+func TestErrorCodesHaveStrings(t *testing.T) {
 	en := loadCatalog(t, "en")
-	for _, m := range catalogKeyPattern.FindAllStringSubmatch(script, -1) {
-		// errorText completes this key with the server's code, and the loop below checks every code.
-		if m[1] == "error.code." {
-			continue
-		}
-		if _, ok := en[m[1]]; !ok {
-			t.Errorf("app.js names %q, which the catalogs lack", m[1])
-		}
-	}
 	for _, code := range errorCodes(t) {
 		if code == "unknown" {
 			continue
@@ -224,7 +188,7 @@ func TestAppScriptStrings(t *testing.T) {
 // errorCodes reads the codes from the errcode source, so a new code fails this test until the catalogs name it.
 func errorCodes(t *testing.T) []string {
 	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "..", "internal", "errcode", "errcode.go"), nil, 0)
+	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "internal", "errcode", "errcode.go"), nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,4 +214,11 @@ func errorCodes(t *testing.T) []string {
 		t.Fatal("errcode.go declares no codes")
 	}
 	return codes
+}
+
+func TestAboutLinksToNotices(t *testing.T) {
+	page, err := os.ReadFile("index.html")
+	if err != nil || !strings.Contains(string(page), `href="/notices.txt"`) {
+		t.Fatal("About does not link to embedded notices", err)
+	}
 }

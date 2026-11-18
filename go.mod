@@ -4,6 +4,8 @@ go 1.26.0
 
 toolchain go1.26.11
 
+ignore ./web/node_modules
+
 require (
 	github.com/ebitengine/purego v0.9.0
 	github.com/getcharzp/onnxruntime_purego v1.28.0

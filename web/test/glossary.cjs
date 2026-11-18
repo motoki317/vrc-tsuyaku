@@ -3,7 +3,7 @@ const {readFileSync} = require('node:fs');
 const {test} = require('node:test');
 const vm = require('node:vm');
 
-const source = readFileSync('ui/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
+const source = readFileSync('public/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
 const entry = (Source = '桔梗', Target = 'Kikyo', Reading = 'ききょう') => ({SourceLang: 'ja', Source, TargetLang: 'en', Target, Reading});
 const plain = value => JSON.parse(JSON.stringify(value));
 const drain = () => new Promise(resolve => setImmediate(resolve));
@@ -80,7 +80,7 @@ function editor(saved = []) {
       setRenderGlossary: fn => { renderGlossary = fn; }});
   `, context);
   api.setAnnounce(text => announcements.push(text));
-  api.setStrings(Object.fromEntries(['en', 'ja'].map(lang => [lang, JSON.parse(readFileSync('ui/i18n/' + lang + '.json', 'utf8'))])));
+  api.setStrings(Object.fromEntries(['en', 'ja'].map(lang => [lang, JSON.parse(readFileSync('public/i18n/' + lang + '.json', 'utf8'))])));
   api.setLanguageNames();
   api.state().settings.Glossary = saved;
   return {...api, requests, announcements, events, document, node: document.getElementById, respond: fn => { respond = fn; },

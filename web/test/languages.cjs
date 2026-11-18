@@ -3,7 +3,7 @@ const {readFileSync} = require('node:fs');
 const {test} = require('node:test');
 const vm = require('node:vm');
 
-const source = readFileSync('ui/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
+const source = readFileSync('public/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
 const context = vm.createContext({
   document: {createElement: () => ({append() {}, setAttribute() {}})},
   setTimeout, clearTimeout,

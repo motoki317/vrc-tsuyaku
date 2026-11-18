@@ -265,4 +265,4 @@ Source: [Sharrnah/whispering-ui](https://github.com/Sharrnah/whispering-ui/tree/
 
 Source: [lucide-static 1.60.0](https://www.npmjs.com/package/lucide-static/v/1.60.0) on npm. License: ISC, and MIT for the icons that Lucide derives from Feather.
 
-`cmd/vrc-tsuyaku/ui/icons.svg` copies Lucide icons as SVG symbols, and some of them derive from Feather. [The upstream license text](cmd/vrc-tsuyaku/notices/other/lucide-static@1.60.0/LICENSE) includes both licenses.
+`web/public/icons.svg` copies Lucide icons as SVG symbols, and some of them derive from Feather. [The upstream license text](cmd/vrc-tsuyaku/notices/other/lucide-static@1.60.0/LICENSE) includes both licenses.

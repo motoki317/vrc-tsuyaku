@@ -1,0 +1,12 @@
+{
+  "name": "vrc-tsuyaku",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "node --test test/*.cjs"
+  },
+  "devDependencies": {
+    "vite": "8.3.8"
+  }
+}

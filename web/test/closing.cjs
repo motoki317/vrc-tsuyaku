@@ -11,7 +11,7 @@ test('pagehide sends a closing beacon until the exited screen, even before start
     navigator: {sendBeacon: (...args) => { beacons.push(args); return false; }},
     fetch: () => new Promise(() => {}),
   });
-  vm.runInContext(readFileSync('ui/app.js', 'utf8'), context);
+  vm.runInContext(readFileSync('public/app.js', 'utf8'), context);
   for (const exitState of ['', 'waiting', 'exited']) {
     vm.runInContext(`exitState = ${JSON.stringify(exitState)}`, context);
     for (const persisted of [false, true]) listeners.pagehide({persisted});

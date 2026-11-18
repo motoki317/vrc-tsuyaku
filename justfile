@@ -6,16 +6,23 @@
 default:
     @just --list
 
+# Build the static files embedded in the executable.
+[working-directory: 'web']
+web:
+    if [ ! -f node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then npm ci --ignore-scripts; fi
+    npm run build
+
 # Run the unit tests. Tests that need models or audio skip unless their environment variables are set.
-test:
+test: web
+    npm --prefix web test
     go test -shuffle=on ./...
 
 # Run the linters and formatters in check mode.
-lint:
+lint: web
     golangci-lint run
 
 # Build every command for this OS into dist/.
-build:
+build: web
     mkdir -p dist
     go build -o dist/ ./...
 
@@ -24,7 +31,7 @@ notices:
     go run ./internal/notices
 
 # Use the same release artifacts in local checks and CI.
-release tag:
+release tag: web
     #!/usr/bin/env bash
     set -euo pipefail
     tag={{quote(tag)}}

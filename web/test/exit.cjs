@@ -3,7 +3,7 @@ const {readFileSync} = require('node:fs');
 const {test} = require('node:test');
 const vm = require('node:vm');
 
-const source = readFileSync('ui/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
+const source = readFileSync('public/app.js', 'utf8').replace(/\nstart\(\);\s*$/, '');
 const drain = () => new Promise(resolve => setImmediate(resolve));
 const response = (body = {}, status = 200) => ({ok: status < 400, status, json: async () => body});
 function eventStream() {
@@ -72,7 +72,7 @@ function page() {
   `, context);
   context.logged = event => logged.push(event);
   ui.setState(snapshot);
-  ui.setStrings({en: JSON.parse(readFileSync('ui/i18n/en.json', 'utf8'))});
+  ui.setStrings({en: JSON.parse(readFileSync('public/i18n/en.json', 'utf8'))});
   return {...ui, node, document, requests, timers, logged, snapshot,
     respond: fn => {respond = fn;}, closes: () => closes, reloads: () => reloads,
     async settle() { await drain(); await drain(); },
