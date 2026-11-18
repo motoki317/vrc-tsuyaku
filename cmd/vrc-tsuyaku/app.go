@@ -292,7 +292,7 @@ func (a *app) start(name string, s config.Settings) error {
 				terms := glossary.Terms(a.settings.Glossary, source, target)
 				return pipeline.PhraseSettings{
 					SourceLang: source, TargetLang: target, Template: format,
-					ReadingTime: chatbox.ReadingTime{Base: time.Duration(box.ReadingBase * float64(time.Second)), Factor: box.ReadingFactor},
+					ReadingTime: chatbox.NewReadingTime(box.ReadingBase, box.ReadingFactor),
 					Terms:       terms,
 				}
 			}

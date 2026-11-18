@@ -32,7 +32,11 @@ type ReadingTime struct {
 }
 
 func DefaultReadingTime() ReadingTime {
-	return ReadingTime{Base: DefaultReadingBaseSeconds * time.Second, Factor: DefaultReadingFactor}
+	return NewReadingTime(DefaultReadingBaseSeconds, DefaultReadingFactor)
+}
+
+func NewReadingTime(baseSeconds, factor float64) ReadingTime {
+	return ReadingTime{Base: time.Duration(baseSeconds * float64(time.Second)), Factor: factor}
 }
 
 func (r ReadingTime) duration(aloud time.Duration) time.Duration {
@@ -40,9 +44,7 @@ func (r ReadingTime) duration(aloud time.Duration) time.Duration {
 }
 
 func (r ReadingTime) Duration(m Message) time.Duration {
-	original := time.Duration(utf8.RuneCountInString(m.Original)) * catalog.ReadAloudRate(m.SourceLang)
-	translation := time.Duration(utf8.RuneCountInString(m.Translation)) * catalog.ReadAloudRate(m.TargetLang)
-	return r.duration(max(original, translation))
+	return r.duration(SlowerReading(m).duration())
 }
 
 // PageDurations divides the reading time among the rendered pages by rune count.
@@ -83,6 +85,27 @@ type Message struct {
 	Translation string `json:"translation"`
 	SourceLang  string `json:"sourceLang"`
 	TargetLang  string `json:"targetLang"`
+}
+
+// Reading keeps the count and rate together so the preview can show the calculation.
+type Reading struct {
+	Characters   int
+	PerCharacter time.Duration
+}
+
+func (r Reading) duration() time.Duration {
+	return time.Duration(r.Characters) * r.PerCharacter
+}
+
+// SlowerReading uses the side that takes longer to read aloud, even when the
+// template hides that side. The original wins a tie.
+func SlowerReading(m Message) Reading {
+	original := Reading{utf8.RuneCountInString(m.Original), catalog.ReadAloudRate(m.SourceLang)}
+	translation := Reading{utf8.RuneCountInString(m.Translation), catalog.ReadAloudRate(m.TargetLang)}
+	if translation.duration() > original.duration() {
+		return translation
+	}
+	return original
 }
 
 // Join separates nonempty originals and translations with one space and keeps m's languages.

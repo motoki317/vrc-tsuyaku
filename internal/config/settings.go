@@ -126,11 +126,8 @@ func (s Settings) Validate() error {
 	if err := chatbox.ValidateTemplate(s.Chatbox.Template); err != nil {
 		return fmt.Errorf("chatbox.template: %w", err)
 	}
-	if base := s.Chatbox.ReadingBase; !(base >= chatbox.MinReadingBaseSeconds && base <= chatbox.MaxReadingBaseSeconds) {
-		return fmt.Errorf("chatbox.reading_base_seconds: must be between %g and %g seconds", chatbox.MinReadingBaseSeconds, chatbox.MaxReadingBaseSeconds)
-	}
-	if factor := s.Chatbox.ReadingFactor; !(factor >= chatbox.MinReadingFactor && factor <= chatbox.MaxReadingFactor) {
-		return fmt.Errorf("chatbox.reading_factor: must be between %g and %g", chatbox.MinReadingFactor, chatbox.MaxReadingFactor)
+	if err := ValidateReadingTime(s.Chatbox.ReadingBase, s.Chatbox.ReadingFactor); err != nil {
+		return err
 	}
 	if err := glossary.Validate(s.Glossary); err != nil {
 		return err
@@ -142,6 +139,16 @@ func (s Settings) Validate() error {
 		if _, err := time.Parse(time.RFC3339, value); err != nil {
 			return fmt.Errorf("licenses_accepted[%q]: %w", key, err)
 		}
+	}
+	return nil
+}
+
+func ValidateReadingTime(baseSeconds, factor float64) error {
+	if !(baseSeconds >= chatbox.MinReadingBaseSeconds && baseSeconds <= chatbox.MaxReadingBaseSeconds) {
+		return fmt.Errorf("chatbox.reading_base_seconds: must be between %g and %g seconds", chatbox.MinReadingBaseSeconds, chatbox.MaxReadingBaseSeconds)
+	}
+	if !(factor >= chatbox.MinReadingFactor && factor <= chatbox.MaxReadingFactor) {
+		return fmt.Errorf("chatbox.reading_factor: must be between %g and %g", chatbox.MinReadingFactor, chatbox.MaxReadingFactor)
 	}
 	return nil
 }
