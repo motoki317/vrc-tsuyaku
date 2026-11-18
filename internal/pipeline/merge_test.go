@@ -141,7 +141,7 @@ func TestWithoutSendRenderFailuresAndEmptyPages(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				s := timedStages([]string{"a", "bad", "c", "d"}, 0)
 				s.Settings = func() PhraseSettings {
-					return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
+					return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
 				}
 				s.Translate = func(_ context.Context, text string, _ PhraseSettings) (string, error) {
 					if text == "bad" {
@@ -188,14 +188,17 @@ func TestWithoutSendReadingTimeStartsAtDisplay(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		log := eventLog{start: time.Now()}
 		d := display{emit: log.emit}
-		if err := d.show(t.Context(), 1, "{{.Original}}", chatbox.Message{Original: "a"}, time.Now().Add(-time.Hour)); err != nil {
+		reading := chatbox.ReadingTime{Base: 2 * time.Second, Factor: 3}
+		first := chatbox.Message{Original: "こんにちは", SourceLang: "ja"}
+		if err := d.show(t.Context(), 1, "{{.Original}}", reading, first, time.Now().Add(-time.Hour)); err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(time.Second)
-		if err := d.show(t.Context(), 2, "{{.Original}}", chatbox.Message{Original: "b"}, time.Now()); err != nil {
+		time.Sleep(4 * time.Second)
+		next := chatbox.Message{Original: "猫", SourceLang: "ja"}
+		if err := d.show(t.Context(), 2, "{{.Original}}", reading, next, time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		if got := log.ofKind("merged"); len(got) != 1 || got[0].Into != 1 || got[0].Original != "a b" || got[0].at != time.Second {
+		if got := log.ofKind("merged"); len(got) != 1 || got[0].Into != 1 || got[0].Original != "こんにちは 猫" || got[0].at != 4*time.Second {
 			t.Fatal(got)
 		}
 	})
@@ -207,13 +210,13 @@ func TestWithoutSendEmptyRenderKeepsReadingTime(t *testing.T) {
 		d := display{emit: log.emit}
 		for i, text := range []string{"a", " \t\n", "c"} {
 			if i > 0 {
-				time.Sleep(time.Second)
+				time.Sleep(1500 * time.Millisecond)
 			}
-			if err := d.show(t.Context(), uint64(i+1), "{{.Original}}", chatbox.Message{Original: text}, time.Now()); err != nil {
+			if err := d.show(t.Context(), uint64(i+1), "{{.Original}}", chatbox.DefaultReadingTime(), chatbox.Message{Original: text}, time.Now()); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if len(log.entries) != 0 || time.Since(log.start) != 2*time.Second {
+		if len(log.entries) != 0 || time.Since(log.start) != 3*time.Second {
 			t.Fatalf("events = %+v, elapsed = %s", log.entries, time.Since(log.start))
 		}
 	})

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
 
@@ -19,7 +20,7 @@ func TestGlossarySnapshotRewrite(t *testing.T) {
 		settingsCalls, recognized := 0, 0
 		s.Settings = func() PhraseSettings {
 			settingsCalls++
-			return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: "{{.Original}}", Terms: current}
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "ja", TargetLang: "en", Template: "{{.Original}}", Terms: current}
 		}
 		s.Recognize = func(_ context.Context, _ []float32, settings PhraseSettings) (string, error) {
 			recognized++
@@ -85,7 +86,7 @@ func TestSoundKeyRewriteReachesTranslator(t *testing.T) {
 		}, "en", "ja")
 		s := fakeStages()
 		s.Settings = func() PhraseSettings {
-			return PhraseSettings{SourceLang: "en", TargetLang: "ja", Template: "{{.Original}}", Terms: terms}
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "en", TargetLang: "ja", Template: "{{.Original}}", Terms: terms}
 		}
 		texts := []string{"Fujiama", "control", "FUJIYAMA Fujiama"}
 		recognized := 0

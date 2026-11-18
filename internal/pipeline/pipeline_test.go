@@ -48,7 +48,7 @@ func fakeStages() Stages {
 		Probability: func(_ context.Context, x []float32) (float32, error) { return x[0], nil },
 		Recognize:   func(_ context.Context, _ []float32, _ PhraseSettings) (string, error) { return "text", nil },
 		Settings: func() PhraseSettings {
-			return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: chatbox.DefaultTemplate}
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "ja", TargetLang: "en", Template: chatbox.DefaultTemplate}
 		},
 		Translate: func(_ context.Context, s string, _ PhraseSettings) (string, error) { return "translated " + s, nil },
 	}
@@ -57,7 +57,9 @@ func fakeStages() Stages {
 func TestPhraseOrder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()
-		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Original}}:{{.Translation}}"} }
+		s.Settings = func() PhraseSettings {
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Original}}:{{.Translation}}"}
+		}
 		var got []string
 		i := 0
 		s.Recognize = func(_ context.Context, x []float32, _ PhraseSettings) (string, error) {
@@ -114,7 +116,9 @@ func TestDropsTranscriptsWithoutLettersOrDigits(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				s := fakeStages()
 				s.Source = fakeSource(len(tc.texts))
-				s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Original}}"} }
+				s.Settings = func() PhraseSettings {
+					return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Original}}"}
+				}
 				i := 0
 				s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
 					text := tc.texts[i]
@@ -156,7 +160,9 @@ func TestDropsTranscriptsWithoutLettersOrDigits(t *testing.T) {
 func TestSlowSendBuffersTranslations(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()
-		s.Settings = func() PhraseSettings { return PhraseSettings{Template: "{{.Original}}"} }
+		s.Settings = func() PhraseSettings {
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Original}}"}
+		}
 		s.Source = fakeSource(10)
 		i := 0
 		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
@@ -318,7 +324,7 @@ func TestPhraseIdentityAcrossRuns(t *testing.T) {
 			s := fakeStages()
 			s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return strings.Repeat("a", 145), nil }
 			s.Settings = func() PhraseSettings {
-				return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
+				return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
 			}
 			var mu sync.Mutex
 			var events []Event
@@ -373,7 +379,7 @@ func TestLanguageChangesApplyToNextPhrase(t *testing.T) {
 		var target atomic.Value
 		target.Store("en")
 		s.Settings = func() PhraseSettings {
-			return PhraseSettings{SourceLang: "ja", TargetLang: target.Load().(string), Template: chatbox.DefaultTemplate}
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "ja", TargetLang: target.Load().(string), Template: chatbox.DefaultTemplate}
 		}
 		first := true
 		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
@@ -442,7 +448,7 @@ func TestSpokenCodeSurvivesOmittedTranslationSource(t *testing.T) {
 		t.Run(tc.spoken, func(t *testing.T) {
 			s := fakeStages()
 			s.Settings = func() PhraseSettings {
-				return PhraseSettings{SourceLang: tc.spoken, TargetLang: "ja", Template: chatbox.DefaultTemplate}
+				return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: tc.spoken, TargetLang: "ja", Template: chatbox.DefaultTemplate}
 			}
 			translated, sent := 0, 0
 			s.Translate = func(_ context.Context, phrase string, settings PhraseSettings) (string, error) {
@@ -491,7 +497,7 @@ func TestSentWaitsForSuccessfulReturn(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				s := fakeStages()
 				s.Settings = func() PhraseSettings {
-					return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
+					return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "ja", TargetLang: "en", Template: "{{.Translation}}"}
 				}
 				s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return strings.Repeat("a", 145), nil }
 				var returned atomic.Bool
@@ -541,7 +547,7 @@ func TestTemplateChangesApplyToNextPhrase(t *testing.T) {
 		var format atomic.Value
 		format.Store(chatbox.DefaultTemplate)
 		s.Settings = func() PhraseSettings {
-			return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: format.Load().(string)}
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "ja", TargetLang: "en", Template: format.Load().(string)}
 		}
 		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
 			format.Store("{{.Translation}}")
@@ -566,7 +572,7 @@ func TestTemplateErrorContinuesToNextPhrase(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()
 		s.Settings = func() PhraseSettings {
-			return PhraseSettings{SourceLang: "ja", TargetLang: "en", Template: `{{if eq .Original "2"}}partial {{index .Translation 100}}{{else}}{{.Translation}}{{end}}`}
+			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: "ja", TargetLang: "en", Template: `{{if eq .Original "2"}}partial {{index .Translation 100}}{{else}}{{.Translation}}{{end}}`}
 		}
 		i := 0
 		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { i++; return fmt.Sprint(i), nil }

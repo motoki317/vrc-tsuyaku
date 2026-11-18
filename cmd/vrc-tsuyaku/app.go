@@ -282,7 +282,7 @@ func (a *app) start(name string, s config.Settings) error {
 				terms := glossary.Terms(a.settings.Glossary, source, target)
 				return pipeline.PhraseSettings{
 					SourceLang: source, TargetLang: target, Template: format,
-					Terms: terms,
+					ReadingTime: chatbox.DefaultReadingTime(), Terms: terms,
 				}
 			}
 			stages.CutLevel = func() float64 {

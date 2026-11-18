@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
+	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
@@ -72,6 +73,9 @@ func TestLanguageChangesReachRunningPipeline(t *testing.T) {
 					Probability: func(_ context.Context, samples []float32) (float32, error) { return samples[0], nil },
 					Recognize:   func(context.Context, []float32, pipeline.PhraseSettings) (string, error) { return "original", nil },
 					Translate: func(_ context.Context, phrase string, settings pipeline.PhraseSettings) (string, error) {
+						if settings.ReadingTime != chatbox.DefaultReadingTime() {
+							t.Errorf("%s reading time = %+v, want defaults", flow, settings.ReadingTime)
+						}
 						source, target := settings.SourceLang, settings.TargetLang
 						requests <- translationRequest{source, target, phrase}
 						return "translation", nil

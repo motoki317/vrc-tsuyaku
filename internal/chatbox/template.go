@@ -8,34 +8,63 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
 // ErrTemplate distinguishes a phrase's formatting failure from a failed UDP send.
 var ErrTemplate = errcode.With(errcode.Template, errors.New("chatbox template"))
 
-// A viewer notices a chatbox some time after it appears and reads it at a
-// distance, so the rate is slower than subtitle guides allow. Netflix's guides
-// allow 20 characters per second in English (50 ms each) and 4 in Japanese
-// (250 ms each). At 50 ms per rune, pages turned over too fast in VRChat.
-// https://partnerhelp.netflixstudios.com/hc/en-us/articles/217350977-English-USA-Timed-Text-Style-Guide
-// https://backlothelp.netflix.com/hc/en-us/articles/215767517
-const runeReadingTime = 120 * time.Millisecond
+type ReadingTime struct {
+	Base   time.Duration
+	Factor float64
+}
 
-// PageReadingTime bounds each page's wait when translated phrases back up.
-const PageReadingTime = maxRunes * runeReadingTime
+func DefaultReadingTime() ReadingTime {
+	return ReadingTime{Base: 2 * time.Second, Factor: 2}
+}
 
-// ReadUntil returns when a page's reading time ends. since is when the page's
-// message first appeared, and shown is when this page did; they differ once a
-// phrase joined the message. Every rune gets 120 ms counted from since, and the
-// page stays at least 1.5 s from shown, so a phrase can still join a page that
-// was just written.
-func ReadUntil(page string, since, shown time.Time) time.Time {
-	end := since.Add(time.Duration(utf8.RuneCountInString(page)) * runeReadingTime)
-	if floor := shown.Add(pageInterval); floor.After(end) {
-		return floor
+func (r ReadingTime) duration(aloud time.Duration) time.Duration {
+	return r.Base + time.Duration(r.Factor*float64(aloud))
+}
+
+func (r ReadingTime) Duration(m Message) time.Duration {
+	original := time.Duration(utf8.RuneCountInString(m.Original)) * catalog.ReadAloudRate(m.SourceLang)
+	translation := time.Duration(utf8.RuneCountInString(m.Translation)) * catalog.ReadAloudRate(m.TargetLang)
+	return r.duration(max(original, translation))
+}
+
+// PageDurations divides the reading time among the rendered pages by rune count.
+// Each page gets the full base time so the viewer has time to notice it.
+func (r ReadingTime) PageDurations(m Message, pages []string) []time.Duration {
+	times := make([]time.Duration, len(pages))
+	if len(pages) == 0 {
+		return times
 	}
-	return end
+	total := r.Duration(m)
+	if len(pages) == 1 {
+		times[0] = total
+		return times
+	}
+	var runes int
+	for _, page := range pages {
+		runes += utf8.RuneCountInString(page)
+	}
+	remaining := total - r.Base
+	for i, page := range pages {
+		n := utf8.RuneCountInString(page)
+		share := time.Duration(float64(remaining) * (float64(n) / float64(runes)))
+		times[i] = r.Base + share
+		remaining -= share
+		runes -= n
+	}
+	return times
+}
+
+// BacklogBound limits how long a waiting page can fall behind its translation.
+// Six seconds of speech is about 35 Japanese characters.
+func (r ReadingTime) BacklogBound() time.Duration {
+	return r.duration(6 * time.Second)
 }
 
 type Message struct {
