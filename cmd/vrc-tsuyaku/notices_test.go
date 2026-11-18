@@ -62,6 +62,13 @@ func TestModuleNoticesMatchGoMod(t *testing.T) {
 	}
 }
 
+func TestScopedNoticeIdentity(t *testing.T) {
+	name, version := splitNoticeIdentity("@solidjs/web@2.0.1")
+	if name != "@solidjs/web" || version != "2.0.1" {
+		t.Fatalf("got name %q and version %q", name, version)
+	}
+}
+
 func TestNoticesHTTP(t *testing.T) {
 	a := testApp(t)
 	w := request(a, "GET", "/notices.txt", "")

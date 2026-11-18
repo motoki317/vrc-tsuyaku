@@ -14,6 +14,13 @@ import (
 //go:embed notices
 var notices embed.FS
 
+func splitNoticeIdentity(identity string) (name, version string) {
+	if at := strings.LastIndexByte(identity, '@'); at >= 0 {
+		return identity[:at], identity[at+1:]
+	}
+	return identity, ""
+}
+
 func noticesDocument() (string, error) {
 	var document strings.Builder
 	err := fs.WalkDir(notices, "notices", func(name string, entry fs.DirEntry, err error) error {
@@ -30,7 +37,7 @@ func noticesDocument() (string, error) {
 			component, version, _ = strings.Cut(identity, "@")
 			source = "https://pkg.go.dev/" + identity
 		case strings.HasPrefix(dir, "notices/other/"):
-			component, version, _ = strings.Cut(strings.TrimPrefix(dir, "notices/other/"), "@")
+			component, version = splitNoticeIdentity(strings.TrimPrefix(dir, "notices/other/"))
 			data, err := notices.ReadFile(dir + "/SOURCE")
 			if err != nil {
 				return err
