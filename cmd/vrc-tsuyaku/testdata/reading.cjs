@@ -13,11 +13,13 @@ function page() {
   function element() {
     const listeners = {};
     return {
-      dataset: {}, children: [], value: '', hidden: false,
+      dataset: {}, style: {}, children: [], value: '', hidden: false,
+      get lastElementChild() { return this.children.at(-1); },
       get valueAsNumber() { return Number(this.value); },
       get textContent() { return this.children.map(child => child.textContent ?? child).join(''); },
       set textContent(value) { this.replaceChildren(value); },
       append(...children) { this.children.push(...children); },
+      removeChild(child) { this.children.splice(this.children.indexOf(child), 1); },
       replaceChildren(...children) { this.children = children; },
       setAttribute(key, value) { this[key] = value; },
       removeAttribute(key) { delete this[key]; },
@@ -114,6 +116,9 @@ test('only a successful current preview replaces the localized example', async (
   old.reply({pages: ['stale'], seconds: [10], reading: {characters: 80, secondsPerCharacter: 0.05}});
   await first;
   assert.equal(p.textContent, 'Hello');
+  const bar = p.children[0].lastElementChild;
+  assert.equal(bar['aria-hidden'], 'true');
+  assert.equal(bar.style.animationDuration, '3.706s');
   assert.equal(line.textContent, '3.71 s = 2 s + 5 characters × 0.17 s/character × 2');
   const failed = ui.runPreview();
   ui.requests.at(-1).reply({error: 'bad template'}, 400);
@@ -131,6 +136,7 @@ test('only a successful current preview replaces the localized example', async (
   ui.requests.at(-1).reply({pages: ['Hello'], seconds: [3.706], reading: {characters: 5, secondsPerCharacter: 0.17}});
   await drain();
   ui.locale('ja');
+  assert.equal(p.children[0].lastElementChild, bar);
   assert.equal(line.textContent, '3.71秒 = 2秒 + 5文字 × 0.17秒/文字 × 2');
   ui.state.settings.Chatbox.ReadingFactor = 2.5;
   const multiple = ui.runPreview();
@@ -138,6 +144,7 @@ test('only a successful current preview replaces the localized example', async (
   await multiple;
   assert.equal(p.children[0].textContent, '1/2 · 16.4秒a');
   assert.equal(p.children[1].textContent, '2/2 · 3.6秒b');
+  assert.deepEqual(p.children.map(page => page.lastElementChild.style.animationDuration), ['16.4s', '3.6s']);
   assert.equal(line.textContent, '2秒 + 160文字 × 0.05秒/文字 × 2.5');
   const empty = ui.runPreview();
   ui.requests.at(-1).reply({pages: [], seconds: [], reading: {characters: 0, secondsPerCharacter: 0.17}});

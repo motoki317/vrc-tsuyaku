@@ -1714,9 +1714,22 @@ function renderPreview() {
   const example = preview.example, line = $('reading-example');
   line.hidden = !example?.pages.length;
   const pages = example?.pages || [];
-  $('preview').replaceChildren(...pages.map((page, i) => h('div', {className: 'page'},
-    pages.length > 1 && h('span', {className: 'page-count'}, t('value.page', {n: i + 1, total: pages.length, seconds: secondsText(example.seconds[i])})),
-    h('p', {}, page))));
+  const box = $('preview');
+  while (box.children.length > pages.length) box.removeChild(box.lastElementChild);
+  for (const [i, text] of pages.entries()) {
+    // Keep each bar in the document so a state refresh cannot restart its animation.
+    let page = box.children[i];
+    if (!page) {
+      page = h('div', {className: 'page'}, h('span', {className: 'page-count'}), h('p'),
+        h('span', {className: 'page-timer', 'aria-hidden': 'true'}));
+      box.append(page);
+    }
+    const [count, message, bar] = page.children;
+    count.hidden = pages.length === 1;
+    setText(count, count.hidden ? '' : t('value.page', {n: i + 1, total: pages.length, seconds: secondsText(example.seconds[i])}));
+    setText(message, text);
+    bar.style.animationDuration = example.seconds[i] + 's';
+  }
   if (!pages.length) return;
   const {characters, secondsPerCharacter} = example.reading;
   const formula = t('value.readingFormula', {
