@@ -45,16 +45,29 @@ Settings → Chatbox picks what "My voice" writes to your chatbox. The default, 
 
 VRChat shows at most 144 characters and 9 lines at a time, so the app splits a longer message into pages and sends them in turn.
 
-A new message replaces the one in your chatbox. So the app leaves each message, or each page of a long one, up long enough to read: about one second for every 8 characters, and at least 1.5 seconds. If you say something more during that time, and it fits in the chatbox together with the message on screen, the app adds it to that message, and shows the two as one bubble in its own window. For example, "うん。" right after "今日は寒いですね。" gives:
+A new message replaces the one in your chatbox. So the app leaves each message up for a minimum display time before the next one replaces it. Two sliders under Settings → Chatbox → "Minimum message display time" set that time:
+
+- "Fixed added time" is a time that every message gets, however short. The default is 2 seconds.
+- "Time adjustment by message length" multiplies the part of the time that grows with the message's length. The default is ×2.
+
+That part is the time that it takes to read the message aloud: the number of characters times a time per character, which depends on the language. A Japanese character takes 0.17 seconds and an English letter 0.05 seconds. The app works out that time for what you said and for its translation, and uses the longer of the two, even if your message shows only one of them. With the defaults, "こんにちは" with the translation "Hello" stays for 3.7 seconds: 2 seconds, plus 5 Japanese characters × 0.17 seconds × 2.
+
+The preview under the sliders shows the calculation for the latest thing you said, or for a sample message before you say anything. A bar at the bottom of the previewed message fills over the minimum display time.
+
+If others cannot finish reading your messages, raise the sliders. "Fixed added time" helps short messages most, and "Time adjustment by message length" helps long ones most.
+
+The minimum display time is not the time after which a message disappears. Each viewer's VRChat hides a chatbox message after a time that the viewer set in VRChat, 60 seconds at most.
+
+If you say something more during the minimum display time, and it fits in the chatbox together with the message there, the app adds it to that message, and shows the two as one message on the page. The longer message gets a longer minimum display time, which still counts from when the message first appeared. For example, "うん。" right after "今日は寒いですね。" gives:
 
 ```text
 [ja] 今日は寒いですね。 うん。
 [en] It's cold today. Yeah.
 ```
 
-What does not fit waits for its turn. When you keep talking, a message waits about 17 seconds at most after the app translated it. After that the app sends it to the chatbox, even if the message there had less than its reading time.
+What does not fit waits until the minimum display time of the message in the chatbox ends. With the defaults, a message's minimum display time is longer than the time that you took to say it, so messages fall behind when you keep talking. The app then limits the wait: with the defaults, a message waits about 14 seconds at most after the app translated it. After that the app sends it to the chatbox, even if the message there had less than its minimum display time. Higher slider values raise this limit.
 
-"Others' voices" joins phrases in the same way. If a phrase arrives during the reading time of the bubble before it, and the two are short enough for one chatbox message, the app adds the phrase to that bubble. Nothing waits there.
+"Others' voices" joins phrases into one message on the page in the same way, but nothing waits there.
 
 ## Memory
 
