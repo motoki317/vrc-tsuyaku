@@ -26,6 +26,10 @@ func TestLanguageSwap(t *testing.T) {
 	runNodeTest(t, "languages.cjs")
 }
 
+func TestReadingTimeControls(t *testing.T) {
+	runNodeTest(t, "reading.cjs")
+}
+
 func TestPageClosingBeacon(t *testing.T) {
 	runNodeTest(t, "closing.cjs")
 }
