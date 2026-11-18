@@ -416,8 +416,8 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .rail-item[aria-current="page"] { background: var(--surface-2); font-weight: 700; }
 /* Each label also lays out an invisible bold copy of its text, so the rail keeps its width whichever item is
    current. */
-.rail [data-i18n] { display: inline-grid; }
-.rail [data-i18n]::after { content: attr(data-label); height: 0; visibility: hidden; font-weight: 700; }
+.rail [data-label] { display: inline-grid; }
+.rail [data-label]::after { content: attr(data-label); height: 0; visibility: hidden; font-weight: 700; }
 .rail-item .update-dot { margin-left: auto; }
 .rail-item[aria-disabled="true"] { opacity: 0.45; }
 .sub { grid-area: sub; min-width: 0; }

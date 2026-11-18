@@ -265,4 +265,12 @@ Source: [Sharrnah/whispering-ui](https://github.com/Sharrnah/whispering-ui/tree/
 
 Source: [lucide-static 1.60.0](https://www.npmjs.com/package/lucide-static/v/1.60.0) on npm. License: ISC, and MIT for the icons that Lucide derives from Feather.
 
-`web/public/icons.svg` copies Lucide icons as SVG symbols, and some of them derive from Feather. [The upstream license text](cmd/vrc-tsuyaku/notices/other/lucide-static@1.60.0/LICENSE) includes both licenses.
+`web/icons.svg` copies Lucide icons as SVG symbols, and some of them derive from Feather. [The upstream license text](cmd/vrc-tsuyaku/notices/other/lucide-static@1.60.0/LICENSE) includes both licenses.
+
+## Solid
+
+The frontend bundles three MIT-licensed packages from [Solid 2.0.1](https://github.com/solidjs/solid/tree/solid-js@2.0.1).
+
+- [solid-js 2.0.1 license](cmd/vrc-tsuyaku/notices/other/solid-js@2.0.1/LICENSE)
+- [@solidjs/web 2.0.1 license](cmd/vrc-tsuyaku/notices/other/@solidjs/web@2.0.1/LICENSE)
+- [@solidjs/signals 2.0.1 license](cmd/vrc-tsuyaku/notices/other/@solidjs/signals@2.0.1/LICENSE)

@@ -19,6 +19,7 @@ test: web
 
 # Run the linters and formatters in check mode.
 lint: web
+    npm --prefix web run format:check
     golangci-lint run
 
 # Build every command for this OS into dist/.

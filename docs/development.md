@@ -54,6 +54,8 @@ nix develop -c just lint test
 nix develop -c sh -c 'just web && GOOS=windows go build -o /dev/null ./...'
 ```
 
+`just lint` fails if a JS or JSX file in `web/` does not match Prettier's format. `nix develop -c npm --prefix web run format` formats them.
+
 CI also runs the tests with `-race`. [cmd/vrc-tsuyaku/README.md](../cmd/vrc-tsuyaku/README.md) covers the HTTP API and the end-to-end checks, which `just test` skips unless their environment variables are set. [AGENTS.md](../AGENTS.md) holds the repository's rules.
 
 ## Release

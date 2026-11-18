@@ -4,9 +4,24 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "test": "node --test test/*.cjs"
+    "test": "vitest run",
+    "format": "prettier --write \"{src,test}/**/*.{js,jsx}\" vite.config.js",
+    "format:check": "prettier --check \"{src,test}/**/*.{js,jsx}\" vite.config.js"
   },
   "devDependencies": {
-    "vite": "8.3.8"
+    "@solidjs/vite-plugin": "3.0.1",
+    "jsdom": "31.0.1",
+    "prettier": "3.10.1",
+    "vite": "8.3.8",
+    "vitest": "5.1.1"
+  },
+  "dependencies": {
+    "@solidjs/web": "2.0.1",
+    "solid-js": "2.0.1"
+  },
+  "prettier": {
+    "printWidth": 120,
+    "singleQuote": true,
+    "arrowParens": "avoid"
   }
 }
