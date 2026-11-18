@@ -126,7 +126,7 @@ func (s Settings) Validate() error {
 	if err := chatbox.ValidateTemplate(s.Chatbox.Template); err != nil {
 		return fmt.Errorf("chatbox.template: %w", err)
 	}
-	if err := ValidateReadingTime(s.Chatbox.ReadingBase, s.Chatbox.ReadingFactor); err != nil {
+	if err := ValidateReadingTime(s.Chatbox.ReadingBase, s.Chatbox.ReadingFactor, "chatbox.reading_base_seconds", "chatbox.reading_factor"); err != nil {
 		return err
 	}
 	if err := glossary.Validate(s.Glossary); err != nil {
@@ -143,12 +143,12 @@ func (s Settings) Validate() error {
 	return nil
 }
 
-func ValidateReadingTime(baseSeconds, factor float64) error {
+func ValidateReadingTime(baseSeconds, factor float64, baseField, factorField string) error {
 	if !(baseSeconds >= chatbox.MinReadingBaseSeconds && baseSeconds <= chatbox.MaxReadingBaseSeconds) {
-		return fmt.Errorf("chatbox.reading_base_seconds: must be between %g and %g seconds", chatbox.MinReadingBaseSeconds, chatbox.MaxReadingBaseSeconds)
+		return fmt.Errorf("%s: must be between %g and %g seconds", baseField, chatbox.MinReadingBaseSeconds, chatbox.MaxReadingBaseSeconds)
 	}
 	if !(factor >= chatbox.MinReadingFactor && factor <= chatbox.MaxReadingFactor) {
-		return fmt.Errorf("chatbox.reading_factor: must be between %g and %g", chatbox.MinReadingFactor, chatbox.MaxReadingFactor)
+		return fmt.Errorf("%s: must be between %g and %g", factorField, chatbox.MinReadingFactor, chatbox.MaxReadingFactor)
 	}
 	return nil
 }

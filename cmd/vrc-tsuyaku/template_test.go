@@ -20,43 +20,74 @@ import (
 func TestChatboxPreview(t *testing.T) {
 	a := testApp(t)
 	before := cloneSettings(a.settings)
-	for _, format := range []string{chatbox.DefaultTemplate, "{{.Translation}}", "", "{{.Original}}\n{{.Translation}}"} {
-		body := struct {
-			Template string `json:"template"`
-			chatbox.Message
-		}{format, chatbox.Message{Original: "こんにちは", Translation: strings.Repeat("Hello ", 50), SourceLang: "ja", TargetLang: "en"}}
-		data, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		w := request(a, "POST", "/api/chatbox/preview", string(data))
-		if w.Code != http.StatusOK {
-			t.Fatal(w.Code, w.Body.String())
-		}
-		var preview struct {
-			Pages []string `json:"pages"`
-		}
-		if err := json.Unmarshal(w.Body.Bytes(), &preview); err != nil {
-			t.Fatal(err)
-		}
-		want, err := chatbox.Render(format, body.Message)
-		if err != nil || !reflect.DeepEqual(preview.Pages, want) {
-			t.Fatal(preview, err)
-		}
-		if !reflect.DeepEqual(a.settings, before) {
-			t.Fatal("preview changed settings")
-		}
+	for _, tc := range []struct {
+		name, format, original, translation string
+		base, factor                        float64
+		characters                          int
+		perCharacter                        float64
+		seconds                             []float64
+	}{
+		{"greeting", chatbox.DefaultTemplate, "こんにちは", "Hello", 2, 2, 5, 0.17, []float64{3.7}},
+		{"weather", "{{.Original}}\n{{.Translation}}", "今日は寒いですね。", "It's cold today.", 2, 2, 9, 0.17, []float64{5.06}},
+		{"hidden original", "{{.Translation}}", strings.Repeat("猫", 25), strings.Repeat("a", 60), 2, 2, 25, 0.17, []float64{10.5}},
+		{"slower translation", "{{.Original}}", "猫", "It's cold today.", 2.5, 1.5, 16, 0.05, []float64{3.7}},
+		{"two pages", "{{.Translation}}", "猫", strings.Repeat("a", 160), 2, 2, 160, 0.05, []float64{16.4, 3.6}},
+		{"short message", "{{.Original}}", "猫", "", 1, 1, 1, 0.17, []float64{1.17}},
+		{"equal times", "{{.Original}}", strings.Repeat("猫", 5), strings.Repeat("a", 17), 10, 8, 5, 0.17, []float64{16.8}},
+		{"empty template", "", "こんにちは", "Hello", 2, 2, 5, 0.17, []float64{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := struct {
+				Template      string  `json:"template"`
+				ReadingBase   float64 `json:"readingBase"`
+				ReadingFactor float64 `json:"readingFactor"`
+				chatbox.Message
+			}{tc.format, tc.base, tc.factor, chatbox.Message{Original: tc.original, Translation: tc.translation, SourceLang: "ja", TargetLang: "en"}}
+			data, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := request(a, "POST", "/api/chatbox/preview", string(data))
+			if w.Code != http.StatusOK {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			var preview struct {
+				Pages   []string
+				Seconds []float64
+				Reading map[string]float64
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &preview); err != nil {
+				t.Fatal(err)
+			}
+			want, err := chatbox.Render(tc.format, body.Message)
+			if err != nil || !reflect.DeepEqual(preview.Pages, want) {
+				t.Fatalf("pages = %q, want %q, err = %v", preview.Pages, want, err)
+			}
+			wantReading := map[string]float64{"characters": float64(tc.characters), "secondsPerCharacter": tc.perCharacter}
+			if !reflect.DeepEqual(preview.Seconds, tc.seconds) || !reflect.DeepEqual(preview.Reading, wantReading) {
+				t.Fatalf("seconds = %v, reading = %+v, want %v and %v", preview.Seconds, preview.Reading, tc.seconds, wantReading)
+			}
+			if !reflect.DeepEqual(a.settings, before) {
+				t.Fatal("preview changed settings")
+			}
+		})
 	}
 }
 
 func TestChatboxPreviewErrors(t *testing.T) {
 	a := testApp(t)
 	for _, tc := range []struct{ body, want string }{
-		{`{"template":"{{"}`, "chatbox template"},
-		{`{"template":"{{.Unknown}}"}`, "Unknown"},
-		{`{"template":"{{index .Translation 3}}","translation":"a"}`, "index"},
-		{`{"template":"{{.Original}}","original":"bad\u0000"}`, "NUL"},
-		{`{"template":"{{.Original}}","extra":true}`, "unknown field"},
+		{`{"readingFactor":2}`, "readingBase"},
+		{`{"readingBase":2}`, "readingFactor"},
+		{`{"readingBase":0.99,"readingFactor":2}`, "readingBase"},
+		{`{"readingBase":10.01,"readingFactor":2}`, "readingBase"},
+		{`{"readingBase":2,"readingFactor":0.99}`, "readingFactor"},
+		{`{"readingBase":2,"readingFactor":8.01}`, "readingFactor"},
+		{`{"readingBase":2,"readingFactor":2,"template":"{{"}`, "chatbox template"},
+		{`{"readingBase":2,"readingFactor":2,"template":"{{.Unknown}}"}`, "Unknown"},
+		{`{"readingBase":2,"readingFactor":2,"template":"{{index .Translation 3}}","translation":"a"}`, "index"},
+		{`{"readingBase":2,"readingFactor":2,"template":"{{.Original}}","original":"bad\u0000"}`, "NUL"},
+		{`{"readingBase":2,"readingFactor":2,"template":"{{.Original}}","extra":true}`, "unknown field"},
 		{`{} {}`, "one JSON object"},
 		{`{`, "EOF"},
 		{`{"template":"` + strings.Repeat("a", 64<<10) + `"}`, "too large"},

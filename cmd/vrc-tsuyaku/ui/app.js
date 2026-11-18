@@ -1646,7 +1646,10 @@ async function runPreview() {
   const template = $('template').value, request = ++previewRequest;
   let result;
   try {
-    const response = await api('chatbox/preview', {method: 'POST', body: JSON.stringify({template, ...previewMessage()})});
+    const {ReadingBase, ReadingFactor} = state.settings.Chatbox;
+    const response = await api('chatbox/preview', {method: 'POST', body: JSON.stringify({
+      template, ...previewMessage(), readingBase: ReadingBase, readingFactor: ReadingFactor,
+    })});
     result = {template, pages: (await response.json()).pages || [], error: null};
   } catch (e) {
     if (!e.status) return preview;
