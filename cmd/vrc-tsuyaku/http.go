@@ -1,11 +1,9 @@
 package main
 
 import (
-	"embed"
 	"encoding/json"
 	"errors"
 	"io"
-	"io/fs"
 	"net"
 	"net/http"
 	"runtime"
@@ -18,10 +16,8 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/web"
 )
-
-//go:embed ui/*
-var ui embed.FS
 
 func (a *app) handler() http.Handler {
 	mux := http.NewServeMux()
@@ -181,8 +177,7 @@ func (a *app) handler() http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-	files, _ := fs.Sub(ui, "ui")
-	mux.Handle("/", http.FileServerFS(files))
+	mux.Handle("/", http.FileServerFS(web.Files))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

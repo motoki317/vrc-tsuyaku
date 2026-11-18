@@ -2,8 +2,21 @@
 
 ## Run from source
 
-1. Install Go 1.26 or later.
-2. In the repository root, build the executable, with cgo off as in the release builds.
+On x86-64 Linux or in WSL, run `nix develop -c just build` from the repository root. This installs the locked frontend dependencies, builds the page in `web/dist/` and embeds it in `dist/vrc-tsuyaku`. Start it with `./dist/vrc-tsuyaku -data-dir ~/vrc-tsuyaku-data`.
+
+Run `just web` inside the dev shell before using `go build`, `go test` or golangci-lint directly on a fresh checkout.
+
+### Build without Nix on Linux or Windows
+
+1. Install Go 1.26 or later and Node.js 24 with npm.
+2. Build the frontend from the repository root.
+
+   ```sh
+   npm --prefix web ci --ignore-scripts
+   npm --prefix web run build
+   ```
+
+3. Build the executable with cgo off as in the release builds.
 
    On Linux:
 
@@ -18,7 +31,7 @@
    go build ./cmd/vrc-tsuyaku
    ```
 
-3. Start it with a data folder outside the repository. Without `-data-dir`, `settings.yaml` and `downloads/` land in the repository, where git does not ignore them.
+4. Start it with a data folder outside the repository. Without `-data-dir`, `settings.yaml` and `downloads/` land in the repository, where git does not ignore them.
 
    On Linux:
 
@@ -38,8 +51,10 @@ The Nix dev shell supports only x86-64 Linux, so run the checks there or in WSL 
 
 ```sh
 nix develop -c just lint test
-nix develop -c sh -c 'GOOS=windows go build -o /dev/null ./...'
+nix develop -c sh -c 'just web && GOOS=windows go build -o /dev/null ./...'
 ```
+
+`just lint` fails if a JS or JSX file in `web/` does not match Prettier's format. `nix develop -c npm --prefix web run format` formats them.
 
 CI also runs the tests with `-race`. [cmd/vrc-tsuyaku/README.md](../cmd/vrc-tsuyaku/README.md) covers the HTTP API and the end-to-end checks, which `just test` skips unless their environment variables are set. [AGENTS.md](../AGENTS.md) holds the repository's rules.
 

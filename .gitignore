@@ -1,6 +1,8 @@
 /docs/plans/
 /.local/
 /dist/
+/web/dist/
+/web/node_modules/
 /.direnv/
 /result
 /result-*

@@ -2,8 +2,8 @@
 
 [Usage](../../docs/usage.md) covers using the app.
 
-`main` serves the web page in `ui/` on `127.0.0.1` and opens it in the browser. It prints the app's name, its version when the build has one, and the page's URL to standard output. Every console message is in English and in Japanese.
-The page is embedded in the executable, so rebuild after you change `ui/`.
+`main` serves the embedded web page on `127.0.0.1` and opens it in the browser. It prints the app's name, its version when the build has one, and the page's URL to standard output. Every console message is in English and in Japanese.
+After changing the components or stylesheet in `web/src/`, the catalogs in `web/i18n/` or the sprite in `web/icons.svg`, run `nix develop -c just build` from the repository root to rebuild the page and the executable. Before running the Go checks below from a fresh checkout, build the embedded files with `nix develop -c just web`.
 Ctrl+C stops the flows, cancels downloads and stops `llama-server`, and then the app exits. `POST /api/exit`, which the page's Exit button sends, does the same.
 A page sends `POST /api/closing` when its tab closes or reloads, unless it shows the exited screen. The app then exits the same way if no event stream is open 5 s later.
 A stream that drops without that request never exits the app, because a browser can unload a background tab by itself.
@@ -52,7 +52,7 @@ A request with neither `Sec-Fetch-Site` nor `Origin`, such as one from `curl`, p
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/state` | `launch` (a value that differs between launches), `app` (build information), `update` (the update check: `state`, `version` and `url`), `instance` (the waiting state and other instances), `settings`, `settingsError`, `flows` (each flow's state), `required` (each flow's artifact IDs), `artifacts` (state and licenses), `languages` (the language catalog and the translators), `glossaryLimit` (the most glossary entries that the settings accept), `defaultTemplate` and `reading` (the ranges of `Chatbox.ReadingBase` and `Chatbox.ReadingFactor`: `{"base": {"min": 1, "max": 10}, "factor": {"min": 1, "max": 8}}`) |
+| `GET /api/state` | `launch` (a value that differs between launches), `app` (build information), `update` (the update check: `state`, `version` and `url`), `instance` (the waiting state and other instances), `settings`, `settingsError`, `flows` (each flow's state), `artifacts` (state and licenses), `languages` (the language catalog and the translators), `glossaryLimit` (the most glossary entries that the settings accept), `defaultTemplate` and `reading` (the ranges of `Chatbox.ReadingBase` and `Chatbox.ReadingFactor`: `{"base": {"min": 1, "max": 10}, "factor": {"min": 1, "max": 8}}`) |
 | `PUT /api/settings` | Save a complete `config.Settings` JSON object. Invalid input returns 400. A failed write returns 500. If another program changed `settings.yaml` after the app last read it, the app reads the file again, writes nothing and returns 409 with code `settings_changed`. The page then fetches the state and repeats the player's change once |
 | `GET /api/microphones` | Microphone IDs and names |
 | `GET /api/levels` | Each running flow's input level in dBFS, such as `{"self": -41.5, "world": -30.2}`. The level is the RMS of a 32 ms window of captured audio. A flow has an entry from its first window until its pipeline ends. The value jumps to a louder window's level at once and falls by at most 1.5 dB per window, so the page, which polls every 100 ms, still shows a short sound. The levels are not `/api/events` events: 31 windows per second for each flow would push phrases out of the 256 events that the stream keeps |

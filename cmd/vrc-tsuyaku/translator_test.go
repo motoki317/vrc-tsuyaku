@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"sync/atomic"
 	"testing"
 
@@ -272,7 +271,6 @@ func TestTranslatorStateAndDeletion(t *testing.T) {
 					a.flows[flow].status.State = phase
 					var state struct {
 						Settings  config.Settings         `json:"settings"`
-						Required  map[string][]string     `json:"required"`
 						Languages catalog.LanguageCatalog `json:"languages"`
 					}
 					w := request(a, "GET", "/api/state", "")
@@ -281,11 +279,6 @@ func TestTranslatorStateAndDeletion(t *testing.T) {
 					}
 					if state.Settings.Translator != choice.ID || !reflect.DeepEqual(state.Languages.Translators, catalog.Translators()) {
 						t.Fatal("translator choices missing from state")
-					}
-					for _, required := range state.Required {
-						if !slices.Contains(required, choice.Artifact) {
-							t.Fatal("selected translator not required", required)
-						}
 					}
 					for _, candidate := range catalog.Translators() {
 						dir := a.artifactDir(candidate.Artifact)
@@ -304,11 +297,6 @@ func TestTranslatorStateAndDeletion(t *testing.T) {
 								t.Fatal("selected translator removed", err)
 							}
 						} else {
-							for _, required := range state.Required {
-								if slices.Contains(required, candidate.Artifact) {
-									t.Fatal("unused translator required", required)
-								}
-							}
 							if w.Code != http.StatusOK {
 								t.Fatal(w.Code, w.Body.String())
 							}
