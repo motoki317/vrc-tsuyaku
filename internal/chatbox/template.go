@@ -15,13 +15,24 @@ import (
 // ErrTemplate distinguishes a phrase's formatting failure from a failed UDP send.
 var ErrTemplate = errcode.With(errcode.Template, errors.New("chatbox template"))
 
+const (
+	MinReadingBaseSeconds     = 1.0
+	MaxReadingBaseSeconds     = 10.0
+	DefaultReadingBaseSeconds = 2.0
+	MinReadingFactor          = 1.0
+	MaxReadingFactor          = 8.0
+	DefaultReadingFactor      = 2.0
+)
+
+// ReadingTime gives viewers a fixed time to notice the chatbox. The factor
+// adds a margin over the time it takes to read the message aloud.
 type ReadingTime struct {
 	Base   time.Duration
 	Factor float64
 }
 
 func DefaultReadingTime() ReadingTime {
-	return ReadingTime{Base: 2 * time.Second, Factor: 2}
+	return ReadingTime{Base: DefaultReadingBaseSeconds * time.Second, Factor: DefaultReadingFactor}
 }
 
 func (r ReadingTime) duration(aloud time.Duration) time.Duration {

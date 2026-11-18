@@ -76,8 +76,10 @@ func (f Flows) CutLevel(name string) float64 {
 }
 
 type Chatbox struct {
-	Address  string `yaml:"address"`
-	Template string `yaml:"template"`
+	Address       string  `yaml:"address"`
+	Template      string  `yaml:"template"`
+	ReadingBase   float64 `yaml:"reading_base_seconds"`
+	ReadingFactor float64 `yaml:"reading_factor"`
 }
 
 // Defaults leaves both flows stopped and uses the local VRChat address.
@@ -88,7 +90,10 @@ func Defaults() Settings {
 			Self:  SelfFlow{Spoken: catalog.Japanese, Target: catalog.English},
 			World: WorldFlow{Spoken: catalog.English, Target: catalog.Japanese},
 		},
-		Chatbox:          Chatbox{Address: "127.0.0.1:9000", Template: chatbox.DefaultTemplate},
+		Chatbox: Chatbox{
+			Address: "127.0.0.1:9000", Template: chatbox.DefaultTemplate,
+			ReadingBase: chatbox.DefaultReadingBaseSeconds, ReadingFactor: chatbox.DefaultReadingFactor,
+		},
 		Glossary:         []glossary.Entry{},
 		LicensesAccepted: make(map[string]string),
 	}
@@ -120,6 +125,12 @@ func (s Settings) Validate() error {
 	}
 	if err := chatbox.ValidateTemplate(s.Chatbox.Template); err != nil {
 		return fmt.Errorf("chatbox.template: %w", err)
+	}
+	if base := s.Chatbox.ReadingBase; !(base >= chatbox.MinReadingBaseSeconds && base <= chatbox.MaxReadingBaseSeconds) {
+		return fmt.Errorf("chatbox.reading_base_seconds: must be between %g and %g seconds", chatbox.MinReadingBaseSeconds, chatbox.MaxReadingBaseSeconds)
+	}
+	if factor := s.Chatbox.ReadingFactor; !(factor >= chatbox.MinReadingFactor && factor <= chatbox.MaxReadingFactor) {
+		return fmt.Errorf("chatbox.reading_factor: must be between %g and %g", chatbox.MinReadingFactor, chatbox.MaxReadingFactor)
 	}
 	if err := glossary.Validate(s.Glossary); err != nil {
 		return err
