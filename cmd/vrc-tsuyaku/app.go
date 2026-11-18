@@ -195,11 +195,8 @@ func (a *app) snapshot() any {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	flows := make(map[string]flowState)
-	requirements := make(map[string][]string)
 	for name, run := range a.flows {
 		flows[name] = run.status
-		spoken, _ := a.settings.Flows.Languages(name)
-		requirements[name], _ = catalog.Required(spoken, a.settings.Translator)
 	}
 	type bounds struct {
 		Min float64 `json:"min"`
@@ -217,13 +214,12 @@ func (a *app) snapshot() any {
 		SettingsError   string                   `json:"settingsError,omitempty"`
 		Artifacts       map[string]artifactState `json:"artifacts"`
 		Flows           map[string]flowState     `json:"flows"`
-		Required        map[string][]string      `json:"required"`
 		Languages       catalog.LanguageCatalog  `json:"languages"`
 		GlossaryLimit   int                      `json:"glossaryLimit"`
 		DefaultTemplate string                   `json:"defaultTemplate"`
 		Reading         map[string]bounds        `json:"reading"`
 		Instance        instanceState            `json:"instance"`
-	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, requirements, catalog.Languages(), glossary.MaxEntries, chatbox.DefaultTemplate, reading,
+	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, catalog.Languages(), glossary.MaxEntries, chatbox.DefaultTemplate, reading,
 		instanceState{State: a.instance.State, Others: slices.Clone(a.instance.Others)}}
 }
 

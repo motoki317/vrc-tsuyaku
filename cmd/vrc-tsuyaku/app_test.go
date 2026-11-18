@@ -210,11 +210,10 @@ func TestCutLevelChangesReachRunningFlows(t *testing.T) {
 	}
 }
 
-func TestRequiredArtifactsInState(t *testing.T) {
+func TestLanguageCatalogAndDefaultTemplateInState(t *testing.T) {
 	a := testApp(t)
 	a.settings.Chatbox.Template = "{{.Translation}}"
 	var state struct {
-		Required        map[string][]string     `json:"required"`
 		Languages       catalog.LanguageCatalog `json:"languages"`
 		DefaultTemplate string                  `json:"defaultTemplate"`
 	}
@@ -225,32 +224,11 @@ func TestRequiredArtifactsInState(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
 		t.Fatal(err)
 	}
-	for _, flow := range []string{"self", "world"} {
-		spoken, _ := a.settings.Flows.Languages(flow)
-		want, _ := catalog.Required(spoken, a.settings.Translator)
-		if !reflect.DeepEqual(state.Required[flow], want) {
-			t.Fatalf("%s: %v, want %v", flow, state.Required[flow], want)
-		}
-	}
 	if !reflect.DeepEqual(state.Languages, catalog.Languages()) {
 		t.Fatal("language choices missing from state", state.Languages)
 	}
 	if state.DefaultTemplate != chatbox.DefaultTemplate {
 		t.Fatalf("default template = %q, want %q", state.DefaultTemplate, chatbox.DefaultTemplate)
-	}
-	s := cloneSettings(a.settings)
-	s.Flows.Self.Spoken, s.Flows.World.Spoken = "en", "ja"
-	s.Flows.Self.Target, s.Flows.World.Target = "ko", "ja-easy"
-	body, _ := json.Marshal(s)
-	w = request(a, "PUT", "/api/settings", string(body))
-	if w.Code != http.StatusOK {
-		t.Fatal(w.Code, w.Body.String())
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(state.Required["self"], wantRequirements(t, "en")) || !reflect.DeepEqual(state.Required["world"], wantRequirements(t, "ja")) {
-		t.Fatal("requirements did not follow spoken language", state.Required)
 	}
 }
 
