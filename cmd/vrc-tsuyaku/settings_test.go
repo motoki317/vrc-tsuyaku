@@ -24,7 +24,7 @@ func pollSettings(a *app) {
 }
 
 func TestExternalSettingsApplyLikePageSave(t *testing.T) {
-	for _, change := range []string{"microphone", "address", "spoken", "target", "template", "ui", "glossary", "glossary-empty", "glossary-missing"} {
+	for _, change := range []string{"microphone", "address", "spoken", "target", "template", "reading time", "ui", "glossary", "glossary-empty", "glossary-missing"} {
 		t.Run(change, func(t *testing.T) {
 			a := testApp(t)
 			a.settings.Flows.Self.Enabled, a.settings.Flows.World.Enabled = true, true
@@ -64,6 +64,8 @@ func TestExternalSettingsApplyLikePageSave(t *testing.T) {
 				s.Flows.Self.Target, s.Flows.World.Target = "ja-easy", "ko"
 			case "template":
 				s.Chatbox.Template = "{{.Translation}}"
+			case "reading time":
+				s.Chatbox.ReadingBase, s.Chatbox.ReadingFactor = 4.5, 3.1
 			case "ui":
 				s.UI.Language = "ja"
 			case "glossary":
@@ -107,6 +109,41 @@ func TestExternalSettingsApplyLikePageSave(t *testing.T) {
 				t.Fatal("unchanged file reloaded twice")
 			}
 		})
+	}
+}
+
+func TestReadingTimeSettingsAPI(t *testing.T) {
+	a := testApp(t)
+	response := request(a, "GET", "/api/state", "")
+	var state struct {
+		Reading map[string]map[string]float64 `json:"reading"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]map[string]float64{"base": {"min": 1, "max": 10}, "factor": {"min": 1, "max": 8}}
+	if !reflect.DeepEqual(state.Reading, want) {
+		t.Fatalf("reading bounds = %v, want %v", state.Reading, want)
+	}
+	for _, tc := range []struct {
+		base, factor float64
+		key          string
+	}{
+		{0.99, 2, "reading_base_seconds"},
+		{10.01, 2, "reading_base_seconds"},
+		{2, 0.99, "reading_factor"},
+		{2, 8.01, "reading_factor"},
+	} {
+		s := cloneSettings(a.settings)
+		s.Chatbox.ReadingBase, s.Chatbox.ReadingFactor = tc.base, tc.factor
+		body, err := json.Marshal(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := request(a, "PUT", "/api/settings", string(body))
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "chatbox."+tc.key) {
+			t.Fatalf("base %g, factor %g: HTTP %d %s", tc.base, tc.factor, w.Code, w.Body.String())
+		}
 	}
 }
 
