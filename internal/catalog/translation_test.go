@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestLanguages(t *testing.T) {
@@ -60,6 +61,18 @@ func TestLanguages(t *testing.T) {
 		model, _ := Lookup(translator.Artifact, "linux")
 		if !reflect.DeepEqual(model.Languages, languages.Targets) {
 			t.Fatal("model languages differ from targets")
+		}
+	}
+}
+
+func TestReadAloudRate(t *testing.T) {
+	for code, ms := range map[string]time.Duration{
+		"ja": 170, "ja-easy": 170, "zh-hans": 240, "zh-hant": 240,
+		"ko": 140, "ar": 80, "fa": 80, "ur": 80, "he": 60,
+		"en": 50, "auto": 50, "unknown": 50,
+	} {
+		if got, want := ReadAloudRate(code), ms*time.Millisecond; got != want {
+			t.Errorf("ReadAloudRate(%q) = %s, want %s", code, got, want)
 		}
 	}
 }
