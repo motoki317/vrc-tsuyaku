@@ -107,7 +107,6 @@
   "state.off": "オフ",
   "state.on": "オン",
   "state.queued": "待機中",
-  "state.ready": "準備完了",
   "state.reconnecting": "再接続中",
   "state.saved": "保存済み",
   "state.sending": "送信中",

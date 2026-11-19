@@ -4,7 +4,6 @@ import { settledSetting } from './setting.jsx';
 import { createEffect, createMemo, For } from 'solid-js';
 import { Icon } from './icon.jsx';
 import { DownloadGroups, DownloadRows } from './download-list.jsx';
-import { FlowControl } from './flow-control.jsx';
 import { flows, flowIcon, flowKey, formatBytes } from './downloads.js';
 import { swappedLanguages } from './languages.js';
 import { errorMessage, flowLabel } from './i18n.js';
@@ -41,59 +40,53 @@ function PlanRow({ app, downloads: d, flow }) {
   const options = codes => <For each={codes}>{code => <option value={code}>{app.languageName(code)}</option>}</For>;
   const label = () => flowLabel(app, flow);
   return (
-    <FlowControl app={app} downloads={d} flow={flow}>
-      {(button, failure) => (
-        <div class="plan-row" data-flow={flow}>
-          <div class="plan-head">
-            <Icon name={flowIcon[flow]} extra="flow-icon" />
-            <span class="row-label">{label()}</span>
-            {button}
-          </div>
-          <div class="chain" {...edit.events(() => ({ Spoken: spoken.value, Target: target.value }))}>
-            <select
-              class="select"
-              aria-describedby={errorId}
-              aria-label={app.t('label.spoken', { flow: label() })}
-              ref={[el => (spoken = el), selectValue(() => pair().Spoken, choices)]}
-            >
-              {options(choices().ja)}
-              <optgroup label={app.t('label.european')}>{options(choices().rest)}</optgroup>
-            </select>
-            <button
-              type="button"
-              class="icon-button swap"
-              aria-describedby={errorId}
-              aria-label={app.t('action.swapLanguages')}
-              disabled={!swap()}
-              onClick={() => {
-                const values = swap();
-                if (values) {
-                  edit.input(values);
-                  edit.settle();
-                }
-              }}
-            >
-              <Icon name="arrow-left-right" />
-            </button>
-            <select
-              class="select"
-              aria-describedby={errorId}
-              aria-label={app.t('label.target', { flow: label() })}
-              ref={[el => (target = el), selectValue(() => pair().Target, choices)]}
-            >
-              {options(choices().top)}
-              <hr />
-              {options(choices().others)}
-            </select>
-          </div>
-          {failure}
-          <p id={errorId} class="error-text" hidden={!edit.error()}>
-            {errorMessage(app.t, edit.error())}
-          </p>
-          <Recognizer app={app} flow={flow} recognizer={d.recognizer} />
-        </div>
-      )}
-    </FlowControl>
+    <div class="plan-row" data-flow={flow}>
+      <div class="plan-head">
+        <Icon name={flowIcon[flow]} extra="flow-icon" />
+        <span class="row-label">{label()}</span>
+      </div>
+      <div class="chain" {...edit.events(() => ({ Spoken: spoken.value, Target: target.value }))}>
+        <select
+          class="select"
+          aria-describedby={errorId}
+          aria-label={app.t('label.spoken', { flow: label() })}
+          ref={[el => (spoken = el), selectValue(() => pair().Spoken, choices)]}
+        >
+          {options(choices().ja)}
+          <optgroup label={app.t('label.european')}>{options(choices().rest)}</optgroup>
+        </select>
+        <button
+          type="button"
+          class="icon-button swap"
+          aria-describedby={errorId}
+          aria-label={app.t('action.swapLanguages')}
+          disabled={!swap()}
+          onClick={() => {
+            const values = swap();
+            if (values) {
+              edit.input(values);
+              edit.settle();
+            }
+          }}
+        >
+          <Icon name="arrow-left-right" />
+        </button>
+        <select
+          class="select"
+          aria-describedby={errorId}
+          aria-label={app.t('label.target', { flow: label() })}
+          ref={[el => (target = el), selectValue(() => pair().Target, choices)]}
+        >
+          {options(choices().top)}
+          <hr />
+          {options(choices().others)}
+        </select>
+      </div>
+      <p id={errorId} class="error-text" hidden={!edit.error()}>
+        {errorMessage(app.t, edit.error())}
+      </p>
+      <Recognizer app={app} flow={flow} recognizer={d.recognizer} />
+    </div>
   );
 }
 export function PlanRows({ app, downloads }) {
