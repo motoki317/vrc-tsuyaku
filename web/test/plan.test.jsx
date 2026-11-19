@@ -56,6 +56,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test.each([
+  ['setup', '#screen-setup'],
+  ['settings', '#sub-models'],
+])('%s language rows have only swap buttons and no download controls or errors', (screen, container) => {
+  app.setScreen(screen);
+  flush();
+  const rows = find(container + ' .plan-rows');
+  expect(rows.querySelector('.fc, .fc-error')).toBeNull();
+  const buttons = [...rows.querySelectorAll('button')];
+  expect(buttons).toHaveLength(2);
+  expect(buttons.every(button => button.matches('.swap'))).toBe(true);
+});
+
 test('a manual swap absorbs the pending input and an older answer leaves the next edit showing', async () => {
   const held = Promise.withResolvers();
   request.mockReturnValueOnce(held.promise);
@@ -168,10 +181,10 @@ test('downloads ask for each new license and return focus after cancellation or 
   request.mockImplementation(url => (url === '/api/state' ? response(state) : response({}, 202)));
   app.apply(state);
   flush();
-  const all = find('.download-all'),
-    self = find('.plan-row[data-flow=self] .fc');
+  const all = find('#screen-setup .download-all');
   const dialog = find('#license-dialog'),
     accept = find('#license-accept');
+  all.focus();
   all.click();
   await settle();
   expect(dialog.open).toBe(true);
@@ -186,14 +199,18 @@ test('downloads ask for each new license and return focus after cancellation or 
   expect(document.activeElement).toBe(all);
   expect(request).not.toHaveBeenCalled();
 
-  self.click();
+  all.click();
   await settle();
   expect(dialog.open).toBe(true);
   expect(find('#license-title').textContent).toBe('en-asr');
   accept.click();
   await settle();
+  expect(dialog.open).toBe(true);
+  expect(find('#license-title').textContent).toBe('ja-asr');
+  accept.click();
+  await settle();
   expect(dialog.open).toBe(false);
-  expect(document.activeElement).toBe(self);
+  expect(document.activeElement).toBe(all);
   expect(
     request.mock.calls
       .filter(([, options]) => options.method === 'POST')
@@ -202,7 +219,24 @@ test('downloads ask for each new license and return focus after cancellation or 
     ['/api/downloads/runtime', { acceptLicense: false }],
     ['/api/downloads/model', { acceptLicense: false }],
     ['/api/downloads/en-asr', { acceptLicense: true }],
+    ['/api/downloads/ja-asr', { acceptLicense: true }],
   ]);
+});
+
+test.each([
+  ['setup', '#next', '#screen-setup'],
+  ['settings', '#model-downloads-label', '#sub-models'],
+])('Download all on %s hands focus to %s when the downloads finish', (screen, destination, container) => {
+  app.setScreen(screen);
+  flush();
+  const all = find(container + ' .download-all');
+  all.focus();
+  const ready = fixture();
+  for (const item of Object.values(ready.artifacts)) item.state = 'installed';
+  app.apply(ready);
+  flush();
+  expect(all.hidden).toBe(true);
+  expect(document.activeElement).toBe(find(destination));
 });
 
 test.each(['setup', 'settings'])(
@@ -338,8 +372,7 @@ test.each([false, true])(
     app.apply(saved);
     app.setScreen('translation');
     flush();
-    const bar = find('#switchbar .fc[data-flow=self]'),
-      plan = find('.plan-row[data-flow=self] .fc');
+    const bar = find('#switchbar .fc[data-flow=self]');
     const other = find('#switchbar .fc[data-flow=world]');
     const post = Promise.withResolvers(),
       refresh = Promise.withResolvers();
@@ -349,22 +382,19 @@ test.each([false, true])(
     expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/flows/self/' + (enabled ? 'stop' : 'start')]);
     expect(bar.getAttribute('aria-checked')).toBe(String(!enabled));
     expect(bar.getAttribute('aria-disabled')).toBe('true');
-    expect(plan.dataset.kind).toBe('ready');
-    expect(plan.hasAttribute('aria-checked')).toBe(false);
     expect(other.getAttribute('aria-disabled')).toBeNull();
     const confirmed = structuredClone(saved);
     confirmed.settings.Flows.Self.Enabled = !enabled;
     app.apply(confirmed);
     flush();
-    expect(plan.dataset.kind).toBe('ready');
+    expect(bar.getAttribute('aria-checked')).toBe(String(!enabled));
     app.apply(saved);
     flush();
     expect(bar.getAttribute('aria-checked')).toBe(String(!enabled));
     post.resolve(response({ error: 'refused' }, 409));
     await settle();
     expect(bar.getAttribute('aria-checked')).toBe(String(enabled));
-    expect(plan.dataset.kind).toBe('ready');
-    expect(find('#fc-error-bar-self').textContent).toBe('refused');
+    expect(find('#fc-error-self').textContent).toBe('refused');
     refresh.resolve(response(saved));
     await settle();
   },
@@ -438,13 +468,18 @@ test('a nonempty log rings only the flow whose download this page started, until
   request.mockResolvedValueOnce(response({}, 202)).mockResolvedValueOnce(response(ready));
   const mine = find('#switchbar .fc[data-flow=self]'),
     theirs = find('#switchbar .fc[data-flow=world]');
-  await clickAt(find('.plan-row[data-flow=self] .fc'), 1000);
+  const download = find('#downloads-needed .download:has([data-flow=self]) button[data-action=download]');
+  download.click();
+  await settle();
+  expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/downloads/en-asr', '/api/state']);
+  app.setScreen('translation');
+  flush();
   expect(mine.classList.contains('next')).toBe(true);
   expect(theirs.classList.contains('next')).toBe(false);
   request.mockResolvedValueOnce(response({ error: 'refused' }, 409)).mockResolvedValueOnce(response(ready));
-  await clickAt(mine, 1499);
-  expect(request).toHaveBeenCalledTimes(2);
-  await clickAt(mine, 1500);
+  mine.click();
+  await settle();
+  expect(request.mock.calls[2][0]).toBe('/api/flows/self/start');
   expect(mine.dataset.kind).toBe('off');
   expect(mine.classList.contains('next')).toBe(false);
 });

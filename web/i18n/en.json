@@ -107,7 +107,6 @@
   "state.off": "Off",
   "state.on": "On",
   "state.queued": "Queued",
-  "state.ready": "Ready",
   "state.reconnecting": "Reconnecting",
   "state.saved": "Saved",
   "state.sending": "Sending",

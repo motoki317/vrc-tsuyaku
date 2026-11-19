@@ -83,7 +83,7 @@ test('the entry and rendered screens take their labels from the catalog and Abou
     expect(document.querySelector('.download[data-kind=failed] .error-text').textContent).toBe(
       '⟦error.code.download_http⟧',
     );
-    expect(document.querySelector('#fc-error-bar-self').textContent).toBe('⟦error.code.microphone_unavailable⟧');
+    expect(document.querySelector('#fc-error-self').textContent).toBe('⟦error.code.microphone_unavailable⟧');
     check(document.documentElement);
 
     const dialog = document.querySelector('#instance-dialog');
