@@ -61,6 +61,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+test('both tabs have explicit names without status marks', () => {
+  expect([...node('tabs').querySelectorAll('button')].map(tab => tab.getAttribute('aria-label'))).toEqual([
+    'Translation',
+    'Settings',
+  ]);
+});
+
 test.each(['en', 'ja'])('instance modal keeps rows, focus, and localized ages in %s', async locale => {
   saved = fixture();
   saved.settings.UI.Language = locale;

@@ -40,8 +40,10 @@ export function Frame({ app }) {
     exited = () => app.phase() === 'exited';
   const failed = () => Object.values(app.state.flows ?? {}).some(flow => flow.state === 'error');
   const update = () => app.state.update?.state === 'available';
-  const marked = (label, mark) =>
-    mark ? app.t('state.tabState', { tab: app.t(label), state: app.t(mark) }) : undefined;
+  const marked = (label, mark) => {
+    const text = app.t(label);
+    return mark ? app.t('state.tabState', { tab: text, state: app.t(mark) }) : text;
+  };
   createEffect(
     () => [app.language(), app.t('label.product')],
     ([lang, title]) => {

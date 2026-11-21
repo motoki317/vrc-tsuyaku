@@ -593,6 +593,11 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   .msg.self .meta { justify-content: flex-end; }
 }
 
+@media (max-width: 359px) {
+  /* With tab labels, the English top bar needs 331 px, or 343 px with the update dot. */
+  .tab > span:not(.update-dot) { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .saved { transition: none; }
   .spin, .fc[data-kind="starting"] .thumb .icon, .fc.next .track, .page-timer { animation: none; }
