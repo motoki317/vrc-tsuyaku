@@ -88,7 +88,7 @@ func TestParakeetCPUParity(t *testing.T) {
 	defer e.Close()
 	p := loadTestParakeet(t, e, bundle)
 	for i, ref := range refs {
-		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
+		tokens, _, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
 		if err != nil {
 			t.Fatalf("%s: %v", ref.ID, err)
 		}
@@ -131,7 +131,7 @@ func TestParakeetV3CPUParity(t *testing.T) {
 		if ref.Lang == "" || len(ref.Tokens) == 0 {
 			t.Fatalf("%s: reference must include language and token IDs", ref.ID)
 		}
-		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
+		tokens, _, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
 		if err != nil {
 			t.Fatalf("%s: %v", ref.ID, err)
 		}
@@ -183,7 +183,7 @@ func TestParakeetLifecycle(t *testing.T) {
 	}
 	audio := readTestWAV(t, wavDir, refs[0].ID)
 	before := slices.Clone(audio)
-	tokens, err := p.tokens(t.Context(), audio, nil)
+	tokens, _, err := p.tokens(t.Context(), audio, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

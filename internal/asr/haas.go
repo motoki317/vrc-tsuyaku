@@ -78,31 +78,31 @@ func (h *Haas) close() {
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
 func (h *Haas) Transcribe(ctx context.Context, audio []float32, words []string) (string, error) {
-	tokens, err := h.tokens(ctx, audio, words)
+	tokens, _, err := h.tokens(ctx, audio, words)
 	if err != nil {
 		return "", err
 	}
 	return h.vocab.decode(tokens)
 }
 
-func (h *Haas) tokens(ctx context.Context, audio []float32, words []string) ([]int, error) {
+func (h *Haas) tokens(ctx context.Context, audio []float32, words []string) ([]int, float64, error) {
 	h.engine.mu.RLock()
 	defer h.engine.mu.RUnlock()
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if err := h.engine.checkAudio(ctx, audio); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if h.encoder == nil {
-		return nil, fmt.Errorf("Haas model is released")
+		return nil, 0, fmt.Errorf("Haas model is released")
 	}
 	encoded, err := h.encode(ctx, audio)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	d, err := h.decoder(encoded)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer d.close()
 	return greedyTDT(ctx, len(encoded)/1024, tdtConfig{

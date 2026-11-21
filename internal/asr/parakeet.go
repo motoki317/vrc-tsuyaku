@@ -69,31 +69,31 @@ func (p *Parakeet) close() {
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
 func (p *Parakeet) Transcribe(ctx context.Context, audio []float32, words []string) (string, error) {
-	tokens, err := p.tokens(ctx, audio, words)
+	tokens, _, err := p.tokens(ctx, audio, words)
 	if err != nil {
 		return "", err
 	}
 	return p.vocab.decode(tokens)
 }
 
-func (p *Parakeet) tokens(ctx context.Context, audio []float32, words []string) ([]int, error) {
+func (p *Parakeet) tokens(ctx context.Context, audio []float32, words []string) ([]int, float64, error) {
 	p.engine.mu.RLock()
 	defer p.engine.mu.RUnlock()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if err := p.engine.checkAudio(ctx, audio); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if p.encoder == nil {
-		return nil, fmt.Errorf("Parakeet model is released")
+		return nil, 0, fmt.Errorf("Parakeet model is released")
 	}
 	encoded, err := p.encode(ctx, audio)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	d, err := p.decoder(encoded)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer d.close()
 	return greedyTDT(ctx, len(encoded)/1024, tdtConfig{

@@ -27,7 +27,7 @@ func (d *scriptedDecoder) Scores(frame int) ([]float32, error) {
 		d.t.Fatalf("frame = %d, want %d", frame, s.frame)
 	}
 	logits := make([]float32, 8) // Three tokens including blank, five durations.
-	logits[s.token], logits[3+s.duration] = 1, 1
+	logits[s.token], logits[3+s.duration] = float32(frame+1), 1
 	return logits, nil
 }
 
@@ -40,9 +40,13 @@ func TestGreedyTDT(t *testing.T) {
 	cfg := tdtConfig{blank: 2, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10}
 	t.Run("blanks durations and final emission", func(t *testing.T) {
 		d := &scriptedDecoder{t: t, scores: []scriptedScore{{0, 2, 0}, {1, 2, 2}, {3, 0, 0}, {3, 1, 1}, {4, 0, 4}}}
-		tokens, err := greedyTDT(t.Context(), 5, cfg, d)
+		tokens, confidence, err := greedyTDT(t.Context(), 5, cfg, d)
 		if err != nil || !slices.Equal(tokens, []int{0, 1, 0}) || !slices.Equal(tokens, d.accepted) || len(d.scores) != 0 {
 			t.Fatalf("tokens %v, accepted %v, remaining %v, error %v", tokens, d.accepted, d.scores, err)
+		}
+		want := -(2*math.Log(1+2*math.Exp(-4)) + math.Log(1+2*math.Exp(-5))) / 3
+		if math.Abs(confidence-want) > 1e-12 {
+			t.Fatalf("confidence = %g, want %g", confidence, want)
 		}
 	})
 	t.Run("ten symbols then advance", func(t *testing.T) {
@@ -51,19 +55,19 @@ func TestGreedyTDT(t *testing.T) {
 			d.scores = append(d.scores, scriptedScore{0, 0, 0})
 		}
 		d.scores = append(d.scores, scriptedScore{1, 2, 0})
-		tokens, err := greedyTDT(t.Context(), 2, cfg, d)
+		tokens, _, err := greedyTDT(t.Context(), 2, cfg, d)
 		if err != nil || len(tokens) != 10 || len(d.scores) != 0 {
 			t.Fatalf("tokens %v, remaining %v, error %v", tokens, d.scores, err)
 		}
 	})
 	t.Run("empty and cancelled", func(t *testing.T) {
-		d := &scriptedDecoder{t: t}
-		if tokens, err := greedyTDT(t.Context(), 0, cfg, d); err != nil || len(tokens) != 0 {
-			t.Fatalf("empty: %v, %v", tokens, err)
+		d := &scriptedDecoder{t: t, scores: []scriptedScore{{0, 2, 1}}}
+		if tokens, confidence, err := greedyTDT(t.Context(), 1, cfg, d); err != nil || len(tokens) != 0 || confidence != 0 {
+			t.Fatalf("empty: tokens %v, confidence %g, error %v", tokens, confidence, err)
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, err := greedyTDT(ctx, 1, cfg, d); !errors.Is(err, context.Canceled) {
+		if _, _, err := greedyTDT(ctx, 1, cfg, d); !errors.Is(err, context.Canceled) {
 			t.Fatalf("cancelled: %v", err)
 		}
 	})
