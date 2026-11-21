@@ -3,6 +3,7 @@ package asr
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"testing"
 )
@@ -59,7 +60,7 @@ func TestSpeculativeHints(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &replayDecoder{score: func(frame int, _ []int) ([]float32, int) { return tc.scores[frame], 1 }}
-			got, err := greedyTDT(t.Context(), len(tc.scores), tdtConfig{blank: 5, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile(tc.words)}, d)
+			got, _, err := greedyTDT(t.Context(), len(tc.scores), tdtConfig{blank: 5, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile(tc.words)}, d)
 			if err != nil || !slices.Equal(got, tc.want) || !slices.Equal(got, d.accepted) || d.restores != tc.rollbacks {
 				t.Fatalf("tokens %v state %v err %v rollbacks %d, want %v / %d", got, d.accepted, err, d.restores, tc.want, tc.rollbacks)
 			}
@@ -73,12 +74,50 @@ func TestBlankContinuationDuration(t *testing.T) {
 		t.Run(fmt.Sprint(duration), func(t *testing.T) {
 			d := &hintDecoder{t: t, steps: [][]float32{{0, 1, -9, -10}, {0, -9, -.5, 1}}, duration: duration, vocabulary: 4}
 			cfg := tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}
-			got, err := greedyTDT(t.Context(), max(1, 2*duration), cfg, d)
+			got, confidence, err := greedyTDT(t.Context(), max(1, 2*duration), cfg, d)
 			if err != nil || !slices.Equal(got, []int{1, 2}) || !slices.Equal(d.accepted, got) || !slices.Equal(d.frames, []int{0, duration}) {
 				t.Fatalf("tokens %v state %v frames %v err %v", got, d.accepted, d.frames, err)
 			}
+			if want := -math.Log(1 + math.Exp(-1) + math.Exp(-10) + math.Exp(-11)); math.Abs(confidence-want) > 1e-12 {
+				t.Fatalf("confidence = %g, want %g from the unbiased prefix", confidence, want)
+			}
 		})
 	}
+}
+
+func TestSpeculativeConfidence(t *testing.T) {
+	v := newHintVocabulary(vocabulary{"x", "a", "b", "c", "<blk>"}, false)
+	cfg := tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10}
+	t.Run("all tokens chosen by hint", func(t *testing.T) {
+		cfg := cfg
+		cfg.hints = v.compile([]string{"abc"})
+		scores := [][]float32{{0, -.5, -10, -10, -10}, {0, -10, -1, -10, -10}, {0, -10, -10, -1, -10}}
+		d := &replayDecoder{score: func(frame int, _ []int) ([]float32, int) { return scores[frame], 1 }}
+		got, confidence, err := greedyTDT(t.Context(), len(scores), cfg, d)
+		if err != nil || !slices.Equal(got, []int{1, 2, 3}) || confidence != 0 {
+			t.Fatalf("tokens %v, confidence %g, error %v", got, confidence, err)
+		}
+	})
+	t.Run("rollback discards a counted token", func(t *testing.T) {
+		scores := [][]float32{
+			{2, -10, -10, -10, -10},
+			{0, -.5, -10, -10, -10},
+			{-2, -10, 0, -10, -10},
+			{0, -10, -10, -10, -10},
+		}
+		score := func(frame int, _ []int) ([]float32, int) { return scores[frame], 1 }
+		want, wantConfidence, err := greedyTDT(t.Context(), len(scores), cfg, &replayDecoder{score: score})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := cfg
+		cfg.hints = v.compile([]string{"abc"})
+		d := &replayDecoder{score: score}
+		got, confidence, err := greedyTDT(t.Context(), len(scores), cfg, d)
+		if err != nil || d.restores != 1 || !slices.Equal(got, want) || confidence != wantConfidence {
+			t.Fatalf("tokens %v want %v, confidence %g want %g, rollbacks %d, error %v", got, want, confidence, wantConfidence, d.restores, err)
+		}
+	})
 }
 
 func TestRollbackRestoresSymbolLimit(t *testing.T) {
@@ -89,7 +128,7 @@ func TestRollbackRestoresSymbolLimit(t *testing.T) {
 		return []float32{-10, -10, -10, 1}, 0
 	}}
 	v := newHintVocabulary(vocabulary{"x", "a", "bc", "<blk>"}, false)
-	got, err := greedyTDT(t.Context(), 2, tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 2, hints: v.compile([]string{"abc"})}, d)
+	got, _, err := greedyTDT(t.Context(), 2, tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 2, hints: v.compile([]string{"abc"})}, d)
 	if err != nil || !slices.Equal(got, []int{0, 0}) || d.restores != 2 {
 		t.Fatalf("tokens %v, rollbacks %d, err %v", got, d.restores, err)
 	}
@@ -111,7 +150,7 @@ func TestRollbackTakesOneUnbiasedToken(t *testing.T) {
 		return []float32{0, -.5, -9, -10}, 0
 	}}
 	v := newHintVocabulary(vocabulary{"x", "a", "bc", "<blk>"}, false)
-	got, err := greedyTDT(t.Context(), 2, tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 3, hints: v.compile([]string{"abc"})}, d)
+	got, _, err := greedyTDT(t.Context(), 2, tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 3, hints: v.compile([]string{"abc"})}, d)
 	wantSteps := []decodeStep{{0, 0}, {0, 1}, {0, 0}, {0, 1}, {0, 2}, {1, 3}}
 	if err != nil || !slices.Equal(got, []int{0, 1, 2}) || d.restores != 1 || !slices.Equal(steps, wantSteps) {
 		t.Fatalf("tokens %v, steps %v, restores %d, err %v", got, steps, d.restores, err)
@@ -121,7 +160,7 @@ func TestRollbackTakesOneUnbiasedToken(t *testing.T) {
 func TestRollbackCap(t *testing.T) {
 	d := &replayDecoder{score: func(_ int, _ []int) ([]float32, int) { return []float32{0, -.5, -9, -10}, 1 }}
 	v := newHintVocabulary(vocabulary{"x", "a", "bc", "<blk>"}, false)
-	got, err := greedyTDT(t.Context(), 100, tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}, d)
+	got, _, err := greedyTDT(t.Context(), 100, tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}, d)
 	if err != nil || !slices.Equal(got, make([]int, 100)) || d.restores != maxHintRollbacks {
 		t.Fatalf("tokens %v restores %d err %v", got, d.restores, err)
 	}
@@ -140,12 +179,12 @@ func TestNoCompletedHintPreservesUnbiasedOutput(t *testing.T) {
 				return logits, int(hash % 3)
 			}
 			cfg := tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 3}
-			want, err := greedyTDT(t.Context(), 16, cfg, &replayDecoder{score: score})
+			want, _, err := greedyTDT(t.Context(), 16, cfg, &replayDecoder{score: score})
 			if err != nil {
 				t.Fatal(err)
 			}
 			cfg.hints = v.compile([]string{"abc"})
-			got, err := greedyTDT(t.Context(), 16, cfg, &replayDecoder{score: score})
+			got, _, err := greedyTDT(t.Context(), 16, cfg, &replayDecoder{score: score})
 			if err != nil || !slices.Equal(got, want) {
 				t.Fatalf("tokens %v want %v, err %v", got, want, err)
 			}
@@ -163,7 +202,7 @@ func TestCheckpointErrors(t *testing.T) {
 		} else {
 			d.checkpointErr = failure
 		}
-		_, err := greedyTDT(t.Context(), 1, tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}, d)
+		_, _, err := greedyTDT(t.Context(), 1, tdtConfig{blank: 3, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}, d)
 		if !errors.Is(err, failure) {
 			t.Fatalf("restore %v: %v", restore, err)
 		}

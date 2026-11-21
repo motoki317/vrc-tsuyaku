@@ -116,7 +116,7 @@ func TestHaasCPUParity(t *testing.T) {
 			var errors, characters int
 			for i, ref := range refs {
 				audio := readTestWAV(t, wavDir, ref.ID)
-				tokens, err := h.tokens(t.Context(), audio, nil)
+				tokens, _, err := h.tokens(t.Context(), audio, nil)
 				if err != nil {
 					t.Fatalf("%s: %v", ref.ID, err)
 				}

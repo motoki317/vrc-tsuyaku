@@ -88,7 +88,7 @@ func TestParakeetCPUParity(t *testing.T) {
 	defer e.Close()
 	p := loadTestParakeet(t, e, bundle)
 	for i, ref := range refs {
-		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
+		tokens, _, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
 		if err != nil {
 			t.Fatalf("%s: %v", ref.ID, err)
 		}
@@ -131,7 +131,7 @@ func TestParakeetV3CPUParity(t *testing.T) {
 		if ref.Lang == "" || len(ref.Tokens) == 0 {
 			t.Fatalf("%s: reference must include language and token IDs", ref.ID)
 		}
-		tokens, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
+		tokens, _, err := p.tokens(t.Context(), readTestWAV(t, wavDir, ref.ID), nil)
 		if err != nil {
 			t.Fatalf("%s: %v", ref.ID, err)
 		}
@@ -151,6 +151,34 @@ func TestParakeetV3CPUParity(t *testing.T) {
 		if !seen[language] {
 			t.Fatalf("reference has no %s clip", language)
 		}
+	}
+}
+
+func TestParakeetConfidenceCut(t *testing.T) {
+	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
+	for _, tc := range []struct {
+		name, env string
+		model     string
+		samples   int
+		hz        []float64
+	}{
+		{"v2", "VRC_TSUYAKU_TEST_PARAKEET_BUNDLE", catalog.Parakeet, 9600, []float64{440}},
+		{"v3", "VRC_TSUYAKU_TEST_PARAKEET_V3_BUNDLE", catalog.ParakeetV3, 16000, []float64{50, 150}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bundle := requireEnv(t, tc.env)
+			e, err := NewEngine(lib)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer e.Close()
+			p, release, err := e.LoadParakeet(catalog.ParakeetBundle(tc.model, bundle))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			checkConfidenceCut(t, p, testTone(tc.samples, tc.hz...), parakeetMinConfidence)
+		})
 	}
 }
 
@@ -183,7 +211,7 @@ func TestParakeetLifecycle(t *testing.T) {
 	}
 	audio := readTestWAV(t, wavDir, refs[0].ID)
 	before := slices.Clone(audio)
-	tokens, err := p.tokens(t.Context(), audio, nil)
+	tokens, _, err := p.tokens(t.Context(), audio, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

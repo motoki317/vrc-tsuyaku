@@ -115,6 +115,16 @@ It copies no upstream code.
 
 [License text for NVIDIA/NeMo and NVIDIA-NeMo/Speech](cmd/vrc-tsuyaku/notices/other/NeMo@2.7.3/LICENSE).
 
+## OpenAI Whisper
+
+Source: [OpenAI Whisper](https://github.com/openai/whisper/tree/86098128c0b4f24f0e2aa2994de830614b474227), commit `86098128c0b4f24f0e2aa2994de830614b474227`. License: MIT.
+
+`internal/asr/tdt.go` judges a phrase by the mean log-probability of its tokens against a threshold, as `avg_logprob` and `logprob_threshold` do in Whisper's `whisper/transcribe.py`.
+Whisper decodes a segment under its threshold again; VRC Tsuyaku returns no text for the phrase.
+VRC Tsuyaku copies no Whisper source code.
+
+[License text](cmd/vrc-tsuyaku/notices/other/whisper@86098128c0b4f24f0e2aa2994de830614b474227/LICENSE).
+
 ## flash-linear-attention
 
 Source: [fla-org/flash-linear-attention](https://github.com/fla-org/flash-linear-attention), version 0.5.2. License: MIT.

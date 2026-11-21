@@ -57,7 +57,7 @@ func TestHintGreedyTDT(t *testing.T) {
 			for i := range tc.steps {
 				before[i] = slices.Clone(tc.steps[i])
 			}
-			tokens, err := greedyTDT(t.Context(), len(tc.steps), tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile(tc.words)}, d)
+			tokens, _, err := greedyTDT(t.Context(), len(tc.steps), tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile(tc.words)}, d)
 			if err != nil || !slices.Equal(tokens, tc.want) || !slices.Equal(tokens, d.accepted) {
 				t.Fatalf("tokens %v accepted %v error %v, want %v", tokens, d.accepted, err, tc.want)
 			}
@@ -70,13 +70,13 @@ func TestHintGreedyTDT(t *testing.T) {
 	for _, words := range [][]string{nil, {}} {
 		cfg := tdtConfig{blank: 2, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile(words)}
 		d := &scriptedDecoder{t: t, scores: []scriptedScore{{0, 2, 0}, {1, 0, 0}, {1, 1, 2}, {3, 0, 1}}}
-		got, err := greedyTDT(t.Context(), 4, cfg, d)
+		got, _, err := greedyTDT(t.Context(), 4, cfg, d)
 		if err != nil || !slices.Equal(got, []int{0, 1, 0}) {
 			t.Fatalf("no words: %v %v", got, err)
 		}
 	}
 	d := &hintDecoder{t: t, steps: [][]float32{{0, -.5, -9, -9, -10}, {0, -9, -1, -9, -10}}, duration: 2, vocabulary: len(vocab)}
-	got, err := greedyTDT(t.Context(), 4, tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}, d)
+	got, _, err := greedyTDT(t.Context(), 4, tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{"abc"})}, d)
 	if err != nil || !slices.Equal(got, []int{1, 2}) || !slices.Equal(d.frames, []int{0, 2}) {
 		t.Fatalf("duration changed: %v frames %v err %v", got, d.frames, err)
 	}
@@ -126,7 +126,7 @@ func TestHintMinimumLength(t *testing.T) {
 	} {
 		t.Run(tc.word, func(t *testing.T) {
 			d := &hintDecoder{t: t, steps: steps, duration: 1, vocabulary: 5}
-			got, err := greedyTDT(t.Context(), len(steps), tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{tc.word})}, d)
+			got, _, err := greedyTDT(t.Context(), len(steps), tdtConfig{blank: 4, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile([]string{tc.word})}, d)
 			if err != nil || !slices.Equal(got, tc.want) || !slices.Equal(got, d.accepted) {
 				t.Fatalf("tokens %v state %v err %v, want %v", got, d.accepted, err, tc.want)
 			}
@@ -234,7 +234,7 @@ func TestHintConcurrentCompilation(t *testing.T) {
 			tc := cases[i%len(cases)]
 			cfg := tdtConfig{blank: 5, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: v.compile(tc.words)}
 			d := &hintDecoder{t: t, steps: steps, duration: 1, vocabulary: 6}
-			got, err := greedyTDT(t.Context(), len(steps), cfg, d)
+			got, _, err := greedyTDT(t.Context(), len(steps), cfg, d)
 			if err != nil || !slices.Equal(got, tc.want) || !slices.Equal(d.accepted, tc.want) {
 				t.Errorf("words %v: tokens %v state %v err %v, want %v", tc.words, got, d.accepted, err, tc.want)
 			}

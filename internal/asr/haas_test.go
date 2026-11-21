@@ -48,6 +48,18 @@ func TestClosedEngine(t *testing.T) {
 	}
 }
 
+func TestHaasConfidenceCut(t *testing.T) {
+	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
+	bundle := requireEnv(t, "VRC_TSUYAKU_TEST_HAAS_BUNDLE")
+	e, err := NewEngine(lib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(e.Close)
+	h := loadTestHaas(t, e, bundle, true)
+	checkConfidenceCut(t, h, testTone(9600, 440), haasMinConfidence)
+}
+
 func TestHaasLifecycle(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	bundle := requireEnv(t, "VRC_TSUYAKU_TEST_HAAS_BUNDLE")

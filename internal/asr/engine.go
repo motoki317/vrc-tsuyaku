@@ -15,6 +15,9 @@ import (
 // Transcribe rejects empty audio and non-finite samples. Calls can run
 // concurrently. No state carries over between calls.
 // Transcribe's words parameter lists spellings to favour during recognition.
+// Transcribe returns an empty string and no error when the decoder wrote no
+// tokens, or wrote them with a mean log-probability under the recognizer's
+// threshold (see README.md).
 // Context cancellation takes effect between inference calls, so an active ONNX
 // call can delay it.
 type Recognizer interface {
