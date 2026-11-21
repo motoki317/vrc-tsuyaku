@@ -8,17 +8,28 @@ import (
 	"runtime"
 )
 
-func (a *app) openTarget(target string) error {
+type openTargetName string
+
+const (
+	// openData selects the data directory.
+	openData openTargetName = "data"
+	// openSettings selects settings.yaml in the data directory.
+	openSettings openTargetName = "settings"
+)
+
+var errUnknownOpenTarget = errors.New("unknown open target")
+
+func (a *app) openTarget(target openTargetName) error {
+	if target != openData && target != openSettings {
+		return errUnknownOpenTarget
+	}
 	a.operations.Lock()
 	defer a.operations.Unlock()
-	if target != "data" && target != "settings" {
-		return errors.New("unknown open target")
-	}
 	if err := os.MkdirAll(a.dir, 0o755); err != nil {
 		return err
 	}
 	path := a.dir
-	if target == "settings" {
+	if target == openSettings {
 		root, err := os.OpenRoot(a.dir)
 		if err != nil {
 			return err
