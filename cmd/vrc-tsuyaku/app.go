@@ -684,7 +684,7 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 		return recognizer.Transcribe(ctx, samples, glossary.Words(settings.Terms))
 	}
 	stages.Translate = func(ctx context.Context, phrase string, settings pipeline.PhraseSettings) (string, error) {
-		return a.translator.Translate(ctx, settings.SourceLang, settings.TargetLang, phrase, settings.Terms)
+		return a.translator.Translate(ctx, settings.SourceLang, settings.TargetLang, phrase, settings.Terms, nil)
 	}
 	return stages, nil
 }
