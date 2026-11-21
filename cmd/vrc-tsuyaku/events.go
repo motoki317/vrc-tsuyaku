@@ -75,3 +75,11 @@ func (b *events) after(id uint64) ([]event, <-chan struct{}) {
 	}
 	return result, b.changed
 }
+
+func (a *app) emit(flow config.Flow, kind pipeline.Kind, text string) {
+	a.events.publish(flow, pipeline.Event{Kind: kind, Text: text})
+}
+
+func (a *app) emitError(flow config.Flow, err error) {
+	a.events.publish(flow, pipeline.Event{Kind: pipeline.KindError, Code: errcode.Of(err), Text: withDataDirHint(err).Error()})
+}
