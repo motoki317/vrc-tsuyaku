@@ -46,8 +46,8 @@ func record(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	if flags.NArg() != 1 {
 		return errors.New("usage: record -list | record [-seconds N] [-microphone ID | -app NAME] out.wav")
 	}
-	// ParseDuration rejects NaN, infinity, and overflow before conversion to
-	// time.Duration; a direct float-to-integer conversion would not reject them.
+	// ParseDuration rejects NaN, infinity and overflow. Direct conversion to
+	// time.Duration accepts invalid input.
 	duration, err := time.ParseDuration(strconv.FormatFloat(*seconds, 'f', -1, 64) + "s")
 	if err != nil {
 		return fmt.Errorf("invalid -seconds: %w", err)

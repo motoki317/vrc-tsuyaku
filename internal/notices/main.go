@@ -1,3 +1,5 @@
+// Command notices prepares the Go dependency and standard library licenses for
+// embedding in the app.
 package main
 
 import (

@@ -73,8 +73,8 @@ func (s *SileroStream) Reset() {
 }
 
 // Probability consumes exactly 512 finite samples of 16 kHz mono audio.
-// Errors leave state and preceding audio samples unchanged. Cancellation is
-// checked before inference. Probability fails after Engine.Close.
+// Errors leave state and preceding audio samples unchanged. Probability checks
+// for cancellation before inference. It fails after Engine.Close.
 func (s *SileroStream) Probability(ctx context.Context, audio []float32) (float32, error) {
 	e := s.model.engine
 	e.mu.RLock()

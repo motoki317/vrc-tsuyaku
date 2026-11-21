@@ -79,7 +79,7 @@ func loadTestParakeet(t *testing.T, e *Engine, bundle string) *Parakeet {
 //   - VRC_TSUYAKU_TEST_PARAKEET_REF names a nonempty JSONL reference. Each row has a unique filename stem id,
 //     expected transcript hyp and nonempty human transcript ref.
 //
-// Use the feature graph from the pinned onnx-asr wheel. The older graph in
+// Use the feature graph from the pinned onnx-asr wheel because the graph in
 // the v2 conversion repository produces different features.
 // Generate hyp outside this repository with onnx-asr 0.12.0. Set so to ONNX
 // Runtime session options with four intra-op threads and one inter-op thread.

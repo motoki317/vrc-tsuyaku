@@ -19,7 +19,7 @@ export function createClient() {
   const [unsaved, setUnsaved] = createSignal([]);
   const settings = createMemo(() => {
     if (!unsaved().length) return state.settings;
-    // deep subscribes to nested pushes.
+    // Track nested settings changes so pending edits stay based on the latest server values.
     const shown = structuredClone(deep(state.settings));
     for (const change of unsaved()) change(shown);
     return shown;
@@ -105,7 +105,7 @@ export function createClient() {
             if (!queued || lifetime.signal.aborted) throw e;
             continue;
           }
-          // A successful write owns a newer snapshot than this GET.
+          // A delayed GET must not roll back a snapshot the page applied while it waited.
           if (revision === before) apply(next);
           else queued = true;
         } while (queued && !lifetime.signal.aborted);
@@ -121,7 +121,7 @@ export function createClient() {
     const accepted = await (await api(path, options)).json();
     if (before === revision) apply(accepted);
     else {
-      // A newer push may already include the write and changes elsewhere.
+      // Refresh because another snapshot may already include this write and unrelated changes.
       try {
         await refresh();
       } catch {
@@ -155,7 +155,7 @@ export function createClient() {
     const discard = () => setUnsaved(list => list.filter(item => item !== change));
     async function put() {
       if (!unsaved().includes(change)) return;
-      // The editor may already have repaired the file while Replace was waiting.
+      // A queued Replace must preserve settings.yaml if an external edit repairs it before the save.
       if (overwrite && !state.settingsError) return discard();
       if (state.settingsError && !overwrite) throw Object.assign(new Error(t('error.notSaved')), { status: 409 });
       const next = structuredClone(snapshot(state.settings));

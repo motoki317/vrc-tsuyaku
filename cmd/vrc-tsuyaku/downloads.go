@@ -181,7 +181,7 @@ func (a *app) startDownload(id string, accept bool) error {
 	return nil
 }
 
-// Callers hold operations to serialize retries with stop and settings changes.
+// Callers must hold operations so retries cannot overlap stop or settings changes.
 func (a *app) startWaitingFlows() {
 	a.reloadSettingsLocked()
 	a.mu.Lock()

@@ -11,7 +11,7 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-// latestReleaseURL points to upstream even when the app was built from a fork.
+// latestReleaseURL keeps forks on the upstream update feed.
 var latestReleaseURL = "https://api.github.com/repos/" + strings.TrimPrefix(repository, "https://github.com/") + "/releases/latest"
 
 // updateCheckTimeout bounds how long GitHub can leave the update state unresolved.

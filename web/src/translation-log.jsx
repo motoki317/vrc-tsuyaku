@@ -100,7 +100,7 @@ export function TranslationLog({ app }) {
   function scroll() {
     if (!viewport.clientHeight) return;
     const top = viewport.scrollTop;
-    // Layout can move the bottom away. Only the player's move up stops following.
+    // New content can move the bottom away without a scroll up. Keep following in that case.
     if (viewport.scrollHeight - top - viewport.clientHeight < 40) {
       if (log.unread()) bottom();
       else log.follow(true);

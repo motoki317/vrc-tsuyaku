@@ -16,7 +16,7 @@ import (
 )
 
 // The catalogs omit hint and description categories. instance.description is the
-// exception: the waiting modal must explain why the page is blocked.
+// exception. The waiting modal must explain why the app is waiting.
 // A string that a usability test justifies goes in "note", with a "//note.NAME" key that names the finding.
 var stringBudgets = map[string]int{
 	"label":                40,

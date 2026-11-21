@@ -31,7 +31,7 @@ func (v vocabulary) decodeConfident(tokens []int, confidence, threshold float64)
 // A decoder owns one phrase's prediction state. Scores computes candidate token
 // and duration scores. Accept commits a token. A checkpoint restore replaces the state.
 // The Scores slice remains valid until the next Scores or Accept call.
-// greedyTDT calls Accept to commit every nonblank token.
+// While decoding, call Accept only for emitted nonblank tokens.
 type tdtDecoder interface {
 	Scores(frame int) ([]float32, error)
 	Accept(token int) error

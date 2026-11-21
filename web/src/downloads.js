@@ -83,7 +83,7 @@ export function createDownloads(app) {
           setRinging(r => {
             r[flow] = false;
           });
-        // A completed download invites a start only if this page requested it for this flow.
+        // Ring the flow switch only for downloads this page requested for the flow.
         else if (v.ids.some(id => awaited[flow].has(id)))
           setRinging(r => {
             r[flow] = true;

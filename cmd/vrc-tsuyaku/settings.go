@@ -53,7 +53,7 @@ func (a *app) statSettings() settingsFileState {
 	return settingsFileState{modified: info.ModTime(), size: info.Size()}
 }
 
-// Callers hold operations so a poll cannot mistake an app write for an external edit.
+// Callers must hold operations so a poll cannot mistake an app write for an external edit.
 func (a *app) writeSettings(s config.Settings) error {
 	if err := config.Save(a.dir, s); err != nil {
 		return err

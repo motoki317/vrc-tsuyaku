@@ -87,7 +87,7 @@ class GatedVocabularyTests(unittest.TestCase):
 
         VRC_TSUYAKU_TEST_HAAS_TOKENIZER names tokenizer.model from export_onnx.py.
         VRC_TSUYAKU_TEST_HAAS_MANIFEST names a UTF-8 JSONL file with at least
-        20 rows, each with a text string. These inputs alone suffice.
+        20 rows, each with a text string. The test needs no audio or ONNX files.
 
         Run uv run --locked python -m unittest discover -v from tools/haas-export/.
         """

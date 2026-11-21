@@ -61,7 +61,7 @@ func newQueue(conn io.WriteCloser) *Queue {
 // Send writes one rendered page, at least 1.5 seconds after the previous Send's write attempt finished.
 // Concurrent calls cannot overlap writes.
 // Cancellation stops a pending page, including while waiting behind another Send.
-// Cancellation cannot interrupt an active UDP write, but Close can. Errors are not retried.
+// Cancellation cannot interrupt an active UDP write, but Close can. Send leaves retries to the caller.
 // A successful UDP write confirms only that the OS took the packet.
 func (q *Queue) Send(ctx context.Context, page string) (err error) {
 	defer func() {

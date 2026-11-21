@@ -38,8 +38,8 @@ func launch(path string, args []string) (_ *child, err error) {
 		return nil, err
 	}
 	defer attrs.Delete()
-	// Assign at creation: a crash between CreateProcess and AssignProcessToJobObject
-	// would otherwise leave an orphan. This attribute is available on Windows 10+.
+	// Assign the child to its job at creation to avoid orphaning it if the app
+	// crashes before assignment. Windows 10 and later support this attribute.
 	// https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute
 	const jobList = 0x0002000d // PROC_THREAD_ATTRIBUTE_JOB_LIST
 	if err := attrs.Update(jobList, unsafe.Pointer(&job), unsafe.Sizeof(job)); err != nil {

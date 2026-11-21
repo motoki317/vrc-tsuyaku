@@ -1,6 +1,4 @@
-/* The page is dark only. Layers step up from the page (bg) to cards, rows and dialogs (surface), then to chips and
-   selected items (surface-2). A raised element shows its edge with a lighter fill and a 1 px line, because a
-   shadow does not show on a dark page. */
+/* Lighter fills distinguish raised controls from their containers where shadows blend into the dark background. */
 :root {
   color-scheme: dark;
   --font: system-ui, "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
@@ -20,7 +18,7 @@
   --warning: #eeac45;
   --focus: #8cb4ff;
   --link: #8cb4ff;
-  /* The filled part of the Download all bar: 3:1 against the unfilled surface, with the label at 4.5:1 on both. */
+  /* The fill needs 3:1 contrast against the unfilled track. The label needs 4.5:1 contrast against both. */
   --progress: #676b72;
   /* VRChat's chatbox is dark and translucent, so a light line marks its edge on the dark page. */
   --chatbox: rgba(0, 0, 0, 0.6);
@@ -33,7 +31,7 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  /* Japanese text breaks between phrases. */
+  /* Keep Japanese phrases intact at line breaks. */
   word-break: auto-phrase;
   min-height: 100dvh;
   display: flex;
@@ -67,7 +65,6 @@ a { color: var(--link); }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Buttons */
 .button {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 40px; padding: 8px 18px; border-radius: 20px;
@@ -90,7 +87,6 @@ a { color: var(--link); }
 .error-text code { display: block; margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .value { font-variant-numeric: tabular-nums; }
 
-/* Top bar */
 .topbar { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
 .topbar-inner { display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 0 16px; }
 .brand { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1em; font-weight: 700; white-space: nowrap; }
@@ -125,7 +121,6 @@ a { color: var(--link); }
   content: ""; position: absolute; left: 13px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--fg);
 }
 
-/* Connection bar */
 .connection {
   display: flex; align-items: center; gap: 8px; padding: 10px 16px;
   background: var(--surface-2); border-bottom: 1px solid var(--line); font-weight: 600;
@@ -134,19 +129,16 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 main[inert], .topbar [inert] { opacity: 0.5; }
 .screen { flex: 1; min-height: 0; }
 
-/* Exited */
 .exited { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 32px 16px; text-align: center; }
 .exited h2 { margin: 0; font-size: 1.25em; }
 .exited h2:focus { outline: none; }
 .exited p { margin: 0; }
 
-/* Setup */
 .setup-column { max-width: 560px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 24px; }
 .setup-next { display: flex; justify-content: flex-end; }
 
-/* Language plan */
 .plan { display: flex; flex-direction: column; gap: 12px; }
-/* The flow rows and Download all move between Setup and Settings. Neither slot draws a box. */
+/* Share the controls between Setup and Settings without introducing a layout box for the slot. */
 .plan-slot, .plan-foot { display: contents; }
 .plan-rows { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
 .plan-row { padding: 14px 16px; container-type: inline-size; }
@@ -190,7 +182,6 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .plan-downloads .chevron { transform: rotate(-90deg); transition: transform 0.15s; }
 .plan-downloads[open] .chevron { transform: none; }
 
-/* Flow control */
 .fc {
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-width: 52px; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--fg);
@@ -232,7 +223,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .fc.checked[data-kind="error"] .thumb { color: var(--error); }
 .fc.checked .thumb .icon { display: block; }
 .fc[data-kind="starting"] .thumb .icon { animation: spin 1s linear infinite; }
-/* Rings sit 2 px outside the track. The gap takes the color of the card behind the switch. */
+/* The card-colored gap distinguishes the error and next-action rings from the switch track. */
 .fc[data-kind="error"] .track { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--error); }
 .fc[data-flow="self"] { --next: var(--self); }
 .fc[data-flow="world"] { --next: var(--fg); }
@@ -246,14 +237,11 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .fc-error > .icon { width: 16px; height: 16px; margin-top: 0.1em; }
 .fc-error > .button { grid-column: 2; justify-self: start; margin-top: 4px; color: var(--fg); }
 
-/* Download rows */
-/* Rows share the list's columns, so sizes and flow icons line up. */
-/* A list of rows is a card on the page. */
 .download-list, .license-list { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .download-list { list-style: none; margin: 0; padding: 4px 12px; }
 .download-list, .download-groups { display: grid; grid-template-columns: minmax(24px, auto) minmax(0, 1fr) auto auto minmax(36px, auto); column-gap: 12px; }
-/* Settings splits its downloads into groups that share one set of columns. The lists' padding and border
-   take room from the edge columns, so those grow with their content. */
+/* Share columns across groups so their file sizes and flow icons line up.
+   List padding and borders take space from the outer columns, so those grow with their content. */
 .download-group, .download-groups .download-list { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
 .download-group { margin-top: 20px; }
 .download-group > .field-label { grid-column: 1 / -1; }
@@ -263,7 +251,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   align-items: center; padding: 8px 4px; border-top: 1px solid var(--line);
 }
 .download:first-child { border-top: 0; }
-/* A row without an action keeps the action's height, so rows keep one rhythm. */
+/* Reserve the button's height so rows do not jump when an action appears or disappears. */
 .download:not(.download-head) { grid-template-rows: minmax(36px, auto); }
 .download-head { padding-top: 0; padding-bottom: 4px; }
 .used-by { grid-area: flows; justify-self: center; color: var(--muted); font-size: 0.8em; font-weight: 600; white-space: nowrap; }
@@ -297,15 +285,13 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   .download { grid-template-areas: "lead name flows act" ". size size size" ". prog prog prog" ". err err err"; }
   .download .size { justify-self: start; font-size: 0.9em; }
 }
-/* The license dialog's rows have no action, so they fit one line at any width. */
-/* The dialog is the card that holds them. */
+/* The license dialog omits the action column, leaving room for file sizes and flow icons beside the names. */
 .license-downloads { grid-template-columns: 24px minmax(0, 1fr) auto auto; margin-top: 4px; padding: 0; background: none; border: 0; border-radius: 0; }
 .license-downloads .download {
   grid-template-columns: subgrid; grid-template-areas: "lead name size flows" ". prog prog prog" ". err err err";
 }
 .license-downloads .download .size { justify-self: end; font-size: inherit; }
 
-/* Translation */
 .translation { position: relative; display: flex; flex-direction: column; }
 /* The log positions the bubbles' hidden text, so that text scrolls with the log and never makes the page taller. */
 .log { position: relative; flex: 1; min-height: 0; overflow-y: auto; }
@@ -328,11 +314,10 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .line { margin: 0; white-space: pre-wrap; }
 .line.secondary { margin-top: 6px; padding-top: 6px; border-top: 1px solid currentColor; border-top-color: color-mix(in srgb, currentColor 25%, transparent); font-size: 0.9em; }
 .meta { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--muted); font-size: 0.8em; white-space: nowrap; padding-bottom: 2px; font-variant-numeric: tabular-nums; }
-/* Middle dots separate the parts of a bubble's meta and of About's version line. A hidden part hides its dot too.
-   Screen readers skip the dots. */
+/* Attach each separator to its field so they hide together. The empty alternative text keeps screen readers from reading the dot. */
 .meta > * + *::before, .about-version > * + *::before { content: "·"; content: "·" / ""; margin-right: 6px; color: var(--muted); }
 .delivery { display: inline-flex; align-items: center; gap: 3px; }
-/* The delivery's own 3 px gap follows its dot. */
+/* The delivery gap adds 3 px after the dot. Use 3 px of margin to match the other separators' 6 px. */
 .delivery::before { margin-right: 3px; }
 .delivery .icon { width: 14px; height: 14px; }
 .delivery[data-status="failed"] { color: var(--error); }
@@ -365,13 +350,12 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   border: 1px solid var(--outline); background: var(--surface-2); font-weight: 600;
 }
 
-/* Switch bar */
 .switchbar { flex: none; border-top: 1px solid var(--line); }
 .switchbar-inner { max-width: 852px; margin: 0 auto; padding: 10px 16px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 /* Each side gets half, so one side's error line never pushes the other card off the screen. */
 .card-wrap { flex: 1 1 0; min-width: 0; }
 .card-wrap[data-flow="self"] { text-align: right; }
-/* The switches are the page's main controls, so the cards are large: 64 px tall, a 16 px label and a 24 px icon. */
+/* Give the flow controls more space than other page controls because they are the primary actions. */
 .card {
   display: inline-flex; align-items: center; gap: 12px; min-height: 64px; max-width: 100%; padding: 8px 12px 8px 16px;
   border: 1px solid var(--line); border-radius: 32px; background: var(--surface); text-align: left;
@@ -380,7 +364,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .card-text { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
 /* Just above 520 px, a card has less room than "Others' voices" needs, so the label wraps between its words. */
 .card-label { font-size: 16px; font-weight: 700; line-height: 1.25; }
-/* The chip wraps after its arrow first. A name too long for one line wraps too, so no name is cut off. */
+/* Keep the arrow with the source language when the chip wraps. Allow long names to wrap within each part so the full name stays visible. */
 .card .chip { flex-wrap: wrap; column-gap: 4px; max-width: 100%; min-height: 28px; padding: 2px 8px; white-space: normal; text-align: left; }
 .chip-part { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .chip-part > span { overflow-wrap: anywhere; }
@@ -391,12 +375,10 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .chip:hover { background: color-mix(in srgb, var(--fg) 12%, var(--surface-2)); }
 .chip[aria-disabled="true"] { opacity: 0.45; cursor: default; }
 
-/* Settings */
 .settings {
   display: grid; grid-template-columns: minmax(220px, max-content) minmax(0, 640px); grid-template-rows: auto 1fr;
   grid-template-areas: "rail sub" "foot sub"; column-gap: 32px; justify-content: center; padding: 24px 16px 32px;
 }
-/* The rail and its foot form one card, split by the foot's top line. */
 .rail {
   grid-area: rail; display: flex; flex-direction: column; gap: 2px; padding: 8px 8px 12px;
   background: var(--surface); border: 1px solid var(--line); border-bottom: 0; border-radius: 16px 16px 0 0;
@@ -413,8 +395,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 }
 .rail-item:hover { background: var(--surface-2); }
 .rail-item[aria-current="page"] { background: var(--surface-2); font-weight: 700; }
-/* Each label also lays out an invisible bold copy of its text, so the rail keeps its width whichever item is
-   current. */
+/* Reserve the bold label width so selecting a different section does not resize the rail. */
 .rail [data-label] { display: inline-grid; }
 .rail [data-label]::after { content: attr(data-label); height: 0; visibility: hidden; font-weight: 700; }
 .rail-item .update-dot { margin-left: auto; }
@@ -464,7 +445,6 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .level-slider::-moz-range-thumb { width: 20px; height: 24px; border: 2px solid var(--bg); border-radius: 5px; background: var(--fg); }
 .level-slider:disabled { cursor: default; opacity: 0.45; }
 .level-ticks { display: flex; justify-content: space-between; margin: -2px 10px 4px; color: var(--muted); font-size: 0.8em; font-variant-numeric: tabular-nums; }
-/* A plain mark, not a button: an icon and the state. */
 .saved { display: inline-flex; align-items: center; gap: 4px; color: var(--fg); font-size: 0.9rem; font-weight: 600; transition: opacity 0.4s; }
 .saved .icon { width: 16px; height: 16px; }
 .saved.fade { opacity: 0; }
@@ -487,7 +467,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   transform-origin: left; animation: page-fill linear infinite;
 }
 @keyframes page-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-/* Model cards: a radio group of cards. The whole card selects, so the card shows the focus ring. */
+/* Draw focus around the card because the entire card selects the radio option. */
 .options { display: flex; flex-direction: column; gap: 8px; }
 .option {
   display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; cursor: pointer;
@@ -507,7 +487,6 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .detail .icon { width: 16px; height: 16px; }
 .detail.installed { color: var(--fg); }
 .hint { margin: 12px 0 0; color: var(--muted); }
-/* Languages and models */
 .model { margin-top: 12px; }
 .model-label { display: block; margin: 0 0 6px; color: var(--muted); font-size: 0.9em; font-weight: 600; }
 .shared { display: inline-flex; gap: 4px; color: var(--muted); }
@@ -535,7 +514,6 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 .license-list .license { display: flex; flex-direction: column; align-items: flex-end; }
 .license-list .credit { color: var(--muted); font-size: 0.9em; }
 
-/* settings.yaml error */
 .settings-error-column { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
 .settings-error-title { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 1.2em; color: var(--error); }
 .settings-error-text {
@@ -544,7 +522,6 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 }
 .settings-error-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
-/* Dialogs */
 .dialog {
   width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 20px; border: 1px solid var(--line);
   border-radius: 16px; background: var(--surface); color: var(--fg);
@@ -575,12 +552,11 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 
 @media (max-width: 719px) {
   .settings { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "rail" "sub" "foot"; align-content: start; padding-top: 0; }
-  /* The rail becomes a strip under the top bar, and its foot a card of its own. */
   .rail { flex-direction: row; overflow-x: auto; gap: 4px; margin: 0 -16px 16px; padding: 4px 16px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
   .rail .rail-item { min-height: 40px; padding: 6px 12px; }
   .rail-foot { margin-top: 24px; border-radius: 16px; }
-  /* The whole top bar stops fitting at about 710 px in English with the update dot. The tabs keep their labels,
-     so the UI-language menu and Exit shrink to their icons, and each button's accessible name keeps its label. */
+  /* The English top bar with an update dot needs about 710 px. Hide the menu and Exit labels
+     to make room for the tab labels. Both buttons keep their accessible names. */
   .topbar-inner { gap: 8px; padding: 0 8px; }
   .tab { gap: 4px; padding: 6px 8px; }
   .tabs { gap: 2px; }
@@ -589,9 +565,9 @@ option, optgroup { background: var(--surface); color: var(--fg); }
 }
 
 @media (max-width: 519px) {
-  /* The name hides as .visually-hidden does, so the page keeps its h1 for screen readers.
-     The tabs, the UI-language menu and Exit need the whole bar at 360 px, so the mark gives way while the tabs show,
-     and the bar tightens its spacing. */
+  /* At 360 px, the tabs, language menu and Exit need the whole bar.
+     Visually hide the app name below 520 px and the brand while tabs show.
+     Screen readers still have the h1. */
   .product, .topbar-inner:has(#tabs:not([hidden])) .brand {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
@@ -601,7 +577,7 @@ option, optgroup { background: var(--surface); color: var(--fg); }
   .segment { border-left: 0; border-top: 1px solid var(--outline); text-align: left; }
   .segment:first-child { border-top: 0; }
   .card-label { display: none; }
-  /* Two lines: the icon and the flow control, then the chip at the card's full width. */
+  /* Give the language pair the card's full width so long names have room to wrap. */
   .card {
     display: grid; grid-template-columns: auto auto; justify-content: space-between; align-items: center;
     gap: 8px; width: 100%; padding: 8px; border-radius: 20px;

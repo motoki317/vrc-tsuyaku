@@ -33,7 +33,7 @@ func testMicrophone(t *testing.T) Source {
 // TestMicrophone checks capture from the source named by VRC_TSUYAKU_TEST_MICROPHONE.
 // On Linux, use a remap source of a null sink monitor. The example names must
 // be unused, and both module loads must succeed before the test can run.
-// Only a person runs these checks on Windows because it has no built-in null capture device.
+// Only a person runs these checks on Windows because Windows lacks a built-in null capture device.
 //
 //	(
 //	    set -e
@@ -79,7 +79,7 @@ func TestMicrophone(t *testing.T) {
 
 // TestMicrophoneConsumerStall checks capture during consumer stalls.
 // Use the [TestMicrophone] setup with the command below. VRC_TSUYAKU_TEST_MICROPHONE names its null-sink test source.
-// Only a person runs this on Windows because it has no built-in null capture device.
+// Only a person runs this on Windows because Windows lacks a built-in null capture device.
 //
 //	nix develop -c env VRC_TSUYAKU_TEST_MICROPHONE=vrc_test_mic go test -v -timeout=10m ./internal/audio -run '^TestMicrophoneConsumerStall$'
 func TestMicrophoneConsumerStall(t *testing.T) {
@@ -127,7 +127,7 @@ func TestMicrophoneConsumerStall(t *testing.T) {
 
 // TestMicrophoneContinuous checks sustained capture from the test source.
 // Use the [TestMicrophone] setup with the command below. VRC_TSUYAKU_TEST_MICROPHONE names its null-sink test source.
-// Only a person runs this on Windows because it has no built-in null capture device.
+// Only a person runs this on Windows because Windows lacks a built-in null capture device.
 //
 //	nix develop -c env VRC_TSUYAKU_TEST_MICROPHONE=vrc_test_mic go test -v -timeout=10m ./internal/audio -run '^TestMicrophoneContinuous$'
 func TestMicrophoneContinuous(t *testing.T) {

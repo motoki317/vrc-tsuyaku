@@ -22,7 +22,9 @@ import (
 )
 
 const (
-	haasBlank           = 3072
+	haasBlank = 3072
+
+	// Match NeMo's transcribe(), which pads clips shorter than one second with zeros on both sides.
 	haasMinAudioSamples = 16000
 
 	// Match the pinned feature graph's band count and hop to preserve the encoder input and length.

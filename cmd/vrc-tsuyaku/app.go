@@ -51,7 +51,7 @@ type app struct {
 	killGrace     time.Duration
 	kill          func(int) error
 	// operations serializes settings, flow and storage changes, including close.
-	// Callers hold it while calling start or stop.
+	// Callers must hold it while calling start or stop.
 	operations   sync.Mutex
 	settingsWG   sync.WaitGroup
 	downloadsWG  sync.WaitGroup
@@ -163,7 +163,7 @@ func (a *app) close() error {
 	for _, name := range config.FlowNames() {
 		a.stop(name)
 	}
-	// Download completion takes operations; cancellation and this barrier prevent new downloads.
+	// Cancellation and the operations lock prevent new downloads. Release the lock before waiting so existing downloads can finish.
 	a.operations.Unlock()
 	a.downloadsWG.Wait()
 	a.operations.Lock()

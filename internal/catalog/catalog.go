@@ -8,7 +8,7 @@ import (
 	"slices"
 )
 
-// These constants identify the downloadable artifacts.
+// The HTTP API exposes these IDs for selecting downloadable artifacts.
 const (
 	Haas          = "haas-ja-v1.0-int8"
 	Parakeet      = "parakeet-tdt-0.6b-v2-int8"
@@ -43,7 +43,7 @@ type File struct {
 }
 
 // Source pins the bytes fetched from URL. Format is "file", "zip", or "tar.gz".
-// Archive sources also pin every selected member in Files; unselected members are ignored.
+// For an archive, Files pins the members to install. The downloader ignores other members.
 type Source struct {
 	URL, SHA256, Format string
 	Size                int64

@@ -11,7 +11,8 @@ import (
 // A message is one or more phrases shown together: one chatbox text, and one bubble in the web UI.
 // A phrase joins the latest message while that message has one page and is in its reading time,
 // if both have the same template and languages and fit in one page together.
-// With send, a page that replaces another waits for that page's reading time; a joined page does not.
+// With send, a replacement waits for the current page's reading time.
+// A page that joins the current message can appear immediately.
 // Without send the flow has no chatbox. The web UI keeps every message, so nothing waits.
 type display struct {
 	send      func(context.Context, string) error

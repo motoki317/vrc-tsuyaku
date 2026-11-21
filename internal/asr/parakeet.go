@@ -216,8 +216,8 @@ func (d *parakeetDecoder) Scores(frame int) ([]float32, error) {
 	return logits, err
 }
 
+// Accept requires a successful Scores call to supply the next prediction state.
 func (d *parakeetDecoder) Accept(token int) error {
-	// Commit the candidate prediction state from the previous Scores call.
 	closeValues(d.state)
 	d.state, d.next = d.next, nil
 	d.last = int32(token)

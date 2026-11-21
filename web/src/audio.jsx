@@ -212,7 +212,7 @@ export function Audio({ app }) {
           const res = await fetch('/api/levels', { cache: 'no-store', signal: request.signal });
           if (res.ok) next = await res.json();
         } catch {
-          /* A missed reading leaves the meter empty until the next poll. */
+          /* A missed reading must not leave a stale level on screen. */
         }
         if (request.signal.aborted) return;
         setLevels(next);

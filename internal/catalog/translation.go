@@ -129,7 +129,7 @@ var spokenLanguages = []SpokenLanguage{
 
 var commonArtifacts = []string{ONNXRuntime, Silero, LlamaCPP}
 
-// LanguageCatalog supplies the downloads for a language choice before it is saved.
+// LanguageCatalog lets the page show downloads for language choices before saving them.
 type LanguageCatalog struct {
 	Targets         []string          `json:"targets"`
 	Variants        map[string]string `json:"variants"`

@@ -39,7 +39,7 @@ def main():
 
 
     class KDAStep(nn.Module):
-        """One label through embedding -> L x (LayerNorm -> KDA -> residual) -> LayerNorm -> joint.pred."""
+        """Predict from one label and return the prediction with updated convolution and recurrent states."""
 
         def __init__(self):
             super().__init__()
@@ -95,7 +95,7 @@ def main():
 
 
     class Features(nn.Module):
-        """NeMo FilterbankFeatures (eval) with the STFT as a strided Conv1d over a windowed DFT basis."""
+        """Match NeMo's evaluation features using a strided convolution for the STFT."""
 
         def __init__(self):
             super().__init__()

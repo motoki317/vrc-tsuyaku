@@ -15,7 +15,7 @@ const eventHistorySize = 256
 const (
 	// kindState carries the new flow or instance state, with empty text when the instance starts.
 	kindState pipeline.Kind = "state"
-	// kindSettings carries whether settings were saved, reloaded, or changed only in memory.
+	// kindSettings carries whether the app saved settings, loaded an external edit, or changed settings only in memory.
 	kindSettings pipeline.Kind = "settings"
 	// kindDownload carries the ID of the artifact whose state or progress changed.
 	kindDownload pipeline.Kind = "download"

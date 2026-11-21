@@ -32,7 +32,7 @@ const (
 	KindPage Kind = "page"
 	// KindMerged carries the joined translations of the message's phrases.
 	KindMerged Kind = "merged"
-	// KindSent carries empty text once every chatbox page of the phrase is written.
+	// KindSent carries empty text once the flow writes all chatbox pages for the phrase.
 	KindSent Kind = "sent"
 	// KindError carries the diagnostic text.
 	KindError Kind = "error"
@@ -68,7 +68,7 @@ type Event struct {
 
 var nextPhraseID atomic.Uint64
 
-// PhraseSettings is captured before recognition and stays fixed through sending.
+// Run snapshots PhraseSettings before recognition and uses it through sending.
 // Template renders the chatbox pages. Without Send it only measures whether phrases fit in one page together.
 type PhraseSettings struct {
 	SourceLang  string
@@ -111,7 +111,7 @@ type Stages struct {
 // With Send, a template error skips that phrase's send and emits an error event.
 // Without Send, a template error emits no event, and no later phrase joins a message from before that phrase.
 // Reading time and the message that a phrase can join last for this Run only.
-// Other errors cancel every stage and Run waits for them.
+// For other errors, Run cancels every stage and waits for all stages to end.
 // Cancellation discards capture's queued audio, the partial VAD window and the
 // segmenter's pending phrase, along with translated phrases waiting for Send.
 // A finite test source can return nil to end input.

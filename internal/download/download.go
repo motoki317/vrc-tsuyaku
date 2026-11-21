@@ -21,8 +21,8 @@ import (
 // ErrLicenseRequired means saved settings lack acceptance for the pinned revision.
 var ErrLicenseRequired = errors.New("license acceptance required")
 
-// ErrCleanup means the new installation is active, but an old installation or
-// staging directory could not be removed. The error includes the remaining path.
+// ErrCleanup means the installation is active but cleanup failed. The error
+// names the remaining backup or staging directory.
 var ErrCleanup = errors.New("artifact installed but cleanup failed")
 
 // Phase is the stage reported in a download progress snapshot.
@@ -142,7 +142,7 @@ func (m *Manager) Remove(id, goos string) error {
 // staging files and preserves an existing installation. Each retry starts from
 // the beginning. A nil result means the artifact is installed.
 // On ErrCleanup, keep the installed state, report the error, and ask the user to
-// remove the leftover directory named in the error. An installed event is sent.
+// remove the leftover directory named in the error. Download still reports PhaseInstalled to a nonnil notify.
 // An artifact with an AcceptanceKey requires that key in settings.yaml before
 // any network request. Missing acceptance returns ErrLicenseRequired.
 // The caller must invoke Download only in response to the user's download action.
@@ -271,8 +271,8 @@ func publish(root *os.Root, stage, id string) error {
 // CheckInstalled hashes every required file without network access. Hashing large models
 // can take seconds, so cache the startup result for the UI and flow starts.
 // A nil Download result already establishes the installed state without another hash check.
-// Missing or corrupt files and Linux executables without execute permission return
-// false. I/O and cancellation errors are reported.
+// CheckInstalled returns false for missing or corrupt files and for Linux
+// executables without execute permission. It reports I/O and cancellation errors.
 func (m *Manager) CheckInstalled(ctx context.Context, id, goos string) (bool, error) {
 	a, err := catalog.Lookup(id, goos)
 	if err != nil {

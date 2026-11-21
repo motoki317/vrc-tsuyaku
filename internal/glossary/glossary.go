@@ -1,3 +1,5 @@
+// Package glossary validates user-defined terms and selects the ones for a flow's languages.
+// It supplies recognition hints and rewrites transcripts before translation.
 package glossary
 
 import (

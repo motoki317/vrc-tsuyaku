@@ -17,7 +17,7 @@ import (
 const WindowSamples = 512
 
 // StartProbability is the probability at which a phrase starts.
-// It is exported so that pipeline's gain learning counts the same windows as speech.
+// The pipeline uses it to count the same windows as speech when learning gain.
 const StartProbability = 0.5
 
 const (
@@ -30,8 +30,8 @@ const (
 
 // Segmenter starts a phrase at probability >= 0.5, with up to 300 ms of pre-roll.
 // A window below 0.35 starts the end silence. Later windows below 0.5 extend it,
-// and a window at 0.5 or above cancels it. After 500 ms of end silence, the phrase
-// ends and retains that audio. Phrases under 250 ms are dropped.
+// and a window at 0.5 or above cancels it. After 500 ms of end silence, Segmenter
+// ends the phrase and includes that audio. It discards phrases under 250 ms.
 // Pre-roll and end silence do not count toward that minimum.
 //
 // At 15 seconds of audio, including pre-roll, it emits a phrase and continues

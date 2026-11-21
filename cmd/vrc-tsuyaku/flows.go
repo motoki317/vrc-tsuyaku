@@ -49,8 +49,7 @@ type flowRun struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	status flowState
-	// Holds the bits of a float64 level in dBFS.
-	// NaN means no reading because the zero value reads as 0 dBFS.
+	// Use NaN for a missing dBFS reading because zero is a valid level.
 	level atomic.Uint64
 }
 
@@ -67,7 +66,7 @@ func (r *flowRun) meter(level float64) {
 
 func flowSource(name config.Flow, microphoneID string) audio.Source {
 	if name == config.World {
-		// Wine can name the stream after the product, but VRChat under Proton is untested, so that name is unverified.
+		// Wine can use the product name for the stream. No test covers VRChat under Proton, so treat that name as an assumption.
 		return audio.Application("VRChat.exe", "VRChat")
 	}
 	return audio.Microphone(microphoneID)
@@ -164,7 +163,7 @@ func (a *app) start(name config.Flow, s config.Settings) error {
 	return nil
 }
 
-// The caller holds mu while checking artifact state.
+// The caller must hold mu while checking artifact state.
 func (a *app) checkStart(name config.Flow, s config.Settings) error {
 	if err := a.ctx.Err(); err != nil {
 		return err

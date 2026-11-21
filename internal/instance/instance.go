@@ -52,7 +52,7 @@ func Join(dir string, info Info) (*Membership, []Info, error) {
 	return m, others, nil
 }
 
-// Others lists the other live instances now. After Close it returns os.ErrClosed.
+// Others takes a fresh snapshot of other live instances. After Close it returns os.ErrClosed.
 func (m *Membership) Others() ([]Info, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
