@@ -2,6 +2,8 @@ import { createMemo, createSignal, createStore, onCleanup } from 'solid-js';
 import { eventError, flowLabel } from './i18n.js';
 
 export const pillLabels = { error: 'state.stoppedByError', on: 'state.on', off: 'state.off' };
+export const skippedLabel = (app, flow) =>
+  app.t('value.announce', { flow: flowLabel(app, flow), text: app.t('state.skipped') });
 
 const logLimit = 300;
 
@@ -9,13 +11,16 @@ function updatePhrase(list, e) {
   const { kind, phraseId, flow, time, text } = e;
   let index = list.findIndex(row => row.phraseId === phraseId);
   if (index === -1) {
-    if (!['recognized', 'translated', 'merged'].includes(kind)) return;
+    if (!['recognized', 'translated', 'merged', 'skipped'].includes(kind)) return;
+    const row = { phraseId, flow, time };
+    if (kind === 'skipped') {
+      list.push({ ...row, skipped: true });
+      return;
+    }
     index =
       list.push({
-        phraseId,
+        ...row,
         message: phraseId,
-        flow,
-        time,
         source: e.sourceLang,
         target: e.targetLang,
         original: kind === 'recognized' ? text : e.original,
@@ -110,7 +115,7 @@ export function createLog(app) {
         updatePhrase(list, e);
         if (list.length > logLimit) list.shift();
       });
-      if (kind === 'recognized') {
+      if (kind === 'recognized' || kind === 'skipped') {
         setSpeech(s => {
           if (s[flow] !== 'open') {
             clearTimeout(timers[flow]);
@@ -120,6 +125,7 @@ export function createLog(app) {
         if (!following) setUnread(n => n + 1);
       }
       if (kind === 'translated') announcement = app.t('value.announce', { flow: flowLabel(app, flow), text });
+      else if (kind === 'skipped') announcement = skippedLabel(app, flow);
     }
     if (announcement && Date.parse(time) >= liveSince) app.announce(announcement);
   }

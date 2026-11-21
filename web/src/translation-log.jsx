@@ -2,7 +2,7 @@ import { createEffect, createMemo, For, onSettled } from 'solid-js';
 import { Icon } from './icon.jsx';
 import { flowIcon } from './downloads.js';
 import { eventError, flowLabel, langTag } from './i18n.js';
-import { pillLabels } from './log.js';
+import { pillLabels, skippedLabel } from './log.js';
 
 const delivery = {
   sending: ['clock', 'state.sending'],
@@ -13,27 +13,30 @@ const delivery = {
 
 function Phrase({ app, row, first, clock }) {
   const self = row.flow === 'self';
-  const original = (
-    <p class={'line ' + (self ? 'primary' : 'secondary')} lang={langTag(row.source)}>
-      {row.original}
-    </p>
-  );
-  const translation = (
-    <p class={'line ' + (self ? 'secondary' : 'primary')} lang={langTag(row.target)}>
-      {row.translation ??
-        (row.unfinished ? (
-          <span role="img" aria-label={app.t('state.unfinished')} class="unfinished">
-            <Icon name="circle-slash" />
-          </span>
-        ) : (
-          <span class="dots" role="img" aria-label={app.t('state.translating')}>
-            <i />
-            <i />
-            <i />
-          </span>
-        ))}
-    </p>
-  );
+  const lines = () => {
+    const original = (
+      <p class={'line ' + (self ? 'primary' : 'secondary')} lang={langTag(row.source)}>
+        {row.original}
+      </p>
+    );
+    const translation = (
+      <p class={'line ' + (self ? 'secondary' : 'primary')} lang={langTag(row.target)}>
+        {row.translation ??
+          (row.unfinished ? (
+            <span role="img" aria-label={app.t('state.unfinished')} class="unfinished">
+              <Icon name="circle-slash" />
+            </span>
+          ) : (
+            <span class="dots" role="img" aria-label={app.t('state.translating')}>
+              <i />
+              <i />
+              <i />
+            </span>
+          ))}
+      </p>
+    );
+    return self ? [original, translation] : [translation, original];
+  };
   const deliveryText = () => {
     if (row.status === 'sent') return app.t('state.sent');
     return row.status === 'failed' ? app.t('state.notSent') : '';
@@ -46,10 +49,18 @@ function Phrase({ app, row, first, clock }) {
           <Icon name="users" />
         </span>
       )}
-      <div class="bubble">{self ? [original, translation] : [translation, original]}</div>
+      <div class="bubble">
+        {row.skipped ? (
+          <span role="img" aria-label={skippedLabel(app, row.flow)}>
+            <Icon name="skip-forward" extra="muted" />
+          </span>
+        ) : (
+          lines()
+        )}
+      </div>
       <span class="meta">
         <time dateTime={row.time}>{clock(row.time)}</time>
-        {self && (
+        {self && !row.skipped && (
           <span class="delivery" hidden={!row.status} data-status={row.status}>
             <Icon name={delivery[row.status]?.[0] || 'clock'} />
             <span aria-hidden="true">{deliveryText()}</span>
