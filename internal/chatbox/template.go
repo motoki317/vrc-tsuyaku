@@ -74,10 +74,12 @@ func (r ReadingTime) PageDurations(m Message, pages []string) []time.Duration {
 	return times
 }
 
-// BacklogBound limits how long a waiting page can fall behind its translation.
 // Six seconds of speech is about 35 Japanese characters.
+const backlogReadAloudTime = 6 * time.Second
+
+// BacklogBound limits how long a waiting page can fall behind its translation.
 func (r ReadingTime) BacklogBound() time.Duration {
-	return r.duration(6 * time.Second)
+	return r.duration(backlogReadAloudTime)
 }
 
 type Message struct {

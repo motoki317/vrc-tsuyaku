@@ -232,6 +232,7 @@ export function createClient() {
       window.close();
       setTimeout(() => setCloseHint(true), 500);
     }, 3000);
+    // A lost stream can leave the app running, so keep checking unless it sent an exit notice.
     if (!exitNotice)
       (async () => {
         do {

@@ -6,6 +6,7 @@
 default:
     @just --list
 
+# Run just web before standalone Go checks on a fresh checkout so the embedded files exist.
 # Build the static files embedded in the executable.
 [working-directory: 'web']
 web:
@@ -22,11 +23,14 @@ lint: web
     npm --prefix web run format:check
     golangci-lint run
 
+# Run just build after editing web/src/, web/i18n/ or web/icons.svg.
 # Build every command for this OS into dist/.
 build: web
     mkdir -p dist
     go build -o dist/ ./...
 
+# Run just notices after editing go.mod to refresh the embedded licenses from the module cache.
+# Copy licenses for other code into cmd/vrc-tsuyaku/notices/other/ by hand and record each origin in SOURCE.
 # Refresh the license texts embedded in the executable after a dependency change.
 notices:
     go run ./internal/notices

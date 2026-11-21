@@ -27,7 +27,7 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("GET /notices.txt", serveNotices)
 	// Return 202 and exit the app as Ctrl+C does.
 	mux.HandleFunc("POST /api/exit", a.handleExit)
-	// Signal that a page is closing. The app exits 5 s after the latest signal if no event stream is open then.
+	// Report that a page is closing so the app can exit when no event stream remains.
 	mux.HandleFunc("POST /api/closing", a.handleClosing)
 	// Return the app snapshot used by the web page.
 	mux.HandleFunc("GET /api/state", a.handleState)
@@ -49,7 +49,7 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("POST /api/downloads/{id}", a.handleStartDownload)
 	// Delete an installed artifact's files. Return 409 while a download or an active flow uses them.
 	mux.HandleFunc("DELETE /api/downloads/{id}", a.handleDeleteDownload)
-	// Stream the latest 256 events and new events as newline-delimited JSON, with an empty line every 5 s while idle.
+	// Replay recent events, then stream live events as newline-delimited JSON.
 	mux.HandleFunc("GET /api/events", a.streamEvents)
 	// Open the data folder ("data") or settings.yaml ("settings"). Write the current settings first if the file is missing.
 	mux.HandleFunc("POST /api/open/{target}", a.handleOpenTarget)
@@ -58,7 +58,7 @@ func (a *app) handler() http.Handler {
 	return guardLocalRequests(mux)
 }
 
-// guardLocalRequests accepts only the listener's address or localhost with its port as Host.
+// guardLocalRequests prevents DNS rebinding by accepting only the listener's address or localhost with its port as Host.
 // It refuses cross-site and same-site Sec-Fetch-Site values on every method.
 // For methods other than GET and HEAD, a supplied Origin must be a single value equal to http:// followed by Host.
 // With a valid Host, a request that omits both headers passes because the app trusts programs on the same PC.
@@ -301,6 +301,9 @@ func apiError(w http.ResponseWriter, err error, status int) {
 	}{withDataDirHint(err).Error(), errcode.Of(err), errcode.LocationOf(err)})
 }
 
+// eventHeartbeatInterval lets an idle stream detect a lost connection without adding to event history.
+const eventHeartbeatInterval = 5 * time.Second
+
 func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	a.eventStreams++
@@ -347,7 +350,7 @@ func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		case <-changed:
-		case <-time.After(5 * time.Second):
+		case <-time.After(eventHeartbeatInterval):
 		}
 	}
 }

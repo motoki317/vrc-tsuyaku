@@ -43,6 +43,7 @@ func (a *app) snapshot() any {
 		instanceState{State: a.instance.State, Others: slices.Clone(a.instance.Others)}}
 }
 
+// levels keeps capture-window updates out of the event stream so they cannot crowd phrases out of its history.
 func (a *app) levels() map[config.Flow]float64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()

@@ -13,6 +13,13 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/instance"
 )
 
+const (
+	// defaultStopGrace gives the other instance time to clean up and release its slot before a forced stop.
+	defaultStopGrace = 10 * time.Second
+	// defaultKillGrace allows time for the OS to release the slot after a forced stop.
+	defaultKillGrace = 5 * time.Second
+)
+
 type instanceStatus string
 
 const (
@@ -185,6 +192,7 @@ func instanceURL(url string) bool {
 	return err == nil && n > 0
 }
 
+// stopOther trusts a slot's loopback address and PID only on the host that wrote them.
 func (a *app) stopOther(row instanceRow) {
 	if a.instanceHost == "" || row.Host != a.instanceHost {
 		a.failInstanceStop(row, nil)

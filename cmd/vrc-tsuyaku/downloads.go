@@ -14,6 +14,9 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 )
 
+// downloadProgressInterval limits progress refreshes and leaves room for phrase events in the stream history.
+const downloadProgressInterval = 250 * time.Millisecond
+
 type artifactStatus string
 
 const (
@@ -58,6 +61,7 @@ func (a *app) deleteDownload(id string) error {
 	if inUse {
 		return fmt.Errorf("%w: %s", errArtifactInUse, id)
 	}
+	// Windows holds ONNX Runtime's DLL open for the life of the process.
 	if runtime.GOOS == "windows" && id == catalog.ONNXRuntime && asr.RuntimeResident() {
 		return errors.New("restart the app before deleting ONNX Runtime")
 	}
@@ -93,6 +97,7 @@ func (a *app) deleteDownload(id string) error {
 	return err
 }
 
+// startDownload requires the caller to set accept only after the user accepts the artifact's license.
 func (a *app) startDownload(id string, accept bool) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
@@ -146,7 +151,7 @@ func (a *app) startDownload(id string, accept bool) error {
 			state.Progress = p
 			a.artifacts[id] = state
 			a.mu.Unlock()
-			if time.Since(last) > 250*time.Millisecond {
+			if time.Since(last) > downloadProgressInterval {
 				a.emit("", kindDownload, id)
 				last = time.Now()
 			}

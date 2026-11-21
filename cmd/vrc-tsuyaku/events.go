@@ -9,6 +9,9 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 )
 
+// eventHistorySize bounds the in-memory replay while giving a reconnecting page recent phrases.
+const eventHistorySize = 256
+
 const (
 	// kindState carries the new flow or instance state, with empty text when the instance starts.
 	kindState pipeline.Kind = "state"
@@ -30,7 +33,7 @@ type event struct {
 	pipeline.Event
 }
 
-// A bounded history lets browsers reconnect without holding up audio processing.
+// events keeps transcripts in memory only.
 type events struct {
 	mu      sync.Mutex
 	history []event
@@ -51,9 +54,9 @@ func (b *events) publishEvent(e event) {
 	b.next++
 	e.ID, e.Time = b.next, time.Now()
 	b.history = append(b.history, e)
-	if len(b.history) > 256 {
-		copy(b.history, b.history[len(b.history)-256:])
-		b.history = b.history[:256]
+	if len(b.history) > eventHistorySize {
+		copy(b.history, b.history[len(b.history)-eventHistorySize:])
+		b.history = b.history[:eventHistorySize]
 	}
 	if b.changed != nil {
 		close(b.changed)

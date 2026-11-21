@@ -25,7 +25,31 @@ func TestFlowSources(t *testing.T) {
 	}
 }
 
-// Playback is external to the test and must target a named null sink.
+// TestWorldCapture captures only the external test player on Linux.
+//
+//   - VRC_TSUYAKU_TEST_APP_DATA_DIR names a test directory with the world flow's downloads.
+//   - VRC_TSUYAKU_TEST_WORLD_APPLICATION names the test player's executable or PulseAudio application.name.
+//
+// Build the embedded page first.
+//
+//	nix develop -c just web
+//
+// Start the player just before running go test. It must play silence while the models load
+// (about 20 s), then English speech, then silence, and then exit.
+// The player must use a uniquely named PulseAudio null sink with the stream's
+// no-move flag and exit if the sink is missing. Stop the player before unloading the sink.
+//
+//	nix develop -c go test ./cmd/vrc-tsuyaku -run '^TestWorldCapture$' -v -count=1 -timeout=3m
+//
+// Only a person runs the separate native Windows checks, when audible test audio will disturb no one.
+//
+//  1. Start two test players with different executable names and different audio.
+//  2. Run vrc-tsuyaku record -app <program>.exe -seconds 3 isolated.wav for one player.
+//  3. Verify that the WAV contains only that player's audio.
+//  4. Start VRChat and switch on Others' voices. Join a world with English
+//     speakers or play an English video in a world's player.
+//  5. Verify that the Translation screen shows English sentences and Japanese translations.
+//  6. Exit VRChat and verify that the world flow shows an error. Restart VRChat and press Try again.
 func TestWorldCapture(t *testing.T) {
 	dir, player := os.Getenv("VRC_TSUYAKU_TEST_APP_DATA_DIR"), os.Getenv("VRC_TSUYAKU_TEST_WORLD_APPLICATION")
 	if dir == "" || player == "" {

@@ -11,7 +11,11 @@ import (
 	"golang.org/x/mod/semver"
 )
 
+// latestReleaseURL points to upstream even when the app was built from a fork.
 var latestReleaseURL = "https://api.github.com/repos/" + strings.TrimPrefix(repository, "https://github.com/") + "/releases/latest"
+
+// updateCheckTimeout bounds how long GitHub can leave the update state unresolved.
+const updateCheckTimeout = 10 * time.Second
 
 type updateStatus string
 
@@ -44,7 +48,7 @@ func (a *app) checkUpdate(releaseURL string, client *http.Client) {
 
 func fetchUpdate(ctx context.Context, releaseURL string, client *http.Client, version string) updateState {
 	failed := updateState{State: updateFailed}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, updateCheckTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseURL, nil)
 	if err != nil {
@@ -59,6 +63,7 @@ func fetchUpdate(ctx context.Context, releaseURL string, client *http.Client, ve
 		return failed
 	}
 	defer resp.Body.Close()
+	// GitHub returns 404 for the latest-release request when a repository has no release.
 	if resp.StatusCode == http.StatusNotFound {
 		return updateState{State: updateCurrent}
 	}

@@ -22,6 +22,9 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
 
+// defaultCloseGrace gives a reloaded page time to reopen its event stream.
+const defaultCloseGrace = 5 * time.Second
+
 type app struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -77,8 +80,8 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		launch:       rand.Text(),
 		info:         appBuildInfo(build),
 		update:       updateState{State: updateChecking},
-		closeGrace:   5 * time.Second,
-		instancePoll: time.Second, stopGrace: 10 * time.Second, killGrace: 5 * time.Second,
+		closeGrace:   defaultCloseGrace,
+		instancePoll: time.Second, stopGrace: defaultStopGrace, killGrace: defaultKillGrace,
 		kill:      killProcess,
 		artifacts: make(map[string]artifactState), flows: make(map[config.Flow]*flowRun), modelTurn: make(chan struct{}, 1),
 		source: flowSource, open: openFile,
@@ -119,6 +122,7 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	return a, nil
 }
 
+// pageClosing requires an explicit signal because a browser can unload a background tab and drop its stream.
 func (a *app) pageClosing() {
 	a.mu.Lock()
 	defer a.mu.Unlock()

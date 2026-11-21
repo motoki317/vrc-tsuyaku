@@ -28,6 +28,7 @@ const MaxSettingsJSONBytes = 64<<10 + glossary.MaxEntries*(3*glossary.MaxRunes*1
 var ErrInvalidSettings = errors.New("invalid settings")
 
 // Settings is the complete settings.yaml document. Saving rewrites it and removes comments.
+// The HTTP API uses Go field names for JSON, while the file uses the YAML tags.
 type Settings struct {
 	UI               UI                `yaml:"ui"`
 	Translator       string            `yaml:"translator"`
@@ -105,6 +106,8 @@ func (f Flows) CutLevel(name Flow) float64 {
 	return f.World.CutLevel
 }
 
+// Chatbox controls OSC output and reading time. The world flow uses the same
+// reading settings with the default template to group phrases on the page.
 type Chatbox struct {
 	Address       string  `yaml:"address"`
 	Template      string  `yaml:"template"`
@@ -129,6 +132,13 @@ func Defaults() Settings {
 	}
 }
 
+// Keep the manual dBFS bounds in sync with the Audio sliders in web/src/audio.jsx.
+// Omitted cut levels use zero to retain automatic gain.
+const (
+	minCutLevelDB = -80
+	maxCutLevelDB = -10
+)
+
 // Validate rejects unsupported languages, invalid destinations and invalid acceptance timestamps.
 func (s Settings) Validate() error {
 	if _, ok := catalog.LookupTranslator(s.Translator); !ok {
@@ -146,8 +156,8 @@ func (s Settings) Validate() error {
 		if !catalog.IsTarget(target) {
 			return fmt.Errorf("flows.%s.target: unsupported language %q", name, target)
 		}
-		if cut := s.Flows.CutLevel(name); cut != 0 && !(cut >= -80 && cut <= -10) {
-			return fmt.Errorf("flows.%s.cut_level: must be 0 (automatic) or between -80 and -10 dBFS", name)
+		if cut := s.Flows.CutLevel(name); cut != 0 && !(cut >= minCutLevelDB && cut <= maxCutLevelDB) {
+			return fmt.Errorf("flows.%s.cut_level: must be 0 (automatic) or between %d and %d dBFS", name, minCutLevelDB, maxCutLevelDB)
 		}
 	}
 	if _, err := chatbox.ParseAddress(s.Chatbox.Address); err != nil {

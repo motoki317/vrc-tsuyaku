@@ -14,6 +14,9 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 )
 
+// settingsPollInterval keeps external edits responsive without a file watcher for each OS.
+const settingsPollInterval = 250 * time.Millisecond
+
 type settingsText string
 
 const (
@@ -69,7 +72,7 @@ func (a *app) writeSettings(s config.Settings) error {
 
 func (a *app) watchSettings() {
 	a.settingsWG.Go(func() {
-		ticker := time.NewTicker(250 * time.Millisecond)
+		ticker := time.NewTicker(settingsPollInterval)
 		defer ticker.Stop()
 		for {
 			select {

@@ -23,6 +23,8 @@ type display struct {
 	readUntil time.Time
 }
 
+// show times each page from the write that first showed it because the queue can delay that write.
+// VRChat can hide the message sooner under the viewer's Chatbox Display Duration, which caps at 60 seconds.
 func (d *display) show(ctx context.Context, id uint64, format string, reading chatbox.ReadingTime, message chatbox.Message, queued time.Time) error {
 	shown := time.Now()
 	pages, err := chatbox.Render(format, message)
@@ -72,6 +74,7 @@ func (d *display) show(ctx context.Context, id uint64, format string, reading ch
 			d.since, d.firstID = shown, id
 		}
 		d.readUntil = d.since.Add(durations[i])
+		// Keep a late write eligible for a join during its minimum display time.
 		if floor := shown.Add(chatbox.PageInterval); floor.After(d.readUntil) {
 			d.readUntil = floor
 		}
