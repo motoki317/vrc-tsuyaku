@@ -18,7 +18,7 @@ var nativeHeapTrim = sync.OnceValue(func() func(uintptr) int32 {
 
 func releaseNativeMemory() {
 	// glibc can keep freed session arenas resident until an explicit trim.
-	// Only free pages are reclaimed, so another flow's live allocations stay valid.
+	// glibc reclaims only free pages, so another flow's live allocations stay valid.
 	if trim := nativeHeapTrim(); trim != nil {
 		trim(0)
 	}

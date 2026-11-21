@@ -13,6 +13,8 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
 )
 
+// Only a person runs record against a real microphone, including the default.
+// Automated microphone checks must name a test source made from a null sink.
 func record(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("record", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -44,14 +46,15 @@ func record(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	if flags.NArg() != 1 {
 		return errors.New("usage: record -list | record [-seconds N] [-microphone ID | -app NAME] out.wav")
 	}
-	// ParseDuration rejects NaN, infinity, and overflow before conversion to
-	// time.Duration; a direct float-to-integer conversion would not reject them.
+	// ParseDuration rejects NaN, infinity and overflow. Direct conversion to
+	// time.Duration accepts invalid input.
 	duration, err := time.ParseDuration(strconv.FormatFloat(*seconds, 'f', -1, 64) + "s")
 	if err != nil {
 		return fmt.Errorf("invalid -seconds: %w", err)
 	}
 	source := audio.Microphone(*microphone)
 	if *application != "" {
+		// Under Proton, if VRChat.exe has no stream, try -app VRChat as an unverified product-name match.
 		source = audio.Application(*application)
 	}
 	return recordFile(ctx, source, duration, flags.Arg(0))

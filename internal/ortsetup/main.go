@@ -1,4 +1,5 @@
-// Command ortsetup downloads the CPU runtimes used by gated tests. Run it through just ort.
+// Command ortsetup fetches the pinned ONNX Runtime CPU libraries for gated tests.
+// Run it through just ort.
 package main
 
 import (

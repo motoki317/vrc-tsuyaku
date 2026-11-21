@@ -11,14 +11,19 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
 
-// These token bonuses come from tuning Haas and Parakeet v2 on synthetic Japanese
-// and English name clips against a glossary of 200 entries.
-// Parakeet v3 uses the same values, with validation on the English clips only.
+// In a Haas and Parakeet v2 sweep with 200 glossary entries, these bonuses left synthetic Japanese and English
+// sentences without names unchanged in clean audio, with white noise 15 dB below speech, and after an Opus round trip
+// (one of 92 separate audiobook transcripts changed).
+// On held-out clean sentences with names, recovery after glossary rewriting rose from 53% to 63% in Japanese
+// and from 40% to 73% in English, the only language used to check these bonuses on Parakeet v3.
 const (
 	firstHintBonus = 1.0
 	laterHintBonus = 8.0
 	blankHintBonus = 4.0
 )
+
+// minHintRunes excludes short hints that a single boosted token can complete.
+const minHintRunes = 3
 
 type pieceTrie struct {
 	children map[rune]*pieceTrie
@@ -83,7 +88,7 @@ func (v *hintVocabulary) compile(words []string) *compiledHints {
 	for _, word := range words {
 		word = glossary.Fold(word)
 		runes := []rune(word)
-		if len(runes) < 3 {
+		if len(runes) < minHintRunes {
 			continue
 		}
 		base := len(h.nodes)

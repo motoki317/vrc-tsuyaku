@@ -15,9 +15,27 @@ import (
 	"math"
 )
 
-// decodeConfident returns no text for a phrase whose confidence is under
-// threshold, because the models also write text, with low confidence, for
-// sound that is not words.
+// Match NeMo's TDT cap so zero-duration predictions cannot hold a frame indefinitely.
+const tdtMaxSymbolsPerFrame = 10
+
+// Models can emit low-confidence text for noise. Spoken fillers still count as
+// speech, so apply the confidence cutoff without inspecting the transcript.
+//
+// The cutoff sweep ran int8 Haas on Japanese audio and int8 Parakeet v2 and v3
+// on English audio, all on CPU. It used the pipeline's amplifyPhrase gain.
+// Speech sets were audiobook clips cut at pauses, 60 synthetic chat sentences,
+// and synthetic sentences with avatar names (120 Japanese, 60 English). The
+// sweep ran the name sentences with and without the names as hints. The
+// synthetic sentences used clean audio, white noise 15 dB below speech
+// and an Opus round trip. Synthesized short answers used the clean and
+// white-noise conditions. The sweep also included synthesized Japanese fillers.
+// Other inputs were noise, hum, tones, buzz, clicks, bursts and audiobook clips
+// low-passed at 350 Hz as a stand-in for humming.
+//
+// Each count uses transcripts below the cutoff out of all nonempty transcripts.
+// The short-answer counts use only correct transcripts. Parakeet v2 still
+// heard words in the low-passed clips, so those clips did not test v2 on humming.
+// The sweep did not cover casual headset speech, human murmurs or v3 outside English.
 func (v vocabulary) decodeConfident(tokens []int, confidence, threshold float64) (string, error) {
 	if confidence < threshold {
 		return "", nil
@@ -28,7 +46,7 @@ func (v vocabulary) decodeConfident(tokens []int, confidence, threshold float64)
 // A decoder owns one phrase's prediction state. Scores computes candidate token
 // and duration scores. Accept commits a token. A checkpoint restore replaces the state.
 // The Scores slice remains valid until the next Scores or Accept call.
-// greedyTDT calls Accept to commit every nonblank token.
+// While decoding, call Accept only for emitted nonblank tokens.
 type tdtDecoder interface {
 	Scores(frame int) ([]float32, error)
 	Accept(token int) error
@@ -94,7 +112,7 @@ func greedyTDT(ctx context.Context, frames int, cfg tdtConfig, decoder tdtDecode
 }
 
 func tokenLogProb(logits []float32, best int) float64 {
-	// Shift by the winning score to keep exp finite.
+	// Subtract the winning score before exponentiating to keep the sum finite.
 	maxLogit := float64(logits[best])
 	var sum float64
 	for _, logit := range logits {

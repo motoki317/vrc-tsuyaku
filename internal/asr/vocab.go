@@ -53,6 +53,7 @@ func readVocabulary(r io.Reader) (vocabulary, error) {
 	return v, nil
 }
 
+// decode handles SentencePiece byte pieces for Haas, the only pinned recognizer that uses them.
 func (v vocabulary) decode(ids []int) (string, error) {
 	var b strings.Builder
 	for _, id := range ids {

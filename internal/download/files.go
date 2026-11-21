@@ -86,12 +86,12 @@ func (m *Manager) prepare(ctx context.Context, work *os.Root, a catalog.Artifact
 		return err
 	}
 	defer files.Close()
-	p := Progress{ArtifactID: a.ID, Phase: "download"}
+	p := Progress{ArtifactID: a.ID, Phase: PhaseDownload}
 	for _, s := range a.Sources {
 		p.Total += s.Size
 	}
 	for i, s := range a.Sources {
-		p.Phase = "download"
+		p.Phase = PhaseDownload
 		if notify != nil {
 			notify(p)
 		}
@@ -99,7 +99,7 @@ func (m *Manager) prepare(ctx context.Context, work *os.Root, a catalog.Artifact
 		if err = m.fetch(ctx, work, name, s, &p, notify); err != nil {
 			return fmt.Errorf("download %s: %w", s.URL, err)
 		}
-		p.Phase = "verify"
+		p.Phase = PhaseVerify
 		if notify != nil {
 			notify(p)
 		}

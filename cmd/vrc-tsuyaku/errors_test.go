@@ -27,7 +27,7 @@ func TestFlowErrorCodeInStateAndEvents(t *testing.T) {
 				a.artifacts[id] = state
 			}
 			failure := errors.New("source diagnostic")
-			a.prepare = func(context.Context, string, config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(context.Context, config.Flow, config.Settings) (pipeline.Stages, error) {
 				if code == errcode.Unknown {
 					return pipeline.Stages{}, failure
 				}

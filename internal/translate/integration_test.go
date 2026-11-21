@@ -15,6 +15,15 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
 
+// TestPLaMoTranslation checks output scripts, glossary terms and the history
+// token bound against the pinned CPU server and model.
+//
+//   - VRC_TSUYAKU_TEST_LLAMA_SERVER names the CPU executable for catalog.LlamaCPP, with its shared libraries beside it.
+//   - VRC_TSUYAKU_TEST_PLAMO_GGUF names the GGUF for catalog.PLaMo, including its embedded chat template.
+//
+// Use of the model requires accepting the PLaMo Community License in internal/catalog/licenses/plamo-community.txt.
+//
+//	nix develop -c go test ./internal/translate -run '^TestPLaMoTranslation$' -v -count=1 -timeout=5m
 func TestPLaMoTranslation(t *testing.T) {
 	server := os.Getenv("VRC_TSUYAKU_TEST_LLAMA_SERVER")
 	model := os.Getenv("VRC_TSUYAKU_TEST_PLAMO_GGUF")

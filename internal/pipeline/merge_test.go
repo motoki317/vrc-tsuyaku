@@ -35,7 +35,7 @@ func (l *eventLog) ofKind(kind string) []timedEvent {
 	defer l.mu.Unlock()
 	var result []timedEvent
 	for _, e := range l.entries {
-		if e.Kind == kind {
+		if string(e.Kind) == kind {
 			result = append(result, e)
 		}
 	}
@@ -48,7 +48,7 @@ func (l *eventLog) phraseKinds(id uint64) []string {
 	var kinds []string
 	for _, e := range l.entries {
 		if e.PhraseID == id {
-			kinds = append(kinds, e.Kind)
+			kinds = append(kinds, string(e.Kind))
 		}
 	}
 	return kinds
@@ -298,7 +298,7 @@ func TestSuccessfulMergeEventsSurviveCancellation(t *testing.T) {
 				log := eventLog{start: time.Now()}
 				s.Emit = func(e Event) {
 					log.emit(e)
-					if e.Kind == stopAt && (e.Kind == "page" || e.Kind == "merged") && writes == 2 {
+					if string(e.Kind) == stopAt && (e.Kind == "page" || e.Kind == "merged") && writes == 2 {
 						cancel(want)
 					}
 				}

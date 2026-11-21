@@ -28,6 +28,7 @@ const MaxSettingsJSONBytes = 64<<10 + glossary.MaxEntries*(3*glossary.MaxRunes*1
 var ErrInvalidSettings = errors.New("invalid settings")
 
 // Settings is the complete settings.yaml document. Saving rewrites it and removes comments.
+// The HTTP API uses Go field names for JSON, while the file uses the YAML tags.
 type Settings struct {
 	UI               UI                `yaml:"ui"`
 	Translator       string            `yaml:"translator"`
@@ -39,6 +40,21 @@ type Settings struct {
 
 type UI struct {
 	Language string `yaml:"language"`
+}
+
+// Flow identifies a flow in the HTTP API and event stream.
+type Flow string
+
+const (
+	// Self captures the player's microphone and sends translations to VRChat's chatbox.
+	Self Flow = "self"
+	// World captures VRChat's audio and shows translations on the web page.
+	World Flow = "world"
+)
+
+// FlowNames returns the flows in startup and validation order.
+func FlowNames() []Flow {
+	return []Flow{Self, World}
 }
 
 type Flows struct {
@@ -61,20 +77,37 @@ type WorldFlow struct {
 	CutLevel float64 `yaml:"cut_level,omitempty"`
 }
 
-func (f Flows) Languages(name string) (spoken, target string) {
-	if name == "self" {
+func (f Flows) Enabled(name Flow) bool {
+	if name == Self {
+		return f.Self.Enabled
+	}
+	return f.World.Enabled
+}
+
+func (f *Flows) SetEnabled(name Flow, enabled bool) {
+	if name == Self {
+		f.Self.Enabled = enabled
+	} else {
+		f.World.Enabled = enabled
+	}
+}
+
+func (f Flows) Languages(name Flow) (spoken, target string) {
+	if name == Self {
 		return f.Self.Spoken, f.Self.Target
 	}
 	return f.World.Spoken, f.World.Target
 }
 
-func (f Flows) CutLevel(name string) float64 {
-	if name == "self" {
+func (f Flows) CutLevel(name Flow) float64 {
+	if name == Self {
 		return f.Self.CutLevel
 	}
 	return f.World.CutLevel
 }
 
+// Chatbox controls OSC output and reading time. The world flow uses the same
+// reading settings with the default template to group phrases on the page.
 type Chatbox struct {
 	Address       string  `yaml:"address"`
 	Template      string  `yaml:"template"`
@@ -99,6 +132,13 @@ func Defaults() Settings {
 	}
 }
 
+// Keep the manual dBFS bounds in sync with the Audio sliders in web/src/audio.jsx.
+// Omitted cut levels use zero to retain automatic gain.
+const (
+	minCutLevelDB = -80
+	maxCutLevelDB = -10
+)
+
 // Validate rejects unsupported languages, invalid destinations and invalid acceptance timestamps.
 func (s Settings) Validate() error {
 	if _, ok := catalog.LookupTranslator(s.Translator); !ok {
@@ -107,17 +147,17 @@ func (s Settings) Validate() error {
 	if s.UI.Language != "" && s.UI.Language != "en" && s.UI.Language != "ja" {
 		return fmt.Errorf("ui.language: unsupported language %q", s.UI.Language)
 	}
-	for _, name := range []string{"self", "world"} {
+	for _, name := range FlowNames() {
 		spoken, target := s.Flows.Languages(name)
 		language, ok := catalog.Spoken(spoken)
-		if !ok || (name == "self" && language.Auto) {
+		if !ok || (name == Self && language.Auto) {
 			return fmt.Errorf("flows.%s.spoken: unsupported language %q", name, spoken)
 		}
 		if !catalog.IsTarget(target) {
 			return fmt.Errorf("flows.%s.target: unsupported language %q", name, target)
 		}
-		if cut := s.Flows.CutLevel(name); cut != 0 && !(cut >= -80 && cut <= -10) {
-			return fmt.Errorf("flows.%s.cut_level: must be 0 (automatic) or between -80 and -10 dBFS", name)
+		if cut := s.Flows.CutLevel(name); cut != 0 && !(cut >= minCutLevelDB && cut <= maxCutLevelDB) {
+			return fmt.Errorf("flows.%s.cut_level: must be 0 (automatic) or between %d and %d dBFS", name, minCutLevelDB, maxCutLevelDB)
 		}
 	}
 	if _, err := chatbox.ParseAddress(s.Chatbox.Address); err != nil {

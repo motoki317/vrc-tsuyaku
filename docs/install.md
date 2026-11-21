@@ -2,44 +2,23 @@
 
 [日本語](https://github.com/motoki317/vrc-tsuyaku/blob/main/docs/install.ja.md)
 
-VRC Tsuyaku runs on 64-bit Windows 11, or on 64-bit Windows 10 version 2004 (May 2020 Update) or later. It needs about 4 GB of free disk space for its models.
+VRC Tsuyaku runs on 64-bit Windows 11, and on 64-bit Windows 10 from version 2004.
 
 ## Install and start
 
 1. Download [vrc-tsuyaku-windows.zip](https://github.com/motoki317/vrc-tsuyaku/releases/latest/download/vrc-tsuyaku-windows.zip).
-2. Right-click the zip, choose "Extract All", and then press "Extract". You get a folder named `vrc-tsuyaku-windows` with `vrc-tsuyaku.exe` inside.
-3. Move that folder to a place where it can stay, such as your Desktop. The app saves its settings and models in this folder. So do not put it in `Program Files`, and if OneDrive backs up your Desktop, choose a folder outside OneDrive, such as `C:\vrc-tsuyaku-windows`.
-4. Double-click `vrc-tsuyaku.exe` in that folder.
+2. Put `vrc-tsuyaku.exe` from the zip into a new folder, in a place where it can stay. The app saves its settings and models in this folder, so do not use `Program Files` or a folder that OneDrive backs up.
+3. Double-click `vrc-tsuyaku.exe`. Windows shows "Windows protected your PC" because the app is not signed: click "More info", then "Run anyway".
 
-The first time you start it, Windows shows "Windows protected your PC", because the app is not signed. Click "More info", then "Run anyway".
+The app opens its page in your browser, and the page leads you from there.
 
-A black console window opens, and the app opens its page in your browser. The app exits when you close the page's tab or the console window, so keep both open while you use it. If the page does not open, copy the address from the console window into your browser.
-
-## Set up translation
-
-On the first start, the page shows two rows:
-
-- "My voice" translates what you say into your microphone and writes the translation into your VRChat chatbox.
-- "Others' voices" translates what you hear in VRChat and shows it on the page.
-
-1. Check each row's languages: the spoken language, then the language to translate into. By default, "My voice" translates Japanese into English, and "Others' voices" translates English into Japanese. Change them if you need to, then press "Download all".
-2. A dialog shows the license of PLaMo, the translation model. Press "Accept and download" only if you are 18 or older, or if your guardian agrees.
-3. When the downloads finish, press "Next". The page switches to the Translation screen.
-4. Start VRChat. Then turn on "My voice", "Others' voices", or both.
+![The first page, with "Download all"](https://raw.githubusercontent.com/motoki317/vrc-tsuyaku/main/docs/assets/setup.png)
 
 If your chatbox stays empty, turn on OSC in VRChat: Action Menu → Options → OSC → Enabled.
 
-## Exit
-
-Close the page's tab, press "Exit" at the top right of the page, or close the console window. After you close the tab, the app exits about 5 seconds later.
-
-## If VRC Tsuyaku is already running
-
-If you start the app while one that you started earlier from the same folder is still running, the new one waits, and its page asks what to do. To save memory, press "Stop the earlier VRC Tsuyaku and start this one". The app does not ask when the earlier one runs from another folder: both then run.
-
 ## Update
 
-When a new version exists, Settings → About says so. Exit the app, download the new zip from the link in step 1, and replace `vrc-tsuyaku.exe` in your folder with the one from the new zip. Your settings and models stay in the folder, so you do not download them again.
+Exit the app, download the zip again, and replace `vrc-tsuyaku.exe` with the one in it. Your settings and models stay.
 
 ## Uninstall
 
@@ -47,11 +26,4 @@ Exit the app and delete its folder. The app writes nothing outside that folder.
 
 ## Linux
 
-Download [vrc-tsuyaku-linux.tar.gz](https://github.com/motoki317/vrc-tsuyaku/releases/latest/download/vrc-tsuyaku-linux.tar.gz), then run:
-
-```sh
-tar -xzf vrc-tsuyaku-linux.tar.gz
-./vrc-tsuyaku/vrc-tsuyaku
-```
-
-The app needs PulseAudio, or PipeWire with `pipewire-pulse`.
+Download [vrc-tsuyaku-linux.tar.gz](https://github.com/motoki317/vrc-tsuyaku/releases/latest/download/vrc-tsuyaku-linux.tar.gz), extract it, and run `vrc-tsuyaku/vrc-tsuyaku`. The app needs PulseAudio, or PipeWire with `pipewire-pulse`. On Linux, "Others' voices" is tested only with test playback programs, not with VRChat under Proton.

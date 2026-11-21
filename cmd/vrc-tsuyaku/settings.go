@@ -2,11 +2,30 @@ package main
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"reflect"
 	"time"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
+	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
+)
+
+// settingsPollInterval keeps external edits responsive without a file watcher for each OS.
+const settingsPollInterval = 250 * time.Millisecond
+
+type settingsText string
+
+const (
+	// settingsSaved means the app saved the settings.
+	settingsSaved settingsText = "saved"
+	// settingsReloaded means the app loaded an external edit.
+	settingsReloaded settingsText = "reloaded"
+	// settingsChanged means the app stopped a flow without saving because settingsError is set.
+	settingsChanged settingsText = "changed"
 )
 
 type settingsFileState struct {
@@ -34,7 +53,7 @@ func (a *app) statSettings() settingsFileState {
 	return settingsFileState{modified: info.ModTime(), size: info.Size()}
 }
 
-// Callers hold operations so a poll cannot mistake an app write for an external edit.
+// Callers must hold operations so a poll cannot mistake an app write for an external edit.
 func (a *app) writeSettings(s config.Settings) error {
 	if err := config.Save(a.dir, s); err != nil {
 		return err
@@ -53,7 +72,7 @@ func (a *app) writeSettings(s config.Settings) error {
 
 func (a *app) watchSettings() {
 	a.settingsWG.Go(func() {
-		ticker := time.NewTicker(250 * time.Millisecond)
+		ticker := time.NewTicker(settingsPollInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -86,8 +105,84 @@ func (a *app) reloadSettingsLocked() {
 		a.mu.Lock()
 		a.settingsError = message
 		a.mu.Unlock()
-		a.emit("", "error", message)
+		a.emit("", pipeline.KindError, message)
 		return
 	}
-	a.applySettings(a.preserveControls(s), "reloaded")
+	a.applySettings(a.preserveControls(s), settingsReloaded)
+}
+
+func cloneSettings(s config.Settings) config.Settings {
+	s.Glossary = append([]glossary.Entry{}, s.Glossary...)
+	s.LicensesAccepted = maps.Clone(s.LicensesAccepted)
+	if s.LicensesAccepted == nil {
+		s.LicensesAccepted = make(map[string]string)
+	}
+	return s
+}
+
+func (a *app) saveSettings(s config.Settings) error {
+	a.operations.Lock()
+	defer a.operations.Unlock()
+	if a.statSettings() != a.settingsFile {
+		a.reloadSettingsLocked()
+		return errcode.With(errcode.SettingsChanged, errors.New("settings changed on disk: reload and retry"))
+	}
+	s = a.preserveControls(s)
+	if err := a.writeSettings(s); err != nil {
+		return err
+	}
+	a.applySettings(s, settingsSaved)
+	return nil
+}
+
+func (a *app) preserveControls(s config.Settings) config.Settings {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	s.LicensesAccepted = maps.Clone(a.settings.LicensesAccepted)
+	for _, name := range config.FlowNames() {
+		s.Flows.SetEnabled(name, a.settings.Flows.Enabled(name))
+	}
+	return s
+}
+
+func (a *app) applySettings(s config.Settings, text settingsText) {
+	a.mu.Lock()
+	old := a.settings
+	translatorChanged := old.Translator != s.Translator
+	var restart []config.Flow
+	for _, name := range config.FlowNames() {
+		oldSpoken, _ := old.Flows.Languages(name)
+		newSpoken, _ := s.Flows.Languages(name)
+		oldLanguage, _ := catalog.Spoken(oldSpoken)
+		newLanguage, _ := catalog.Spoken(newSpoken)
+		requirementsChanged := translatorChanged || oldLanguage.Recognizer != newLanguage.Recognizer
+		changed := requirementsChanged
+		if name == config.Self {
+			changed = changed || old.Flows.Self.Microphone != s.Flows.Self.Microphone || old.Chatbox.Address != s.Chatbox.Address
+		}
+		status := a.flows[name].status
+		waiting := requirementsChanged && s.Flows.Enabled(name) && status.Code == errcode.MissingDownloads
+		if changed && (status.active() || waiting) {
+			restart = append(restart, name)
+		}
+	}
+	a.mu.Unlock()
+	// Finish old phrases before publishing settings that need another model.
+	for _, name := range restart {
+		a.stop(name)
+	}
+	if translatorChanged && a.translator != nil {
+		if err := a.translator.Close(); err != nil {
+			a.emitError("", err)
+		}
+		a.translator = nil
+	}
+	a.mu.Lock()
+	a.settings = cloneSettings(s)
+	a.settingsError = ""
+	a.mu.Unlock()
+	for _, name := range restart {
+		_ = a.start(name, s)
+	}
+	a.emit("", kindSettings, string(text))
 }

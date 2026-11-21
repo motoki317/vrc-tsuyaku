@@ -14,6 +14,20 @@ import (
 	"testing"
 )
 
+// TestSileroProbabilities compares Go inference with the Linux Python reference.
+//
+//   - VRC_TSUYAKU_TEST_ORT_LIB names the pinned Linux ONNX Runtime CPU shared library.
+//   - VRC_TSUYAKU_TEST_SILERO_MODEL names the Silero VAD v6.2.3 ONNX graph.
+//   - VRC_TSUYAKU_TEST_SILERO_WAV contains clips joined by silence in canonical 44-byte-header, 16 kHz mono PCM16 format.
+//   - VRC_TSUYAKU_TEST_SILERO_REF names a JSON object with sample_count and a probabilities array
+//     with one probability per 512 samples.
+//
+// Generate the reference outside this repository with silero-vad 6.2.3
+// OnnxWrapper(path, force_onnx_cpu=True).audio_forward(x, 16000) on Linux,
+// using the pinned ONNX Runtime with one intra-op thread. audio_forward
+// pads an incomplete final window with zeros.
+//
+//	nix develop -c go test ./internal/asr -run 'TestSilero(Probabilities|Lifecycle)$' -v -count=1 -timeout=10m
 func TestSileroProbabilities(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the upstream probability reference is generated on Linux")
@@ -65,6 +79,11 @@ func TestSileroProbabilities(t *testing.T) {
 	t.Logf("%d/%d windows within 1e-6; maximum absolute difference %.9g", len(ref.Probabilities), len(ref.Probabilities), maxDifference)
 }
 
+// TestSileroLifecycle checks session sharing and independent stream state.
+// VRC_TSUYAKU_TEST_ORT_LIB names the pinned ONNX Runtime CPU shared library.
+// VRC_TSUYAKU_TEST_SILERO_MODEL names the Silero VAD v6.2.3 ONNX graph.
+//
+//	nix develop -c go test ./internal/asr -run '^TestSileroLifecycle$' -v -count=1 -timeout=10m
 func TestSileroLifecycle(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	modelPath := requireEnv(t, "VRC_TSUYAKU_TEST_SILERO_MODEL")

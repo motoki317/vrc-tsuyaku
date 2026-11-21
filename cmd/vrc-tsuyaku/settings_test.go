@@ -39,7 +39,7 @@ func TestExternalSettingsApplyLikePageSave(t *testing.T) {
 				a.artifacts[id] = state
 			}
 			var self, world atomic.Int32
-			a.prepare = func(ctx context.Context, name string, _ config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(ctx context.Context, name config.Flow, _ config.Settings) (pipeline.Stages, error) {
 				if name == "self" {
 					self.Add(1)
 				} else {
@@ -353,7 +353,7 @@ func TestSettingsSaveRejectsUnobservedExternalChange(t *testing.T) {
 				t.Fatalf("settings = %+v, want %+v", state.Settings, want)
 			}
 			history, _ := a.events.after(0)
-			if len(history) != 2 || history[1].Kind != kind || !strings.Contains(history[1].Text, text) {
+			if len(history) != 2 || string(history[1].Kind) != kind || !strings.Contains(history[1].Text, text) {
 				t.Fatal("external edit did not emit the reload result", history)
 			}
 			retry := cloneSettings(state.Settings)
@@ -389,12 +389,12 @@ func TestStopWithInvalidExternalSettings(t *testing.T) {
 					a.artifacts[id] = state
 				}
 				started := make(chan struct{})
-				a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+				a.prepare = func(ctx context.Context, _ config.Flow, _ config.Settings) (pipeline.Stages, error) {
 					close(started)
 					<-ctx.Done()
 					return pipeline.Stages{}, ctx.Err()
 				}
-				if err := a.changeFlow(flow, "start"); err != nil {
+				if err := a.changeFlow(config.Flow(flow), "start"); err != nil {
 					t.Fatal(err)
 				}
 				<-started
@@ -411,8 +411,8 @@ func TestStopWithInvalidExternalSettings(t *testing.T) {
 						t.Fatal(w.Code, w.Body.String())
 					}
 				}
-				if a.flows[flow].status.State != "stopped" || a.settingsError == "" {
-					t.Fatal(a.flows[flow].status, a.settingsError)
+				if a.flows[config.Flow(flow)].status.State != "stopped" || a.settingsError == "" {
+					t.Fatal(a.flows[config.Flow(flow)].status, a.settingsError)
 				}
 				if (flow == "self" && a.settings.Flows.Self.Enabled) || (flow == "world" && a.settings.Flows.World.Enabled) {
 					t.Fatal("stop retained enabled state", a.settings.Flows)

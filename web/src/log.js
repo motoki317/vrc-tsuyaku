@@ -27,7 +27,7 @@ function updatePhrase(list, e) {
     phrase.unfinished = false;
     if (flow === 'self' && (kind === 'translated' || !phrase.status)) phrase.status = 'sending';
     if (kind === 'merged') {
-      // A replay may begin after the first phrase, or its bubble may have aged out.
+      // The first phrase can be missing from the replay or have aged out of the log.
       const shown = list.findIndex(row => row.message === e.into && row.phraseId !== phraseId);
       phrase.message = e.into;
       phrase.original = e.original;

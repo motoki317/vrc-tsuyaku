@@ -175,7 +175,7 @@ func TestCutLevelSettings(t *testing.T) {
 					t.Fatal(err)
 				}
 				got, err := Load(dir)
-				if err != nil || !reflect.DeepEqual(got, s) || got.Flows.CutLevel(flow) != cut {
+				if err != nil || !reflect.DeepEqual(got, s) || got.Flows.CutLevel(Flow(flow)) != cut {
 					t.Fatal("cut level round trip", got, err)
 				}
 				body, err := os.ReadFile(filepath.Join(dir, "settings.yaml"))

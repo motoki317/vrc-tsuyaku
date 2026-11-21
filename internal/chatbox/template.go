@@ -74,10 +74,12 @@ func (r ReadingTime) PageDurations(m Message, pages []string) []time.Duration {
 	return times
 }
 
-// BacklogBound limits how long a waiting page can fall behind its translation.
 // Six seconds of speech is about 35 Japanese characters.
+const backlogReadAloudTime = 6 * time.Second
+
+// BacklogBound limits how long a waiting page can fall behind its translation.
 func (r ReadingTime) BacklogBound() time.Duration {
-	return r.duration(6 * time.Second)
+	return r.duration(backlogReadAloudTime)
 }
 
 type Message struct {
@@ -143,8 +145,8 @@ func ValidateTemplate(format string) error {
 
 // Render splits formatted text into pages of at most 144 runes and nine lines.
 // Splits prefer sentence endings, then whitespace, then rune boundaries.
-// Whitespace at page edges is omitted. Whitespace-only text renders to no pages.
-// A template error or invalid rendered text fails before any page is returned.
+// Render trims whitespace at page edges. Whitespace-only text renders to no pages.
+// Render returns no pages if the template fails or renders invalid text.
 func Render(format string, message Message) ([]string, error) {
 	t, err := parseTemplate(format)
 	if err != nil {

@@ -21,13 +21,30 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 )
 
-const haasBlank = 3072
+const (
+	haasBlank = 3072
 
-// haasMinConfidence is the lowest phrase confidence at which Haas returns text.
+	// Match NeMo's transcribe(), which pads clips shorter than one second with zeros on both sides.
+	haasMinAudioSamples = 16000
+
+	// Match the pinned feature graph's band count and hop to preserve the encoder input and length.
+	haasFeatureBins       = 128
+	haasFeatureHopSamples = 160
+
+	// Match the Python parity reference. A different frame multiple can change the transcript.
+	haasFrameMultiple = 16
+)
+
+// At -0.3, Haas rejects 108 of 117 noise transcripts and drops 26 of 48
+// synthesized Japanese fillers. At -0.4, Haas would reject 89 of the noise
+// transcripts and keep three short answers and one garbled-name clip that
+// -0.3 drops. The name clip falls below -0.3 with and without hints.
+//
+// See decodeConfident for the cutoff sweep method.
 const haasMinConfidence = -0.3
 
-// Haas recognizes Japanese with the exported Haas encoder, prediction and joint
-// networks.
+// Haas recognizes Japanese with the exported FastConformer encoder, prediction and joint networks.
+// The fp32 encoder needs its adjacent external-data file. The int8 encoder is self-contained.
 type Haas struct {
 	hints                          *hintVocabulary
 	mu                             sync.RWMutex
@@ -109,16 +126,16 @@ func (h *Haas) tokens(ctx context.Context, audio []float32, words []string) ([]i
 	}
 	defer d.close()
 	return greedyTDT(ctx, len(encoded)/1024, tdtConfig{
-		blank: haasBlank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: h.hints.compile(words),
+		blank: haasBlank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: tdtMaxSymbolsPerFrame, hints: h.hints.compile(words),
 	}, d)
 }
 
 func padAudio(audio []float32) []float32 {
-	if len(audio) >= 16000 {
+	if len(audio) >= haasMinAudioSamples {
 		return audio
 	}
-	padded := make([]float32, 16000)
-	copy(padded[(16000-len(audio))/2:], audio)
+	padded := make([]float32, haasMinAudioSamples)
+	copy(padded[(haasMinAudioSamples-len(audio))/2:], audio)
 	return padded
 }
 
@@ -134,22 +151,23 @@ func (h *Haas) encode(ctx context.Context, audio []float32) ([]float32, error) {
 		return nil, fmt.Errorf("Haas features: %w", err)
 	}
 	defer closeValues(features)
-	mel, shape, err := tensorData[float32](features, "mel", []int64{1, 128, -1})
+	mel, shape, err := tensorData[float32](features, "mel", []int64{1, haasFeatureBins, -1})
 	if err != nil {
 		return nil, err
 	}
 	frames := int(shape[2])
-	paddedFrames := (frames + 15) / 16 * 16
-	padded := make([]float32, 128*paddedFrames)
-	for band := range 128 {
+	paddedFrames := (frames + haasFrameMultiple - 1) / haasFrameMultiple * haasFrameMultiple
+	padded := make([]float32, haasFeatureBins*paddedFrames)
+	for band := range haasFeatureBins {
 		copy(padded[band*paddedFrames:], mel[band*frames:(band+1)*frames])
 	}
-	melInput, err := ort.NewTensor([]int64{1, 128, int64(paddedFrames)}, padded)
+	melInput, err := ort.NewTensor([]int64{1, haasFeatureBins, int64(paddedFrames)}, padded)
 	if err != nil {
 		return nil, err
 	}
 	defer melInput.Close()
-	length, err := ort.NewTensor([]int64{1}, []int64{int64(len(audio) / 160)})
+	// The feature graph adds one zero frame after the full hops. The encoder length excludes it.
+	length, err := ort.NewTensor([]int64{1}, []int64{int64(len(audio) / haasFeatureHopSamples)})
 	if err != nil {
 		return nil, err
 	}

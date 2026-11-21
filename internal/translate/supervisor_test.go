@@ -48,6 +48,12 @@ type fakeRecord struct {
 	TakenAddress string
 }
 
+// TestMain lets the test binary run as the fake server. Run the unit suite on
+// Linux or cross-compile the test executable and run it from its directory on Windows.
+//
+//	nix develop -c go test ./internal/translate -v -count=1 -timeout=10m
+//	nix develop -c env GOOS=windows go test -c -o translate.test.exe ./internal/translate
+//	.\translate.test.exe -test.v -test.timeout=2m
 func TestMain(m *testing.M) {
 	if len(os.Args) > 2 && os.Args[1] == "-m" {
 		if err := fakeServer(); err != nil {

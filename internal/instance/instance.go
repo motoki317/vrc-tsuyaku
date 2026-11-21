@@ -1,4 +1,9 @@
 // Package instance records live instances in locked files under a data directory.
+// The registry creates instances/guard.lock on its first scan and creates slot files
+// instances/0.lock through instances/7.lock on demand. It keeps both kinds of file after release.
+// [Join] and [Membership.Others] hold the guard lock exclusively while probing or claiming slots.
+// A slot's JSON identifies a live instance only while its owner holds the slot lock.
+// A free slot can be absent or hold stale or incomplete JSON.
 package instance
 
 import (
@@ -15,6 +20,7 @@ import (
 const slotCount = 8
 
 // Info identifies the owner of a locked slot. Slot comes from the file name.
+// In a shared data directory, Host identifies which machine the PID and URL refer to.
 type Info struct {
 	Slot    int       `json:"-"`
 	URL     string    `json:"url"`
@@ -46,7 +52,7 @@ func Join(dir string, info Info) (*Membership, []Info, error) {
 	return m, others, nil
 }
 
-// Others lists the other live instances now. After Close it returns os.ErrClosed.
+// Others takes a fresh snapshot of other live instances. After Close it returns os.ErrClosed.
 func (m *Membership) Others() ([]Info, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

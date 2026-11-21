@@ -139,7 +139,7 @@ func TestUpdateStateAndEvent(t *testing.T) {
 			}
 			close(release)
 			a.updateWG.Wait()
-			want := updateState{State: state}
+			want := updateState{State: updateStatus(state)}
 			if state == "available" {
 				want.Version, want.URL = "v2.0.0", "https://example.com/release"
 			}

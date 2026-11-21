@@ -24,18 +24,16 @@ const (
 	translationSlots = 2
 	slotTokens       = 2048
 	answerTokens     = 512
-	historyTurns     = 10
-	historyTokens    = 400
-	// PLaMo's tags around one history turn take 14 tokens for ja to en and
-	// 18 for zh-hant to zh-hant, the most over the target languages.
+	// PLaMo adds 14 tag tokens to a ja-to-en history turn and 18 to a
+	// zh-hant-to-zh-hant turn, the largest count across the target languages.
 	// TestPLaMoTranslation checks the bound against the real server.
 	turnTags = 18
 	// A slot's 2048 tokens hold the answer (512), the history (400), the
-	// glossary (at most 960) and the current phrase (at least the other 176).
-	// A term costs its two words' Unicode code points plus one. A code point
-	// takes at most four tokens, one per UTF-8 byte, and the plus one pays
-	// four tokens for the term's tags, which take about three. So 240 units
-	// take at most 960 tokens.
+	// glossary (at most 960) and the current phrase (at least 176).
+	// A term costs one unit per Unicode code point in its two words and one
+	// unit for the tags. A code point takes at most four tokens, one per
+	// UTF-8 byte. The tags take about three tokens. At four tokens per unit,
+	// 240 units take at most 960 tokens.
 	termBudget = 240
 )
 
@@ -110,7 +108,7 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("start llama-server: %w", err)
 	}
-	// Neither proxy settings nor redirects may send a phrase off this address.
+	// Requests must stay on this loopback address even if the environment sets a proxy or the server redirects.
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	run := &serverRun{child: p, client: &http.Client{
@@ -166,8 +164,8 @@ func (r *serverRun) waitHealthy(ctx context.Context) error {
 	}
 }
 
-// Close stops and reaps the server at app shutdown and interrupts active requests.
-// Keep the server running while the flows are stopped.
+// Close stops and reaps the server and interrupts active requests.
+// Keep the server running when a flow stops so Start can reuse it.
 // Close waits for any pending Start, which holds the lifecycle lock during the
 // health wait. The OS also kills the child if the app dies without Close.
 func (s *Supervisor) Close() error {

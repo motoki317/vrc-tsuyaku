@@ -73,8 +73,9 @@ func BaseLanguage(code string) string {
 }
 
 // ReadAloudRate estimates the time per rune, including spaces and punctuation.
-// The estimates use IReST and two Korean speech-rate studies. Languages
-// without a separate estimate use the alphabetic rate.
+// The estimates use adult read-aloud rates from IReST and two Korean studies.
+// The studies omit spaces and punctuation, so languages with spaces use a shorter time per rune.
+// The Latin and Cyrillic estimates supply the fallback for languages without a separate rate.
 // https://iovs.arvojournals.org/article.aspx?articleid=2166061
 // https://koreascience.or.kr/article/JAKO200215637252142.page
 // https://koreascience.kr/article/JAKO200315637253642.page
@@ -128,7 +129,7 @@ var spokenLanguages = []SpokenLanguage{
 
 var commonArtifacts = []string{ONNXRuntime, Silero, LlamaCPP}
 
-// LanguageCatalog supplies the downloads for a language choice before it is saved.
+// LanguageCatalog lets the page show downloads for language choices before saving them.
 type LanguageCatalog struct {
 	Targets         []string          `json:"targets"`
 	Variants        map[string]string `json:"variants"`

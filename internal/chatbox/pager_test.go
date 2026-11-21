@@ -58,7 +58,7 @@ func FuzzPages(f *testing.F) {
 			}
 			joined.WriteString(page)
 		}
-		// Paging may consume separator whitespace, but must keep every other rune.
+		// Paging can consume separator whitespace. It must keep every other rune.
 		if strings.Join(strings.Fields(joined.String()), "") != strings.Join(strings.Fields(original+translation), "") {
 			t.Fatalf("paging lost or reordered text: %q", got)
 		}

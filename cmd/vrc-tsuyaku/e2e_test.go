@@ -56,6 +56,28 @@ func (s testSource) Capture(ctx context.Context, consume func([]float32) error) 
 	}
 }
 
+// TestEndToEnd uses fake capture sources and a loopback OSC listener so it needs no audio devices or VRChat.
+//
+//   - VRC_TSUYAKU_TEST_APP_DATA_DIR is a writable test directory. It can be empty or hold valid downloads to reuse.
+//   - VRC_TSUYAKU_TEST_APP_WAV names a Japanese clip of about four seconds in 16 kHz mono PCM16 WAV with a canonical 44-byte header.
+//
+// The test accepts the PLaMo license when it downloads PLaMo. Anyone running
+// with an uninstalled PLaMo artifact must accept its license first.
+// To reuse downloads across OSes, copy the directories in downloads/ except
+// ONNX Runtime and llama.cpp. Each OS needs its own runtime files.
+// The reported app memory is the test process's memory because it hosts the app.
+//
+//	nix develop -c just web
+//	nix develop -c go test ./cmd/vrc-tsuyaku -run '^TestEndToEnd$' -v -count=1 -timeout=35m
+//
+// For native Windows, build the page as above, cross-compile the test, then run it from Command Prompt with Windows paths in both variables.
+// When launching from WSL, list both variable names in WSLENV without the /p flag to preserve those paths.
+//
+//	nix develop -c env GOOS=windows go test -c -o app.test.exe ./cmd/vrc-tsuyaku
+//	app.test.exe -test.run "^TestEndToEnd$" -test.v -test.count=1 -test.timeout=35m
+//
+// Before a separate check starts the real self flow, save a test microphone
+// source fed by a null sink and set an OSC address other than 127.0.0.1:9000.
 func TestEndToEnd(t *testing.T) {
 	dir, wav := os.Getenv("VRC_TSUYAKU_TEST_APP_DATA_DIR"), os.Getenv("VRC_TSUYAKU_TEST_APP_WAV")
 	if dir == "" || wav == "" {
@@ -132,7 +154,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 	gate := make(chan struct{})
 	ended := make(chan time.Time, 1)
-	a.source = func(name, _ string) audio.Source {
+	a.source = func(name config.Flow, _ string) audio.Source {
 		if name == "self" {
 			return testSource{gate, samples, ended}
 		}
@@ -200,7 +222,7 @@ func TestEndToEnd(t *testing.T) {
 	for _, kind := range []string{"recognized", "translated", "page"} {
 		found := false
 		for _, e := range history {
-			if e.Flow == "self" && e.Kind == kind {
+			if e.Flow == "self" && string(e.Kind) == kind {
 				found = true
 			}
 		}

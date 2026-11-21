@@ -33,6 +33,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: just release "$RELEASE_TAG"
       - name: Publish GitHub release
+        # GitHub's generated notes follow the content of dist/release-notes.md.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}

@@ -19,9 +19,13 @@ type chatMessage struct {
 	Content string `json:"content"`
 }
 
-// Translate sends a phrase with its flow's recent turns and returns trimmed text.
-// A nil history sends a single turn. Calls with separate histories can run
-// concurrently after Start succeeds. Call Start again after a server exit.
+// Translate sends the flow's recent turns before the current phrase and returns
+// trimmed text. A nil history sends only the current phrase.
+// After Start succeeds, callers can translate concurrently with separate
+// histories. Call Start again after a server exit.
+// With nonnil history, a successful call adds the phrase and answer before
+// trimming. It skips the append if either text contains reserved PLaMo markup.
+// A change in source or target language clears the history before the request.
 // Translate rejects empty and whitespace-only phrases.
 // A response that reaches the token limit returns an error instead of partial text.
 // An empty source omits source_lang so that PLaMo detects the input language.

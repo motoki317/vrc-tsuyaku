@@ -18,6 +18,35 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/vad"
 )
 
+// Kind identifies an event's payload in the event stream.
+type Kind string
+
+const (
+	// KindSpeech carries whether speech started or ended.
+	KindSpeech Kind = "speech"
+	// KindRecognized carries the recognized phrase after the glossary rewrites it.
+	KindRecognized Kind = "recognized"
+	// KindTranslated carries the translation of the recognized phrase.
+	KindTranslated Kind = "translated"
+	// KindPage carries one chatbox page written to VRChat, including earlier phrases if they joined.
+	KindPage Kind = "page"
+	// KindMerged carries the joined translations of the message's phrases.
+	KindMerged Kind = "merged"
+	// KindSent carries empty text once the flow writes all chatbox pages for the phrase.
+	KindSent Kind = "sent"
+	// KindError carries the diagnostic text.
+	KindError Kind = "error"
+)
+
+type speechText string
+
+const (
+	// speechStart means the flow hears speech begin.
+	speechStart speechText = "start"
+	// speechEnd means the flow hears speech end.
+	speechEnd speechText = "end"
+)
+
 // Event reports a pipeline result. The app also uses this type for status updates.
 // PhraseID is unique across Run calls and links the recognized, translated,
 // page, merged and sent events for one phrase.
@@ -29,7 +58,7 @@ import (
 type Event struct {
 	PhraseID   uint64       `json:"phraseId,omitempty"`
 	Into       uint64       `json:"into,omitempty"`
-	Kind       string       `json:"kind"`
+	Kind       Kind         `json:"kind"`
 	Code       errcode.Code `json:"code,omitempty"`
 	Text       string       `json:"text"`
 	Original   string       `json:"original,omitempty"`
@@ -39,7 +68,7 @@ type Event struct {
 
 var nextPhraseID atomic.Uint64
 
-// PhraseSettings is captured before recognition and stays fixed through sending.
+// Run snapshots PhraseSettings before recognition and uses it through sending.
 // Template renders the chatbox pages. Without Send it only measures whether phrases fit in one page together.
 type PhraseSettings struct {
 	SourceLang  string
@@ -82,7 +111,7 @@ type Stages struct {
 // With Send, a template error skips that phrase's send and emits an error event.
 // Without Send, a template error emits no event, and no later phrase joins a message from before that phrase.
 // Reading time and the message that a phrase can join last for this Run only.
-// Other errors cancel every stage and Run waits for them.
+// For other errors, Run cancels every stage and waits for all stages to end.
 // Cancellation discards capture's queued audio, the partial VAD window and the
 // segmenter's pending phrase, along with translated phrases waiting for Send.
 // A finite test source can return nil to end input.
@@ -94,12 +123,6 @@ func Run(ctx context.Context, s Stages) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	phrases := make(chan []float32)
-	type result struct {
-		id                    uint64
-		original, translation string
-		settings              PhraseSettings
-		queued                time.Time
-	}
 	texts := make(chan result)
 	translations := make(chan result, 64)
 	emit := func(e Event) {
@@ -115,169 +138,194 @@ func Run(ctx context.Context, s Stages) error {
 			}
 		})
 	}
-	start(func() error {
-		defer close(phrases)
-		var segmenter vad.Segmenter
-		level := leveler{searching: true}
-		speech := func(text string) { emit(Event{Kind: "speech", Text: text}) }
-		defer func() {
-			if segmenter.Active() {
-				speech("end")
-			}
-		}()
-		var window, scored [vad.WindowSamples]float32
-		n := 0
-		publish := func(phrase []float32) error {
-			if len(phrase) == 0 {
-				return nil
-			}
-			amplifyPhrase(phrase)
-			select {
-			case phrases <- phrase:
-				return nil
-			case <-ctx.Done():
-				return context.Cause(ctx)
-			}
+	start(func() error { return segment(ctx, s, phrases, emit) })
+	start(func() error { return recognize(ctx, s, phrases, texts, emit) })
+	start(func() error { return translate(ctx, s, texts, translations, emit) })
+	start(func() error { return show(ctx, s, translations, emit) })
+	wg.Wait()
+	return context.Cause(ctx)
+}
+
+type result struct {
+	id                    uint64
+	original, translation string
+	settings              PhraseSettings
+	queued                time.Time
+}
+
+// segment reads captured audio and emits speech events and audio phrases.
+// A clean end to capture flushes the final phrase. The stage closes phrases when it returns.
+func segment(ctx context.Context, s Stages, phrases chan<- []float32, emit func(Event)) error {
+	defer close(phrases)
+	var segmenter vad.Segmenter
+	level := leveler{searching: true}
+	speech := func(text speechText) { emit(Event{Kind: KindSpeech, Text: string(text)}) }
+	defer func() {
+		if segmenter.Active() {
+			speech(speechEnd)
 		}
-		score := func() error {
-			var cutLevel float64
-			if s.CutLevel != nil {
-				cutLevel = s.CutLevel()
-			}
-			power, db, open := level.process(window[:], scored[:], cutLevel)
-			if s.Meter != nil {
-				s.Meter(db)
-			}
-			p, err := s.Probability(ctx, scored[:])
-			if err != nil {
-				return err
-			}
-			if !open {
-				p = 0
-			}
-			active := segmenter.Active()
-			phrase, err := segmenter.Push(window[:], p)
-			if err != nil {
-				return err
-			}
-			if segmenter.Active() && p >= vad.StartProbability {
-				level.heard(power)
-			}
-			if !active && segmenter.Active() {
-				speech("start")
-			}
-			if active && (!segmenter.Active() || len(phrase) > 0) {
-				level.ended()
-				speech("end")
-			}
-			if len(phrase) > 0 && segmenter.Active() {
-				speech("start")
-			}
-			level.after(segmenter.Active(), p)
-			return publish(phrase)
-		}
-		err := s.Source.Capture(ctx, func(chunk []float32) error {
-			for len(chunk) > 0 {
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				count := copy(window[n:], chunk)
-				n += count
-				chunk = chunk[count:]
-				if n == len(window) {
-					if err := score(); err != nil {
-						return err
-					}
-					n = 0
-				}
-			}
+	}()
+	var window, scored [vad.WindowSamples]float32
+	n := 0
+	publish := func(phrase []float32) error {
+		if len(phrase) == 0 {
 			return nil
-		})
+		}
+		amplifyPhrase(phrase)
+		select {
+		case phrases <- phrase:
+			return nil
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+	score := func() error {
+		var cutLevel float64
+		if s.CutLevel != nil {
+			cutLevel = s.CutLevel()
+		}
+		power, db, open := level.process(window[:], scored[:], cutLevel)
+		if s.Meter != nil {
+			s.Meter(db)
+		}
+		p, err := s.Probability(ctx, scored[:])
 		if err != nil {
 			return err
 		}
-		if n > 0 {
-			clear(window[n:])
-			if err := score(); err != nil {
-				return err
-			}
+		if !open {
+			p = 0
 		}
-		if segmenter.Active() {
-			speech("end")
+		active := segmenter.Active()
+		phrase, err := segmenter.Push(window[:], p)
+		if err != nil {
+			return err
 		}
-		return publish(segmenter.Flush())
-	})
-	start(func() error {
-		defer close(texts)
-		for phrase := range phrases {
+		if segmenter.Active() && p >= vad.StartProbability {
+			level.heard(power)
+		}
+		if !active && segmenter.Active() {
+			speech(speechStart)
+		}
+		if active && (!segmenter.Active() || len(phrase) > 0) {
+			level.ended()
+			speech(speechEnd)
+		}
+		if len(phrase) > 0 && segmenter.Active() {
+			speech(speechStart)
+		}
+		level.after(segmenter.Active(), p)
+		return publish(phrase)
+	}
+	err := s.Source.Capture(ctx, func(chunk []float32) error {
+		for len(chunk) > 0 {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			settings := s.Settings()
-			source, target := settings.SourceLang, settings.TargetLang
-			text, err := s.Recognize(ctx, phrase, settings)
-			if err != nil {
-				return err
+			count := copy(window[n:], chunk)
+			n += count
+			chunk = chunk[count:]
+			if n == len(window) {
+				if err := score(); err != nil {
+					return err
+				}
+				n = 0
 			}
-			// A recognizer writes text for sound that is not speech, such as "――" for a breath.
-			// Text without a letter or digit holds nothing to translate.
-			if !strings.ContainsFunc(text, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		clear(window[n:])
+		if err := score(); err != nil {
+			return err
+		}
+	}
+	if segmenter.Active() {
+		speech(speechEnd)
+	}
+	return publish(segmenter.Flush())
+}
+
+// recognize reads audio phrases and snapshots settings for each phrase.
+// For transcripts with a letter or digit, it emits a recognized event and sends the rewritten transcript with its settings.
+// It closes texts when input ends or the stage returns an error.
+func recognize(ctx context.Context, s Stages, phrases <-chan []float32, texts chan<- result, emit func(Event)) error {
+	defer close(texts)
+	for phrase := range phrases {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		settings := s.Settings()
+		source, target := settings.SourceLang, settings.TargetLang
+		text, err := s.Recognize(ctx, phrase, settings)
+		if err != nil {
+			return err
+		}
+		// A recognizer writes text for sound that is not speech, such as "――" for a breath.
+		// Text without a letter or digit holds nothing to translate.
+		if !strings.ContainsFunc(text, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+			continue
+		}
+		text, settings.Terms = glossary.Rewrite(text, settings.Terms)
+		id := nextPhraseID.Add(1)
+		emit(Event{PhraseID: id, Kind: KindRecognized, Text: text, SourceLang: source, TargetLang: target})
+		select {
+		case texts <- result{id: id, original: text, settings: settings}:
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+	return nil
+}
+
+// translate reads recognized phrases and emits a translated event before it queues each result.
+// It closes translations when input ends or the stage returns an error.
+func translate(ctx context.Context, s Stages, texts <-chan result, translations chan<- result, emit func(Event)) error {
+	defer close(translations)
+	for r := range texts {
+		settings := r.settings
+		settings.SourceLang = catalog.TranslatorSource(settings.SourceLang)
+		translated, err := s.Translate(ctx, r.original, settings)
+		if err != nil {
+			return err
+		}
+		r.translation = translated
+		emit(Event{PhraseID: r.id, Kind: KindTranslated, Original: r.original, Text: translated, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
+		r.queued = time.Now()
+		select {
+		case translations <- r:
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+	return nil
+}
+
+// show reads translated phrases and emits merged events when phrases join a message.
+// With Send, it writes chatbox pages and emits page, sent and error events.
+// It ends when input closes, cancellation takes effect or a display error other than a template error occurs.
+func show(ctx context.Context, s Stages, translations <-chan result, emit func(Event)) error {
+	display := display{send: s.Send, emit: emit}
+	for r := range translations {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang}
+		if err := display.show(ctx, r.id, r.settings.Template, r.settings.ReadingTime, message, r.queued); err != nil {
+			if ctx.Err() != nil {
+				return context.Cause(ctx)
+			}
+			emit(Event{PhraseID: r.id, Kind: KindError, Code: errcode.Of(err), Text: err.Error(), SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
+			if errors.Is(err, chatbox.ErrTemplate) {
 				continue
 			}
-			text, settings.Terms = glossary.Rewrite(text, settings.Terms)
-			id := nextPhraseID.Add(1)
-			emit(Event{PhraseID: id, Kind: "recognized", Text: text, SourceLang: source, TargetLang: target})
-			select {
-			case texts <- result{id: id, original: text, settings: settings}:
-			case <-ctx.Done():
-				return context.Cause(ctx)
-			}
+			return err
 		}
-		return nil
-	})
-	start(func() error {
-		defer close(translations)
-		for r := range texts {
-			settings := r.settings
-			settings.SourceLang = catalog.TranslatorSource(settings.SourceLang)
-			translated, err := s.Translate(ctx, r.original, settings)
-			if err != nil {
-				return err
-			}
-			r.translation = translated
-			emit(Event{PhraseID: r.id, Kind: "translated", Original: r.original, Text: translated, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
-			r.queued = time.Now()
-			select {
-			case translations <- r:
-			case <-ctx.Done():
-				return context.Cause(ctx)
-			}
+		if s.Send != nil {
+			emit(Event{PhraseID: r.id, Kind: KindSent, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
 		}
-		return nil
-	})
-	start(func() error {
-		display := display{send: s.Send, emit: emit}
-		for r := range translations {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang}
-			if err := display.show(ctx, r.id, r.settings.Template, r.settings.ReadingTime, message, r.queued); err != nil {
-				if ctx.Err() != nil {
-					return context.Cause(ctx)
-				}
-				emit(Event{PhraseID: r.id, Kind: "error", Code: errcode.Of(err), Text: err.Error(), SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
-				if errors.Is(err, chatbox.ErrTemplate) {
-					continue
-				}
-				return err
-			}
-			if s.Send != nil {
-				emit(Event{PhraseID: r.id, Kind: "sent", SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
-			}
-		}
-		return nil
-	})
-	wg.Wait()
-	return context.Cause(ctx)
+	}
+	return nil
 }

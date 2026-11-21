@@ -64,6 +64,10 @@ func TestRecordArguments(t *testing.T) {
 	}
 }
 
+// TestRecordList enumerates microphones without recording. Set VRC_TSUYAKU_TEST_AUDIO=1 to enable it.
+//
+//	nix develop -c just web
+//	nix develop -c env VRC_TSUYAKU_TEST_AUDIO=1 go test ./cmd/vrc-tsuyaku -run '^TestRecordList$' -v -count=1 -timeout=10m
 func TestRecordList(t *testing.T) {
 	if os.Getenv("VRC_TSUYAKU_TEST_AUDIO") == "" {
 		t.Skip("set VRC_TSUYAKU_TEST_AUDIO to list microphones")

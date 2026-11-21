@@ -11,7 +11,8 @@ import (
 // A message is one or more phrases shown together: one chatbox text, and one bubble in the web UI.
 // A phrase joins the latest message while that message has one page and is in its reading time,
 // if both have the same template and languages and fit in one page together.
-// With send, a page that replaces another waits for that page's reading time; a joined page does not.
+// With send, a replacement waits for the current page's reading time.
+// A page that joins the current message can appear immediately.
 // Without send the flow has no chatbox. The web UI keeps every message, so nothing waits.
 type display struct {
 	send      func(context.Context, string) error
@@ -23,6 +24,8 @@ type display struct {
 	readUntil time.Time
 }
 
+// show times each page from the write that first showed it because the queue can delay that write.
+// VRChat can hide the message sooner under the viewer's Chatbox Display Duration, which caps at 60 seconds.
 func (d *display) show(ctx context.Context, id uint64, format string, reading chatbox.ReadingTime, message chatbox.Message, queued time.Time) error {
 	shown := time.Now()
 	pages, err := chatbox.Render(format, message)
@@ -72,6 +75,7 @@ func (d *display) show(ctx context.Context, id uint64, format string, reading ch
 			d.since, d.firstID = shown, id
 		}
 		d.readUntil = d.since.Add(durations[i])
+		// Keep a late write eligible for a join during its minimum display time.
 		if floor := shown.Add(chatbox.PageInterval); floor.After(d.readUntil) {
 			d.readUntil = floor
 		}
@@ -80,10 +84,10 @@ func (d *display) show(ctx context.Context, id uint64, format string, reading ch
 			d.format, d.message = format, &message
 		}
 		if d.send != nil {
-			d.emit(Event{PhraseID: id, Kind: "page", Text: page, SourceLang: message.SourceLang, TargetLang: message.TargetLang})
+			d.emit(Event{PhraseID: id, Kind: KindPage, Text: page, SourceLang: message.SourceLang, TargetLang: message.TargetLang})
 		}
 		if merged {
-			d.emit(Event{PhraseID: id, Kind: "merged", Into: d.firstID, Original: message.Original, Text: message.Translation, SourceLang: message.SourceLang, TargetLang: message.TargetLang})
+			d.emit(Event{PhraseID: id, Kind: KindMerged, Into: d.firstID, Original: message.Original, Text: message.Translation, SourceLang: message.SourceLang, TargetLang: message.TargetLang})
 		}
 	}
 	return nil

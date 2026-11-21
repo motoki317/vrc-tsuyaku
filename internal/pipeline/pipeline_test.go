@@ -75,7 +75,7 @@ func TestPhraseOrder(t *testing.T) {
 		}
 		var mu sync.Mutex
 		counts := map[string]int{}
-		s.Emit = func(e Event) { mu.Lock(); defer mu.Unlock(); counts[e.Kind]++ }
+		s.Emit = func(e Event) { mu.Lock(); defer mu.Unlock(); counts[string(e.Kind)]++ }
 		if err := Run(context.Background(), s); err != nil {
 			t.Fatal(err)
 		}
@@ -355,7 +355,7 @@ func TestPhraseIdentityAcrossRuns(t *testing.T) {
 				if e.Kind == "translated" && (e.Original != "text" || e.Text != strings.Repeat("a", 145)) {
 					t.Fatalf("translation: %+v", e)
 				}
-				phrases[e.PhraseID] = append(phrases[e.PhraseID], e.Kind)
+				phrases[e.PhraseID] = append(phrases[e.PhraseID], string(e.Kind))
 			}
 			if len(phrases) != 3 {
 				t.Fatal(phrases)
@@ -595,7 +595,7 @@ func TestTemplateErrorContinuesToNextPhrase(t *testing.T) {
 		for id, events := range phrases {
 			var kinds []string
 			for _, e := range events {
-				kinds = append(kinds, e.Kind)
+				kinds = append(kinds, string(e.Kind))
 				if e.PhraseID != id || e.SourceLang != "ja" || e.TargetLang != "en" {
 					t.Fatal("error lost phrase identity or languages", e)
 				}

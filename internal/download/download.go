@@ -21,15 +21,26 @@ import (
 // ErrLicenseRequired means saved settings lack acceptance for the pinned revision.
 var ErrLicenseRequired = errors.New("license acceptance required")
 
-// ErrCleanup means the new installation is active, but an old installation or
-// staging directory could not be removed. The error includes the remaining path.
+// ErrCleanup means the installation is active but cleanup failed. The error
+// names the remaining backup or staging directory.
 var ErrCleanup = errors.New("artifact installed but cleanup failed")
 
-// Progress reports downloaded source bytes across the artifact. The download and
-// verify phases repeat for each source. Extraction runs in verify without increasing
-// Downloaded or Total. The installed phase follows publication.
+// Phase is the stage reported in a download progress snapshot.
+type Phase string
+
+const (
+	// PhaseDownload reports a source download and its byte counts.
+	PhaseDownload Phase = "download"
+	// PhaseVerify reports verification and extraction of the source's installed files without advancing byte counts.
+	PhaseVerify Phase = "verify"
+	// PhaseInstalled reports that the artifact has been published.
+	PhaseInstalled Phase = "installed"
+)
+
+// Progress reports downloaded source bytes across the artifact. Download and verify repeat for each source.
 type Progress struct {
-	ArtifactID, Phase string
+	ArtifactID        string
+	Phase             Phase
 	Downloaded, Total int64
 }
 
@@ -82,6 +93,8 @@ func (m *Manager) acquire(ctx context.Context) error {
 // Directory returns the artifact directory without checking files or accessing the network.
 // goos validates the catalog lookup but does not affect the path. One data directory
 // holds one OS's artifacts.
+// For manual installation, copy each file into this directory under its catalog File.Path.
+// On Linux, each catalog file marked Executable must have execute permission.
 func (m *Manager) Directory(id, goos string) (string, error) {
 	if _, err := catalog.Lookup(id, goos); err != nil {
 		return "", err
@@ -129,11 +142,13 @@ func (m *Manager) Remove(id, goos string) error {
 // staging files and preserves an existing installation. Each retry starts from
 // the beginning. A nil result means the artifact is installed.
 // On ErrCleanup, keep the installed state, report the error, and ask the user to
-// remove the leftover directory named in the error. An installed event is sent.
+// remove the leftover directory named in the error. Download still reports PhaseInstalled to a nonnil notify.
 // An artifact with an AcceptanceKey requires that key in settings.yaml before
 // any network request. Missing acceptance returns ErrLicenseRequired.
 // The caller must invoke Download only in response to the user's download action.
 // notify, if nonnil, runs synchronously and must not call this Manager's methods.
+// On Windows, stop llama-server before replacing its files. Restart the app before
+// replacing a resident ONNX Runtime DLL, which Engine.Close leaves loaded.
 func (m *Manager) Download(ctx context.Context, id, goos string, notify func(Progress)) error {
 	a, err := catalog.Lookup(id, goos)
 	if err != nil {
@@ -221,7 +236,7 @@ func (m *Manager) install(ctx context.Context, a catalog.Artifact, notify func(P
 		for _, s := range a.Sources {
 			total += s.Size
 		}
-		notify(Progress{ArtifactID: a.ID, Phase: "installed", Downloaded: total, Total: total})
+		notify(Progress{ArtifactID: a.ID, Phase: PhaseInstalled, Downloaded: total, Total: total})
 	}
 	return err
 }
@@ -253,11 +268,11 @@ func publish(root *os.Root, stage, id string) error {
 	return nil
 }
 
-// CheckInstalled hashes every required file without network access. Call it at
-// startup and cache the result for the UI and flow starts. A nil Download result
-// already establishes the installed state without another hash check.
-// Missing or corrupt files and Linux executables without execute permission return
-// false. I/O and cancellation errors are reported.
+// CheckInstalled hashes every required file without network access. Hashing large models
+// can take seconds, so cache the startup result for the UI and flow starts.
+// A nil Download result already establishes the installed state without another hash check.
+// CheckInstalled returns false for missing or corrupt files and for Linux
+// executables without execute permission. It reports I/O and cancellation errors.
 func (m *Manager) CheckInstalled(ctx context.Context, id, goos string) (bool, error) {
 	a, err := catalog.Lookup(id, goos)
 	if err != nil {

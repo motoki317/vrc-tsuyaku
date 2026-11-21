@@ -94,5 +94,6 @@ class HaasFullOnnx:
         return tokens, logprobs
 
     def transcribe(self, audio: np.ndarray):
+        """Transcribe a one-dimensional 16 kHz float32 NumPy array."""
         tokens, logprobs = self.decode(self.encode(audio))
         return self.sp.decode(tokens).strip(), tokens, logprobs

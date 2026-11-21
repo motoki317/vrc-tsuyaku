@@ -70,6 +70,29 @@ func loadTestParakeet(t *testing.T, e *Engine, bundle string) *Parakeet {
 	return p
 }
 
+// TestParakeetCPUParity checks transcripts on Linux with onnx-asr's text rule.
+// The app keeps SentencePiece spacing, so punctuation spacing can differ.
+//
+//   - VRC_TSUYAKU_TEST_ORT_LIB names the pinned Linux ONNX Runtime CPU shared library.
+//   - VRC_TSUYAKU_TEST_PARAKEET_BUNDLE names the pinned Parakeet v2 int8 bundle from internal/catalog.
+//   - VRC_TSUYAKU_TEST_PARAKEET_WAV_DIR contains <id>.wav clips in canonical 44-byte-header, 16 kHz mono PCM16 format.
+//   - VRC_TSUYAKU_TEST_PARAKEET_REF names a nonempty JSONL reference. Each row has a unique filename stem id,
+//     expected transcript hyp and nonempty human transcript ref.
+//
+// Use the feature graph from the pinned onnx-asr wheel because the graph in
+// the v2 conversion repository produces different features.
+// Generate hyp outside this repository with onnx-asr 0.12.0. Set so to ONNX
+// Runtime session options with four intra-op threads and one inter-op thread.
+// Set path to the bundle directory.
+//
+//	providers = ["CPUExecutionProvider"]
+//	model = load_model("nemo-parakeet-tdt-0.6b-v2", path, quantization="int8",
+//	    sess_options=so, providers=providers,
+//	    preprocessor_config={"use_numpy_preprocessors": False, "use_conv_preprocessors": False,
+//	                         "sess_options": so, "providers": providers})
+//	model.recognize(audio, sample_rate=16000)
+//
+//	nix develop -c go test ./internal/asr -run 'TestParakeet(CPUParity|Lifecycle)$' -v -count=1 -timeout=20m
 func TestParakeetCPUParity(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the reference uses the Linux ONNX Runtime build")
@@ -105,6 +128,21 @@ func TestParakeetCPUParity(t *testing.T) {
 	t.Logf("Parakeet v2 int8, four threads: %d/%d identical", len(refs), len(refs))
 }
 
+// TestParakeetV3CPUParity compares token IDs and both renderings of the transcript on Linux.
+//
+//   - VRC_TSUYAKU_TEST_ORT_LIB names the pinned Linux ONNX Runtime CPU shared library.
+//   - VRC_TSUYAKU_TEST_PARAKEET_V3_BUNDLE names the pinned Parakeet v3 int8 bundle from internal/catalog.
+//   - VRC_TSUYAKU_TEST_PARAKEET_V3_WAV_DIR contains <id>.wav clips in canonical 44-byte-header, 16 kHz mono PCM16 format.
+//   - VRC_TSUYAKU_TEST_PARAKEET_V3_REF names a nonempty JSONL reference. Each row has a unique filename stem id,
+//     expected transcript hyp, nonempty human transcript ref, language code lang and a nonempty integer array tokens.
+//     The reference must include at least one clip each for en, de, fr, es and ru.
+//
+// Generate the reference outside this repository with onnx-asr 0.12.0's
+// NemoConformerTdt. Use the four pinned bundle files, the v3 conversion
+// repository's config.json, four intra-op threads and one inter-op thread.
+// Take token IDs from _decoding and hyp from _decode_tokens.
+//
+//	nix develop -c go test ./internal/asr -run '^TestParakeetV3CPUParity$' -v -count=1 -timeout=20m
 func TestParakeetV3CPUParity(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the reference uses the Linux ONNX Runtime build")
@@ -154,6 +192,14 @@ func TestParakeetV3CPUParity(t *testing.T) {
 	}
 }
 
+// TestParakeetConfidenceCut checks that each Parakeet version suppresses a
+// low-confidence transcript from synthetic tones. It needs no WAV directory
+// or reference file.
+// VRC_TSUYAKU_TEST_ORT_LIB names the pinned ONNX Runtime CPU shared library.
+// VRC_TSUYAKU_TEST_PARAKEET_BUNDLE names the pinned Parakeet v2 int8 bundle.
+// VRC_TSUYAKU_TEST_PARAKEET_V3_BUNDLE names the pinned Parakeet v3 int8 bundle.
+//
+//	nix develop -c go test ./internal/asr -run '^TestParakeetConfidenceCut$' -v -count=1 -timeout=10m
 func TestParakeetConfidenceCut(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	for _, tc := range []struct {
@@ -182,6 +228,16 @@ func TestParakeetConfidenceCut(t *testing.T) {
 	}
 }
 
+// TestParakeetLifecycle checks session sharing, concurrent inference and engine closure with a v2 int8 clip.
+//
+//   - VRC_TSUYAKU_TEST_ORT_LIB names the pinned ONNX Runtime CPU shared library.
+//   - VRC_TSUYAKU_TEST_PARAKEET_BUNDLE names the pinned Parakeet v2 int8 bundle from internal/catalog.
+//   - VRC_TSUYAKU_TEST_PARAKEET_WAV_DIR contains the test WAV clips.
+//   - VRC_TSUYAKU_TEST_PARAKEET_REF names the onnx-asr JSONL reference.
+//
+// See [TestParakeetCPUParity] for clip and reference formats and reference generation.
+//
+//	nix develop -c go test ./internal/asr -run '^TestParakeetLifecycle$' -v -count=1 -timeout=20m
 func TestParakeetLifecycle(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	bundle := requireEnv(t, "VRC_TSUYAKU_TEST_PARAKEET_BUNDLE")

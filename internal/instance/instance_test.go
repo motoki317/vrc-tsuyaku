@@ -101,6 +101,11 @@ func TestRegistryCreatesOnlyClaimedSlots(t *testing.T) {
 	wantFiles("0.lock", "1.lock", "guard.lock")
 }
 
+// TestMembershipLifecycle exercises the platform's file locks. To run the registry
+// suite on Windows, cross-compile on Linux, then run it from the binary's directory on Windows.
+//
+//	nix develop -c env GOOS=windows go test -c -o instance.test.exe ./internal/instance
+//	.\instance.test.exe -test.v -test.timeout=10m
 func TestMembershipLifecycle(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -269,8 +274,8 @@ func TestFailedPublicationDoesNotExposePartialJSON(t *testing.T) {
 	info.Started = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
 	failed := &Membership{dir: filepath.Join(dir, "instances"), slot: -1}
 	t.Cleanup(func() { _ = failed.Close() })
-	// Stop at scan's return, before Join's fallback cleanup. Another scan can
-	// now acquire the guard, so the failed publication must already be free.
+	// Pause after scan returns and before Join finishes cleanup. A competing scan
+	// can acquire the guard at that point, so the failed claim must already be free.
 	if _, err := failed.scan(&info); err == nil {
 		t.Fatal("scan accepted a timestamp that JSON cannot encode")
 	}

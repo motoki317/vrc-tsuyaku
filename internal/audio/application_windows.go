@@ -170,7 +170,7 @@ func activateLoopback(ctx context.Context, pid uint32) (*wca.IAudioClient, error
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	result := make(chan activationResult)
-	// Activation cannot be cancelled. Its owner keeps COM initialized through
+	// The caller cannot cancel activation. Its owner keeps COM initialized through
 	// completion, even when the capture caller stops waiting.
 	go func() {
 		runtime.LockOSThread()

@@ -91,6 +91,40 @@ func loadTestHaas(t *testing.T, e *Engine, bundle string, int8Encoder bool) *Haa
 	return h
 }
 
+// TestHaasCPUParity compares Go transcripts with the Python reference for both encoder precisions.
+//
+//   - VRC_TSUYAKU_TEST_ORT_LIB names the pinned ONNX Runtime CPU shared library for the test OS.
+//   - VRC_TSUYAKU_TEST_HAAS_BUNDLE names the Haas bundle with both fp32 and int8 encoders.
+//   - VRC_TSUYAKU_TEST_HAAS_WAV_DIR contains <id>.wav clips in canonical 44-byte-header, 16 kHz mono PCM16 format.
+//   - VRC_TSUYAKU_TEST_HAAS_REF_FP32 and VRC_TSUYAKU_TEST_HAAS_REF_INT8 name nonempty JSONL files for the two encoders.
+//     Each row has a unique filename stem id, expected transcript hyp and nonempty human transcript ref.
+//
+// Use the Linux library path printed by just ort on Linux. Copy the whole
+// Windows runtime directory to Windows for native tests.
+//
+// From tools/haas-export/, run these commands with one or more JSONL manifests.
+// Each manifest row supplies the clip id and nonempty human transcript in text.
+//
+//	uv run --locked python write_reference.py --bundle "$VRC_TSUYAKU_TEST_HAAS_BUNDLE" \
+//	  --encoder encoder.onnx --wav-dir "$VRC_TSUYAKU_TEST_HAAS_WAV_DIR" \
+//	  --output "$VRC_TSUYAKU_TEST_HAAS_REF_FP32" manifest.jsonl
+//	uv run --locked python write_reference.py --bundle "$VRC_TSUYAKU_TEST_HAAS_BUNDLE" \
+//	  --encoder encoder.int8.onnx --wav-dir "$VRC_TSUYAKU_TEST_HAAS_WAV_DIR" \
+//	  --output "$VRC_TSUYAKU_TEST_HAAS_REF_INT8" manifest.jsonl
+//
+// Share the fp32 reference across OSes. Generate the int8 reference on the test
+// OS because feature outputs differ enough to change int8 transcripts in both
+// implementations. On Windows, use native Windows Python and Windows paths.
+// Run the Go checks from the repository root.
+//
+//	nix develop -c go test ./internal/asr -run 'TestHaas(CPUParity|Lifecycle)$' -v -count=1 -timeout=45m
+//
+// Cross-compile the Windows binary, then run the second command in Windows
+// Command Prompt with Windows paths in the variables. For WSL interop, list the
+// variable names in WSLENV without /p so the paths stay unchanged.
+//
+//	nix develop -c env GOOS=windows go test -c -o asr.test.exe ./internal/asr
+//	asr.test.exe -test.run "TestHaas(CPUParity|Lifecycle)$" -test.v -test.timeout=45m
 func TestHaasCPUParity(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	bundle := requireEnv(t, "VRC_TSUYAKU_TEST_HAAS_BUNDLE")

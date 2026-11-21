@@ -15,7 +15,16 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 )
 
-// parakeetMinConfidence is the lowest phrase confidence at which Parakeet returns text.
+// At -0.7, v2 rejects 41 of 72 noise transcripts and v3 rejects 9 of 43.
+// V2 drops 0 of 149 correctly recognized short answers and v3 drops 0 of 150.
+// At -0.3, v2 would drop 16 of 149 short answers and v3 would drop 12 of 150.
+// At -0.6, v3 would reject 23 of 43 noise transcripts and keep all correctly
+// recognized speech, but v2's "No." at -0.66 would fall below the cutoff.
+//
+// For noise, v2 scores "Mm-hmm." at -0.35 to -0.08. Any cutoff that keeps
+// its lowest-scoring "Yes." at -0.45 also keeps those noise transcripts.
+//
+// See decodeConfident for the cutoff sweep method.
 const parakeetMinConfidence = -0.7
 
 // Parakeet recognizes speech with the int8 Parakeet TDT 0.6B v2 or v3 networks.
@@ -100,7 +109,7 @@ func (p *Parakeet) tokens(ctx context.Context, audio []float32, words []string) 
 	}
 	defer d.close()
 	return greedyTDT(ctx, len(encoded)/1024, tdtConfig{
-		blank: p.blank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: p.hints.compile(words),
+		blank: p.blank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: tdtMaxSymbolsPerFrame, hints: p.hints.compile(words),
 	}, d)
 }
 
@@ -216,8 +225,8 @@ func (d *parakeetDecoder) Scores(frame int) ([]float32, error) {
 	return logits, err
 }
 
+// Accept requires a successful Scores call to supply the next prediction state.
 func (d *parakeetDecoder) Accept(token int) error {
-	// Commit the candidate prediction state from the previous Scores call.
 	closeValues(d.state)
 	d.state, d.next = d.next, nil
 	d.last = int32(token)

@@ -28,7 +28,7 @@ const (
 	// window at or above it. This keeps word endings inside a phrase.
 	gateHoldWindows = 16
 	// The recognizer gets phrases near the level of ordinary recordings.
-	// Recognition worsened on quieter phrases.
+	// Quieter phrases produced more recognition errors in testing.
 	phraseTargetDB = -25
 	// Very quiet phrases need more gain than vadMaxGainDB.
 	phraseMaxGainDB = 40
@@ -36,9 +36,6 @@ const (
 	levelFloorPower = 1e-24
 )
 
-// leveler holds the learned gain and count of learning phrases since the last search.
-// It also holds the search state, the current phrase's speech power, and a ring
-// of recent window levels for the cut level.
 type leveler struct {
 	gainDB        float64
 	phrases       int

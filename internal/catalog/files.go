@@ -10,9 +10,8 @@ type HaasFiles struct {
 	Features, Encoder, Decoder, Joint, Vocabulary string
 }
 
-// HaasBundle names the files in the artifact directory returned by Manager.Directory
-// in internal/download. int8Encoder selects the downloadable encoder. False selects
-// the fp32 encoder used by offline parity tests.
+// HaasBundle names files under the directory from download.Manager.Directory.
+// Use true for the downloadable int8 encoder or false for the fp32 parity reference.
 func HaasBundle(dir string, int8Encoder bool) HaasFiles {
 	encoder := filepath.Join(dir, artifacts[Haas].referenceEncoder)
 	if int8Encoder {
@@ -30,8 +29,8 @@ type ParakeetFiles struct {
 	Features, Encoder, DecoderJoint, Vocabulary string
 }
 
-// ParakeetBundle names the int8 files for the recognizer artifact id in the
-// directory returned by Manager.Directory in internal/download.
+// ParakeetBundle names the recognizer artifact's int8 files under the directory
+// from download.Manager.Directory.
 func ParakeetBundle(id, dir string) ParakeetFiles {
 	return ParakeetFiles{
 		Features: modelPath(id, dir, "features"), Encoder: modelPath(id, dir, "encoder"),

@@ -13,20 +13,45 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/instance"
 )
 
+const (
+	// defaultStopGrace gives the other instance time to clean up and release its slot before a forced stop.
+	defaultStopGrace = 10 * time.Second
+	// defaultKillGrace allows time for the OS to release the slot after a forced stop.
+	defaultKillGrace = 5 * time.Second
+)
+
+type instanceStatus string
+
+const (
+	// instanceReady means this instance can start its flows.
+	instanceReady instanceStatus = ""
+	// instanceWaiting means this instance is waiting for other instances in its data directory.
+	instanceWaiting instanceStatus = "waiting"
+)
+
+type instanceRowStatus string
+
+const (
+	// instanceRowIdle means no stop is in progress for the listed instance.
+	instanceRowIdle instanceRowStatus = ""
+	// instanceRowStopping means a stop is in progress for the listed instance.
+	instanceRowStopping instanceRowStatus = "stopping"
+)
+
 type instanceState struct {
-	State  string        `json:"state"`
-	Others []instanceRow `json:"others,omitempty"`
+	State  instanceStatus `json:"state"`
+	Others []instanceRow  `json:"others,omitempty"`
 }
 
 type instanceRow struct {
-	Slot    int          `json:"slot"`
-	URL     string       `json:"url"`
-	PID     int          `json:"pid"`
-	Host    string       `json:"host"`
-	Started time.Time    `json:"started"`
-	State   string       `json:"state"`
-	Error   string       `json:"error"`
-	Code    errcode.Code `json:"code"`
+	Slot    int               `json:"slot"`
+	URL     string            `json:"url"`
+	PID     int               `json:"pid"`
+	Host    string            `json:"host"`
+	Started time.Time         `json:"started"`
+	State   instanceRowStatus `json:"state"`
+	Error   string            `json:"error"`
+	Code    errcode.Code      `json:"code"`
 }
 
 var (
@@ -46,7 +71,7 @@ func (a *app) joinInstance(url string) error {
 	a.membership = membership
 	a.instanceHost = host
 	if len(others) != 0 {
-		a.instance = instanceState{State: "waiting", Others: instanceRows(others, nil)}
+		a.instance = instanceState{State: instanceWaiting, Others: instanceRows(others, nil)}
 	}
 	return nil
 }
@@ -85,7 +110,7 @@ func (a *app) watchInstances() {
 					lastError = ""
 				}
 				a.mu.Lock()
-				waiting := a.instance.State == "waiting"
+				waiting := a.instance.State == instanceWaiting
 				a.mu.Unlock()
 				if !waiting {
 					return
@@ -105,7 +130,7 @@ func (a *app) refreshInstances() error {
 		return nil
 	}
 	a.mu.Lock()
-	if a.instance.State != "waiting" {
+	if a.instance.State != instanceWaiting {
 		a.mu.Unlock()
 		return nil
 	}
@@ -114,43 +139,43 @@ func (a *app) refreshInstances() error {
 	a.instance.Others = rows
 	a.mu.Unlock()
 	if changed {
-		a.emit("", "state", "waiting")
+		a.emit("", kindState, string(instanceWaiting))
 	}
 	return nil
 }
 
 func (a *app) startInstance() bool {
 	a.mu.Lock()
-	if a.instance.State != "waiting" || a.ctx.Err() != nil {
+	if a.instance.State != instanceWaiting || a.ctx.Err() != nil {
 		a.mu.Unlock()
 		return false
 	}
 	a.instance = instanceState{}
 	a.mu.Unlock()
 	a.startEnabled()
-	a.emit("", "state", "")
+	a.emit("", kindState, string(instanceReady))
 	return true
 }
 
 func (a *app) stopInstance(slot int) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.instance.State != "waiting" {
+	if a.instance.State != instanceWaiting {
 		return errors.New("this instance is not waiting")
 	}
 	for i, row := range a.instance.Others {
 		if row.Slot != slot {
 			continue
 		}
-		if row.State == "stopping" {
+		if row.State == instanceRowStopping {
 			return errors.New("instance is already stopping")
 		}
 		if err := a.ctx.Err(); err != nil {
 			return err
 		}
-		row.State, row.Error, row.Code = "stopping", "", ""
+		row.State, row.Error, row.Code = instanceRowStopping, "", ""
 		a.instance.Others[i] = row
-		a.emit("", "state", "waiting")
+		a.emit("", kindState, string(instanceWaiting))
 		a.instanceWG.Go(func() { a.stopOther(row) })
 		return nil
 	}
@@ -167,6 +192,7 @@ func instanceURL(url string) bool {
 	return err == nil && n > 0
 }
 
+// stopOther trusts a slot's loopback address and PID only on the host that wrote them.
 func (a *app) stopOther(row instanceRow) {
 	if a.instanceHost == "" || row.Host != a.instanceHost {
 		a.failInstanceStop(row, nil)
@@ -220,13 +246,13 @@ func (a *app) failInstanceStop(row instanceRow, err error) {
 	a.mu.Lock()
 	for i, current := range a.instance.Others {
 		if current.Slot == row.Slot && current.PID == row.PID && current.Host == row.Host {
-			a.instance.Others[i].State = ""
+			a.instance.Others[i].State = instanceRowIdle
 			a.instance.Others[i].Error = err.Error()
 			a.instance.Others[i].Code = errcode.InstanceNotStopped
 		}
 	}
 	a.mu.Unlock()
-	a.emit("", "state", "waiting")
+	a.emit("", kindState, string(instanceWaiting))
 }
 
 func holdsInstance(others []instance.Info, row instanceRow) bool {

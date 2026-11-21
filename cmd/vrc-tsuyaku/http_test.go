@@ -366,7 +366,7 @@ func TestLevelsLifecycle(t *testing.T) {
 	a, inputs := levelTestApp(t)
 	wantLevels(t, a, map[string]float64{})
 	for _, name := range []string{"self", "world"} {
-		if err := a.changeFlow(name, "start"); err != nil {
+		if err := a.changeFlow(config.Flow(name), "start"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -425,7 +425,7 @@ func TestLevelsDisappearBeforeModelRelease(t *testing.T) {
 	prepare := a.prepare
 	closing, release := make(chan struct{}), make(chan struct{})
 	defer close(release)
-	a.prepare = func(ctx context.Context, name string, s config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(ctx context.Context, name config.Flow, s config.Settings) (pipeline.Stages, error) {
 		stages, err := prepare(ctx, name, s)
 		stages.Close = func() {
 			close(closing)

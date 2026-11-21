@@ -74,8 +74,8 @@ func TestDeleteDownloadInUse(t *testing.T) {
 		for _, phase := range []string{"starting", "running"} {
 			t.Run(flow+"/"+phase, func(t *testing.T) {
 				a := testApp(t)
-				a.flows[flow].status.State = phase
-				spoken, _ := a.settings.Flows.Languages(flow)
+				a.flows[config.Flow(flow)].status.State = flowStatus(phase)
+				spoken, _ := a.settings.Flows.Languages(config.Flow(flow))
 				for _, id := range wantRequirements(t, spoken) {
 					if w := request(a, "DELETE", "/api/downloads/"+id, ""); w.Code != http.StatusConflict {
 						t.Fatal(id, w.Code, w.Body.String())
