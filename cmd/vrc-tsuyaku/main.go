@@ -84,7 +84,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (err error) 
 	if err := a.joinInstance(url); err != nil {
 		fmt.Fprintf(errout, consoleInstanceFailed+"\n", err, err)
 	}
-	waiting := a.instance.State == "waiting"
+	waiting := a.instance.State == instanceWaiting
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	a.checkUpdate(latestReleaseURL, &http.Client{})

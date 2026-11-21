@@ -41,6 +41,21 @@ type UI struct {
 	Language string `yaml:"language"`
 }
 
+// Flow identifies a flow in the HTTP API and event stream.
+type Flow string
+
+const (
+	// Self captures the player's microphone and sends translations to VRChat's chatbox.
+	Self Flow = "self"
+	// World captures VRChat's audio and shows translations on the web page.
+	World Flow = "world"
+)
+
+// FlowNames returns the flows in startup and validation order.
+func FlowNames() []Flow {
+	return []Flow{Self, World}
+}
+
 type Flows struct {
 	Self  SelfFlow  `yaml:"self"`
 	World WorldFlow `yaml:"world"`
@@ -61,15 +76,30 @@ type WorldFlow struct {
 	CutLevel float64 `yaml:"cut_level,omitempty"`
 }
 
-func (f Flows) Languages(name string) (spoken, target string) {
-	if name == "self" {
+func (f Flows) Enabled(name Flow) bool {
+	if name == Self {
+		return f.Self.Enabled
+	}
+	return f.World.Enabled
+}
+
+func (f *Flows) SetEnabled(name Flow, enabled bool) {
+	if name == Self {
+		f.Self.Enabled = enabled
+	} else {
+		f.World.Enabled = enabled
+	}
+}
+
+func (f Flows) Languages(name Flow) (spoken, target string) {
+	if name == Self {
 		return f.Self.Spoken, f.Self.Target
 	}
 	return f.World.Spoken, f.World.Target
 }
 
-func (f Flows) CutLevel(name string) float64 {
-	if name == "self" {
+func (f Flows) CutLevel(name Flow) float64 {
+	if name == Self {
 		return f.Self.CutLevel
 	}
 	return f.World.CutLevel
@@ -107,10 +137,10 @@ func (s Settings) Validate() error {
 	if s.UI.Language != "" && s.UI.Language != "en" && s.UI.Language != "ja" {
 		return fmt.Errorf("ui.language: unsupported language %q", s.UI.Language)
 	}
-	for _, name := range []string{"self", "world"} {
+	for _, name := range FlowNames() {
 		spoken, target := s.Flows.Languages(name)
 		language, ok := catalog.Spoken(spoken)
-		if !ok || (name == "self" && language.Auto) {
+		if !ok || (name == Self && language.Auto) {
 			return fmt.Errorf("flows.%s.spoken: unsupported language %q", name, spoken)
 		}
 		if !catalog.IsTarget(target) {

@@ -4,15 +4,29 @@ import (
 	"sync"
 	"time"
 
+	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
 	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 )
 
+const (
+	// kindState carries the new flow or instance state, with empty text when the instance starts.
+	kindState pipeline.Kind = "state"
+	// kindSettings carries whether settings were saved, reloaded, or changed only in memory.
+	kindSettings pipeline.Kind = "settings"
+	// kindDownload carries the ID of the artifact whose state or progress changed.
+	kindDownload pipeline.Kind = "download"
+	// kindUpdate carries the result of the update check.
+	kindUpdate pipeline.Kind = "update"
+	// kindExit omits text and ends the stream when the app begins shutdown.
+	kindExit pipeline.Kind = "exit"
+)
+
 type event struct {
-	ID        uint64    `json:"id"`
-	Time      time.Time `json:"time"`
-	Flow      string    `json:"flow,omitempty"`
-	Operation string    `json:"operation,omitempty"`
+	ID        uint64      `json:"id"`
+	Time      time.Time   `json:"time"`
+	Flow      config.Flow `json:"flow,omitempty"`
+	Operation flowAction  `json:"operation,omitempty"`
 	pipeline.Event
 }
 
@@ -24,12 +38,12 @@ type events struct {
 	changed chan struct{}
 }
 
-func (b *events) publish(flow string, e pipeline.Event) {
+func (b *events) publish(flow config.Flow, e pipeline.Event) {
 	b.publishEvent(event{Flow: flow, Event: e})
 }
 
 func (b *events) publishEvent(e event) {
-	if e.Kind == "error" && e.Code == "" {
+	if e.Kind == pipeline.KindError && e.Code == "" {
 		e.Code = errcode.Unknown
 	}
 	b.mu.Lock()

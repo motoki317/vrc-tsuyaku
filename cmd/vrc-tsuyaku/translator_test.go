@@ -47,7 +47,7 @@ func TestTranslatorChangeRestartsBothFlows(t *testing.T) {
 				a.translator = old
 				type preparation struct{ flow, translator string }
 				prepared := make(chan preparation, 4)
-				a.prepare = func(ctx context.Context, flow string, s config.Settings) (pipeline.Stages, error) {
+				a.prepare = func(ctx context.Context, flow config.Flow, s config.Settings) (pipeline.Stages, error) {
 					if s.Translator != initial.ID {
 						if code := errcode.Of(old.Wait(ctx)); code != errcode.TranslatorExited {
 							t.Errorf("old supervisor survived switch: %s", code)
@@ -62,7 +62,7 @@ func TestTranslatorChangeRestartsBothFlows(t *testing.T) {
 						}
 						<-a.modelTurn
 					}
-					prepared <- preparation{flow, s.Translator}
+					prepared <- preparation{string(flow), s.Translator}
 					stopped := func() {
 						a.mu.Lock()
 						defer a.mu.Unlock()
@@ -92,7 +92,7 @@ func TestTranslatorChangeRestartsBothFlows(t *testing.T) {
 				waitFor(t, func() bool {
 					a.mu.Lock()
 					defer a.mu.Unlock()
-					return a.flows["self"].status.State == phase && a.flows["world"].status.State == phase
+					return a.flows["self"].status.State == flowStatus(phase) && a.flows["world"].status.State == flowStatus(phase)
 				})
 				a.mu.Lock()
 				oldSelf, oldWorld := a.flows["self"], a.flows["world"]
@@ -168,7 +168,7 @@ func TestMissingTranslatorWaitsForExplicitDownload(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	for _, flow := range []string{"self", "world"} {
-		if got := a.flows[flow].status; got.State != "error" || got.Code != errcode.MissingDownloads {
+		if got := a.flows[config.Flow(flow)].status; got.State != "error" || got.Code != errcode.MissingDownloads {
 			t.Fatal("flow did not wait for translator", flow, got)
 		}
 	}
@@ -205,9 +205,9 @@ func TestLanguageChangeResumesWaitingFlow(t *testing.T) {
 			if err := a.writeSettings(a.settings); err != nil {
 				t.Fatal(err)
 			}
-			a.prepare = func(_ context.Context, name string, s config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(_ context.Context, name config.Flow, s config.Settings) (pipeline.Stages, error) {
 				spoken, _ := s.Flows.Languages(name)
-				if name != flow || spoken != catalog.Japanese {
+				if string(name) != flow || spoken != catalog.Japanese {
 					t.Errorf("prepared %s with language %s, want %s with Japanese", name, spoken, flow)
 				}
 				starts.Add(1)
@@ -218,13 +218,13 @@ func TestLanguageChangeResumesWaitingFlow(t *testing.T) {
 					Translate:   func(context.Context, string, pipeline.PhraseSettings) (string, error) { return "", nil },
 				}, nil
 			}
-			if err := a.changeFlow(flow, "start"); err != nil {
+			if err := a.changeFlow(config.Flow(flow), "start"); err != nil {
 				t.Fatal(err)
 			}
 			waitFor(t, func() bool {
 				a.mu.Lock()
 				defer a.mu.Unlock()
-				return a.flows[flow].status.State == "running"
+				return a.flows[config.Flow(flow)].status.State == "running"
 			})
 			s := cloneSettings(a.settings)
 			for _, spoken := range []string{"fr", catalog.Japanese} {
@@ -238,7 +238,7 @@ func TestLanguageChangeResumesWaitingFlow(t *testing.T) {
 				}
 				if spoken == "fr" {
 					a.mu.Lock()
-					status := a.flows[flow].status
+					status := a.flows[config.Flow(flow)].status
 					a.mu.Unlock()
 					if status.State != "error" || status.Code != errcode.MissingDownloads || starts.Load() != 1 {
 						t.Fatal("flow did not wait for the missing recognizer", status, starts.Load())
@@ -248,7 +248,7 @@ func TestLanguageChangeResumesWaitingFlow(t *testing.T) {
 			waitFor(t, func() bool {
 				a.mu.Lock()
 				defer a.mu.Unlock()
-				return a.flows[flow].status == (flowState{State: "running"})
+				return a.flows[config.Flow(flow)].status == (flowState{State: "running"})
 			})
 			if starts.Load() != 2 {
 				t.Fatal("returning to Japanese did not start the flow once", starts.Load())
@@ -268,7 +268,7 @@ func TestTranslatorStateAndDeletion(t *testing.T) {
 				t.Run(choice.ID+"/"+flow+"/"+phase, func(t *testing.T) {
 					a := testApp(t)
 					a.settings.Translator = choice.ID
-					a.flows[flow].status.State = phase
+					a.flows[config.Flow(flow)].status.State = flowStatus(phase)
 					var state struct {
 						Settings  config.Settings         `json:"settings"`
 						Languages catalog.LanguageCatalog `json:"languages"`

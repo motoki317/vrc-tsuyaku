@@ -28,26 +28,50 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/translate"
 )
 
+type artifactStatus string
+
+const (
+	// artifactMissing means the artifact's files are unavailable.
+	artifactMissing artifactStatus = "missing"
+	// artifactDownloading means a download for the artifact is in progress.
+	artifactDownloading artifactStatus = "downloading"
+	// artifactInstalled means the artifact's files are available to flows.
+	artifactInstalled artifactStatus = "installed"
+)
+
 type artifactState struct {
 	Artifact catalog.Artifact  `json:"artifact"`
-	State    string            `json:"state"`
+	State    artifactStatus    `json:"state"`
 	Progress download.Progress `json:"progress"`
 	Error    string            `json:"error,omitempty"`
 	Code     errcode.Code      `json:"code,omitempty"`
 }
 
+type flowStatus string
+
+const (
+	// flowStopped means the flow has no active run.
+	flowStopped flowStatus = "stopped"
+	// flowStarting means the flow is preparing its pipeline.
+	flowStarting flowStatus = "starting"
+	// flowRunning means the flow has started its pipeline.
+	flowRunning flowStatus = "running"
+	// flowFailed means startup or the flow's pipeline failed.
+	flowFailed flowStatus = "error"
+)
+
 type flowState struct {
-	State string       `json:"state"`
+	State flowStatus   `json:"state"`
 	Error string       `json:"error,omitempty"`
 	Code  errcode.Code `json:"code,omitempty"`
 }
 
 func flowError(err error) flowState {
-	return flowState{State: "error", Error: withDataDirHint(err).Error(), Code: errcode.Of(err)}
+	return flowState{State: flowFailed, Error: withDataDirHint(err).Error(), Code: errcode.Of(err)}
 }
 
 func (s flowState) active() bool {
-	return s.State == "starting" || s.State == "running"
+	return s.State == flowStarting || s.State == flowRunning
 }
 
 type flowRun struct {
@@ -83,7 +107,7 @@ type app struct {
 	settingsError string
 	settingsFile  settingsFileState
 	artifacts     map[string]artifactState
-	flows         map[string]*flowRun
+	flows         map[config.Flow]*flowRun
 	events        events
 	eventStreams  int
 	closeGrace    time.Duration
@@ -107,9 +131,9 @@ type app struct {
 	translator   *translate.Supervisor
 	queue        *chatbox.Queue
 	queueAddress string
-	source       func(flowName, microphoneID string) audio.Source
+	source       func(flowName config.Flow, microphoneID string) audio.Source
 	// start must call any returned Stages.Close, even on preparation error or cancellation.
-	prepare          func(ctx context.Context, flowName string, settings config.Settings) (pipeline.Stages, error)
+	prepare          func(ctx context.Context, flowName config.Flow, settings config.Settings) (pipeline.Stages, error)
 	downloadArtifact func(context.Context, string, string, func(download.Progress)) error
 	open             func(string) error
 }
@@ -124,11 +148,11 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	a := &app{ctx: ctx, cancel: cancel, dir: dir, downloads: manager,
 		launch:       rand.Text(),
 		info:         appBuildInfo(build),
-		update:       updateState{State: "checking"},
+		update:       updateState{State: updateChecking},
 		closeGrace:   5 * time.Second,
 		instancePoll: time.Second, stopGrace: 10 * time.Second, killGrace: 5 * time.Second,
 		kill:      killProcess,
-		artifacts: make(map[string]artifactState), flows: make(map[string]*flowRun), modelTurn: make(chan struct{}, 1),
+		artifacts: make(map[string]artifactState), flows: make(map[config.Flow]*flowRun), modelTurn: make(chan struct{}, 1),
 		source: flowSource, open: openFile,
 	}
 	a.prepare = a.prepareModels
@@ -138,7 +162,7 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	if loadErr != nil {
 		settings = config.Defaults()
 		a.settingsError = withDataDirHint(loadErr).Error()
-		a.emit("", "error", a.settingsError)
+		a.emit("", pipeline.KindError, a.settingsError)
 	}
 	a.settings = settings
 	artifacts, err := catalog.List(runtime.GOOS)
@@ -148,9 +172,9 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 	}
 	for _, artifact := range artifacts {
 		installed, err := manager.CheckInstalled(ctx, artifact.ID, runtime.GOOS)
-		state := artifactState{Artifact: artifact, State: "missing"}
+		state := artifactState{Artifact: artifact, State: artifactMissing}
 		if installed {
-			state.State = "installed"
+			state.State = artifactInstalled
 		}
 		if err != nil {
 			state.Error = withDataDirHint(err).Error()
@@ -159,27 +183,27 @@ func newApp(ctx context.Context, dir string) (*app, error) {
 		}
 		a.artifacts[artifact.ID] = state
 	}
-	for _, name := range []string{"self", "world"} {
-		run := &flowRun{status: flowState{State: "stopped"}}
+	for _, name := range config.FlowNames() {
+		run := &flowRun{status: flowState{State: flowStopped}}
 		run.level.Store(math.Float64bits(math.NaN()))
 		a.flows[name] = run
 	}
 	return a, nil
 }
 
-func flowSource(name, microphoneID string) audio.Source {
-	if name == "world" {
+func flowSource(name config.Flow, microphoneID string) audio.Source {
+	if name == config.World {
 		return audio.Application("VRChat.exe", "VRChat")
 	}
 	return audio.Microphone(microphoneID)
 }
 
-func (a *app) emit(flow, kind, text string) {
+func (a *app) emit(flow config.Flow, kind pipeline.Kind, text string) {
 	a.events.publish(flow, pipeline.Event{Kind: kind, Text: text})
 }
 
-func (a *app) emitError(flow string, err error) {
-	a.events.publish(flow, pipeline.Event{Kind: "error", Code: errcode.Of(err), Text: withDataDirHint(err).Error()})
+func (a *app) emitError(flow config.Flow, err error) {
+	a.events.publish(flow, pipeline.Event{Kind: pipeline.KindError, Code: errcode.Of(err), Text: withDataDirHint(err).Error()})
 }
 
 func cloneSettings(s config.Settings) config.Settings {
@@ -194,7 +218,7 @@ func cloneSettings(s config.Settings) config.Settings {
 func (a *app) snapshot() any {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	flows := make(map[string]flowState)
+	flows := make(map[config.Flow]flowState)
 	for name, run := range a.flows {
 		flows[name] = run.status
 	}
@@ -207,26 +231,26 @@ func (a *app) snapshot() any {
 		"factor": {chatbox.MinReadingFactor, chatbox.MaxReadingFactor},
 	}
 	return struct {
-		Launch          string                   `json:"launch"`
-		App             appInfo                  `json:"app"`
-		Update          updateState              `json:"update"`
-		Settings        config.Settings          `json:"settings"`
-		SettingsError   string                   `json:"settingsError,omitempty"`
-		Artifacts       map[string]artifactState `json:"artifacts"`
-		Flows           map[string]flowState     `json:"flows"`
-		Languages       catalog.LanguageCatalog  `json:"languages"`
-		GlossaryLimit   int                      `json:"glossaryLimit"`
-		DefaultTemplate string                   `json:"defaultTemplate"`
-		Reading         map[string]bounds        `json:"reading"`
-		Instance        instanceState            `json:"instance"`
+		Launch          string                    `json:"launch"`
+		App             appInfo                   `json:"app"`
+		Update          updateState               `json:"update"`
+		Settings        config.Settings           `json:"settings"`
+		SettingsError   string                    `json:"settingsError,omitempty"`
+		Artifacts       map[string]artifactState  `json:"artifacts"`
+		Flows           map[config.Flow]flowState `json:"flows"`
+		Languages       catalog.LanguageCatalog   `json:"languages"`
+		GlossaryLimit   int                       `json:"glossaryLimit"`
+		DefaultTemplate string                    `json:"defaultTemplate"`
+		Reading         map[string]bounds         `json:"reading"`
+		Instance        instanceState             `json:"instance"`
 	}{a.launch, a.info, a.update, cloneSettings(a.settings), a.settingsError, maps.Clone(a.artifacts), flows, catalog.Languages(), glossary.MaxEntries, chatbox.DefaultTemplate, reading,
 		instanceState{State: a.instance.State, Others: slices.Clone(a.instance.Others)}}
 }
 
-func (a *app) levels() map[string]float64 {
+func (a *app) levels() map[config.Flow]float64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	levels := make(map[string]float64)
+	levels := make(map[config.Flow]float64)
 	for name, run := range a.flows {
 		if level := math.Float64frombits(run.level.Load()); !math.IsNaN(level) {
 			levels[name] = level
@@ -240,21 +264,20 @@ func (a *app) startEnabled() {
 	defer a.operations.Unlock()
 	a.mu.Lock()
 	s := a.settings
-	valid := a.settingsError == "" && a.instance.State != "waiting"
+	valid := a.settingsError == "" && a.instance.State != instanceWaiting
 	a.mu.Unlock()
 	if !valid {
 		return
 	}
-	if s.Flows.Self.Enabled {
-		_ = a.start("self", s)
-	}
-	if s.Flows.World.Enabled {
-		_ = a.start("world", s)
+	for _, name := range config.FlowNames() {
+		if s.Flows.Enabled(name) {
+			_ = a.start(name, s)
+		}
 	}
 }
 
 // Model initialization runs outside operations so stop can cancel a pending start.
-func (a *app) start(name string, s config.Settings) error {
+func (a *app) start(name config.Flow, s config.Settings) error {
 	a.mu.Lock()
 	if a.flows[name].status.active() {
 		a.mu.Unlock()
@@ -266,11 +289,11 @@ func (a *app) start(name string, s config.Settings) error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
-	run := &flowRun{cancel: cancel, done: make(chan struct{}), status: flowState{State: "starting"}}
+	run := &flowRun{cancel: cancel, done: make(chan struct{}), status: flowState{State: flowStarting}}
 	run.level.Store(math.Float64bits(math.NaN()))
 	a.flows[name] = run
 	a.mu.Unlock()
-	a.emit(name, "state", "starting")
+	a.emit(name, kindState, string(flowStarting))
 	go func() {
 		defer close(run.done)
 		defer cancel()
@@ -282,7 +305,7 @@ func (a *app) start(name string, s config.Settings) error {
 				source, target := a.settings.Flows.Languages(name)
 				box := a.settings.Chatbox
 				format := box.Template
-				if name == "world" {
+				if name == config.World {
 					format = chatbox.DefaultTemplate
 				}
 				terms := glossary.Terms(a.settings.Glossary, source, target)
@@ -299,9 +322,9 @@ func (a *app) start(name string, s config.Settings) error {
 			}
 			stages.Meter = run.meter
 			a.mu.Lock()
-			run.status = flowState{State: "running"}
+			run.status = flowState{State: flowRunning}
 			a.mu.Unlock()
-			a.emit(name, "state", "running")
+			a.emit(name, kindState, string(flowRunning))
 			stages.Emit = func(e pipeline.Event) { a.events.publish(name, e) }
 			err = a.runStages(ctx, stages)
 			run.level.Store(math.Float64bits(math.NaN()))
@@ -310,16 +333,16 @@ func (a *app) start(name string, s config.Settings) error {
 			stages.Close()
 		}
 		a.mu.Lock()
-		run.status = flowState{State: "stopped"}
+		run.status = flowState{State: flowStopped}
 		if err != nil && ctx.Err() == nil {
 			run.status = flowError(err)
 		}
 		state := run.status
 		if ctx.Err() == nil {
 			if state.Error != "" {
-				a.events.publish(name, pipeline.Event{Kind: "error", Code: state.Code, Text: state.Error})
+				a.events.publish(name, pipeline.Event{Kind: pipeline.KindError, Code: state.Code, Text: state.Error})
 			} else {
-				a.emit(name, "state", state.State)
+				a.emit(name, kindState, string(state.State))
 			}
 		}
 		a.mu.Unlock()
@@ -328,11 +351,11 @@ func (a *app) start(name string, s config.Settings) error {
 }
 
 // The caller holds mu while checking artifact state.
-func (a *app) checkStart(name string, s config.Settings) error {
+func (a *app) checkStart(name config.Flow, s config.Settings) error {
 	if err := a.ctx.Err(); err != nil {
 		return err
 	}
-	if a.instance.State == "waiting" {
+	if a.instance.State == instanceWaiting {
 		return errInstancePending
 	}
 	var missing []string
@@ -342,7 +365,7 @@ func (a *app) checkStart(name string, s config.Settings) error {
 		return err
 	}
 	for _, id := range required {
-		if a.artifacts[id].State != "installed" {
+		if a.artifacts[id].State != artifactInstalled {
 			missing = append(missing, a.artifacts[id].Artifact.Name)
 		}
 	}
@@ -352,16 +375,16 @@ func (a *app) checkStart(name string, s config.Settings) error {
 	return nil
 }
 
-func (a *app) refuseStart(name string, err error) {
+func (a *app) refuseStart(name config.Flow, err error) {
 	a.mu.Lock()
 	if !a.flows[name].status.active() {
 		a.flows[name].status = flowError(err)
 	}
 	a.mu.Unlock()
-	a.events.publishEvent(event{Flow: name, Operation: "start", Event: pipeline.Event{Kind: "error", Code: errcode.Of(err), Text: err.Error()}})
+	a.events.publishEvent(event{Flow: name, Operation: flowStart, Event: pipeline.Event{Kind: pipeline.KindError, Code: errcode.Of(err), Text: err.Error()}})
 }
 
-func (a *app) stop(name string) {
+func (a *app) stop(name config.Flow) {
 	a.mu.Lock()
 	run := a.flows[name]
 	active := run.status.active()
@@ -373,10 +396,10 @@ func (a *app) stop(name string) {
 		<-run.done
 	}
 	a.mu.Lock()
-	run.status = flowState{State: "stopped"}
+	run.status = flowState{State: flowStopped}
 	a.mu.Unlock()
 	if active {
-		a.emit(name, "state", "stopped")
+		a.emit(name, kindState, string(flowStopped))
 	}
 }
 
@@ -391,7 +414,7 @@ func (a *app) saveSettings(s config.Settings) error {
 	if err := a.writeSettings(s); err != nil {
 		return err
 	}
-	a.applySettings(s, "saved")
+	a.applySettings(s, settingsSaved)
 	return nil
 }
 
@@ -399,32 +422,29 @@ func (a *app) preserveControls(s config.Settings) config.Settings {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	s.LicensesAccepted = maps.Clone(a.settings.LicensesAccepted)
-	s.Flows.Self.Enabled = a.settings.Flows.Self.Enabled
-	s.Flows.World.Enabled = a.settings.Flows.World.Enabled
+	for _, name := range config.FlowNames() {
+		s.Flows.SetEnabled(name, a.settings.Flows.Enabled(name))
+	}
 	return s
 }
 
-func (a *app) applySettings(s config.Settings, event string) {
+func (a *app) applySettings(s config.Settings, text settingsText) {
 	a.mu.Lock()
 	old := a.settings
 	translatorChanged := old.Translator != s.Translator
-	var restart []string
-	for _, name := range []string{"self", "world"} {
-		enabled := s.Flows.Self.Enabled
-		if name == "world" {
-			enabled = s.Flows.World.Enabled
-		}
+	var restart []config.Flow
+	for _, name := range config.FlowNames() {
 		oldSpoken, _ := old.Flows.Languages(name)
 		newSpoken, _ := s.Flows.Languages(name)
 		oldLanguage, _ := catalog.Spoken(oldSpoken)
 		newLanguage, _ := catalog.Spoken(newSpoken)
 		requirementsChanged := translatorChanged || oldLanguage.Recognizer != newLanguage.Recognizer
 		changed := requirementsChanged
-		if name == "self" {
+		if name == config.Self {
 			changed = changed || old.Flows.Self.Microphone != s.Flows.Self.Microphone || old.Chatbox.Address != s.Chatbox.Address
 		}
 		status := a.flows[name].status
-		waiting := requirementsChanged && enabled && status.Code == errcode.MissingDownloads
+		waiting := requirementsChanged && s.Flows.Enabled(name) && status.Code == errcode.MissingDownloads
 		if changed && (status.active() || waiting) {
 			restart = append(restart, name)
 		}
@@ -447,10 +467,19 @@ func (a *app) applySettings(s config.Settings, event string) {
 	for _, name := range restart {
 		_ = a.start(name, s)
 	}
-	a.emit("", "settings", event)
+	a.emit("", kindSettings, string(text))
 }
 
-func (a *app) changeFlow(name, action string) error {
+type flowAction string
+
+const (
+	// flowStart enables a flow and requests a run.
+	flowStart flowAction = "start"
+	// flowStop disables a flow and stops its run.
+	flowStop flowAction = "stop"
+)
+
+func (a *app) changeFlow(name config.Flow, action flowAction) error {
 	a.operations.Lock()
 	defer a.operations.Unlock()
 	a.reloadSettingsLocked()
@@ -458,22 +487,18 @@ func (a *app) changeFlow(name, action string) error {
 	s := cloneSettings(a.settings)
 	settingsError := a.settingsError
 	var startErr error
-	if action == "start" {
+	if action == flowStart {
 		startErr = a.checkStart(name, s)
 	}
 	a.mu.Unlock()
-	if settingsError != "" && action != "stop" && errcode.Of(startErr) != errcode.InstancePending {
+	if settingsError != "" && action != flowStop && errcode.Of(startErr) != errcode.InstancePending {
 		return fmt.Errorf("save valid settings before changing a flow: %s", settingsError)
 	}
 	if startErr != nil {
 		a.refuseStart(name, startErr)
 		return startErr
 	}
-	if name == "self" {
-		s.Flows.Self.Enabled = action == "start"
-	} else {
-		s.Flows.World.Enabled = action == "start"
-	}
+	s.Flows.SetEnabled(name, action == flowStart)
 	if settingsError == "" {
 		if err := a.writeSettings(s); err != nil {
 			return err
@@ -482,12 +507,12 @@ func (a *app) changeFlow(name, action string) error {
 	a.mu.Lock()
 	a.settings = s
 	a.mu.Unlock()
-	text := "saved"
+	text := settingsSaved
 	if settingsError != "" {
-		text = "changed"
+		text = settingsChanged
 	}
-	a.emit("", "settings", text)
-	if action == "stop" {
+	a.emit("", kindSettings, string(text))
+	if action == flowStop {
 		a.stop(name)
 		return nil
 	}
@@ -499,7 +524,7 @@ func (a *app) startDownload(id string, accept bool) error {
 	defer a.operations.Unlock()
 	a.reloadSettingsLocked()
 	a.mu.Lock()
-	if a.instance.State == "waiting" {
+	if a.instance.State == instanceWaiting {
 		a.mu.Unlock()
 		return errInstancePending
 	}
@@ -513,7 +538,7 @@ func (a *app) startDownload(id string, accept bool) error {
 	if !ok {
 		return fmt.Errorf("unknown artifact %q", id)
 	}
-	if state.State != "missing" {
+	if state.State != artifactMissing {
 		return fmt.Errorf("artifact %s is %s", id, state.State)
 	}
 	if key := state.Artifact.AcceptanceKey; key != "" {
@@ -533,7 +558,7 @@ func (a *app) startDownload(id string, accept bool) error {
 	if err := a.ctx.Err(); err != nil {
 		return err
 	}
-	state.State = "downloading"
+	state.State = artifactDownloading
 	state.Error = ""
 	state.Code = ""
 	state.Progress = download.Progress{}
@@ -548,18 +573,18 @@ func (a *app) startDownload(id string, accept bool) error {
 			a.artifacts[id] = state
 			a.mu.Unlock()
 			if time.Since(last) > 250*time.Millisecond {
-				a.emit("", "download", id)
+				a.emit("", kindDownload, id)
 				last = time.Now()
 			}
 		})
 		a.operations.Lock()
 		defer a.operations.Unlock()
-		state.State = "installed"
+		state.State = artifactInstalled
 		if err != nil {
 			state.Error = withDataDirHint(err).Error()
 			state.Code = errcode.Of(err)
 			if !errors.Is(err, download.ErrCleanup) {
-				state.State = "missing"
+				state.State = artifactMissing
 			}
 		}
 		a.mu.Lock()
@@ -568,12 +593,12 @@ func (a *app) startDownload(id string, accept bool) error {
 		if err != nil {
 			a.emitError("", err)
 		}
-		a.emit("", "download", id)
-		if state.State == "installed" {
+		a.emit("", kindDownload, id)
+		if state.State == artifactInstalled {
 			a.startWaitingFlows()
 		}
 	})
-	a.emit("", "download", id)
+	a.emit("", kindDownload, id)
 	return nil
 }
 
@@ -582,15 +607,11 @@ func (a *app) startWaitingFlows() {
 	a.reloadSettingsLocked()
 	a.mu.Lock()
 	s := cloneSettings(a.settings)
-	var waiting []string
+	var waiting []config.Flow
 	if a.settingsError == "" && a.ctx.Err() == nil {
-		for _, name := range []string{"self", "world"} {
-			enabled := s.Flows.Self.Enabled
-			if name == "world" {
-				enabled = s.Flows.World.Enabled
-			}
+		for _, name := range config.FlowNames() {
 			status := a.flows[name].status
-			if enabled && !status.active() && status.Code == errcode.MissingDownloads && a.checkStart(name, s) == nil {
+			if s.Flows.Enabled(name) && !status.active() && status.Code == errcode.MissingDownloads && a.checkStart(name, s) == nil {
 				waiting = append(waiting, name)
 			}
 		}
@@ -606,7 +627,7 @@ func (a *app) artifactDir(id string) string {
 	return dir
 }
 
-func (a *app) prepareModels(ctx context.Context, name string, s config.Settings) (stages pipeline.Stages, err error) {
+func (a *app) prepareModels(ctx context.Context, name config.Flow, s config.Settings) (stages pipeline.Stages, err error) {
 	select {
 	case a.modelTurn <- struct{}{}:
 	case <-ctx.Done():
@@ -664,7 +685,7 @@ func (a *app) prepareModels(ctx context.Context, name string, s config.Settings)
 	if err = a.translator.Start(ctx); err != nil {
 		return stages, err
 	}
-	if name == "self" {
+	if name == config.Self {
 		if a.queue == nil || a.queueAddress != s.Chatbox.Address {
 			if a.queue != nil {
 				_ = a.queue.Close()
@@ -727,7 +748,7 @@ func (a *app) close() error {
 	a.settingsWG.Wait()
 	a.instanceWG.Wait()
 	a.operations.Lock()
-	for _, name := range []string{"self", "world"} {
+	for _, name := range config.FlowNames() {
 		a.stop(name)
 	}
 	// Download completion takes operations; cancellation and this barrier prevent new downloads.

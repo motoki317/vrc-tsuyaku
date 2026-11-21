@@ -118,8 +118,8 @@ func levelTestApp(t *testing.T) (*app, map[string]levelFlowInput) {
 	for _, name := range []string{"self", "world"} {
 		inputs[name] = levelFlowInput{make(chan []float32), make(chan float32, 1), make(chan error, 1)}
 	}
-	a.prepare = func(_ context.Context, name string, _ config.Settings) (pipeline.Stages, error) {
-		input := inputs[name]
+	a.prepare = func(_ context.Context, name config.Flow, _ config.Settings) (pipeline.Stages, error) {
+		input := inputs[string(name)]
 		return pipeline.Stages{
 			Source: recordingSource(func(ctx context.Context, consume func([]float32) error) error {
 				for {
@@ -147,7 +147,7 @@ func TestCutLevelChangesReachRunningFlows(t *testing.T) {
 	a, inputs := levelTestApp(t)
 	a.settings.Flows.World.CutLevel = -50
 	for _, name := range []string{"self", "world"} {
-		if err := a.changeFlow(name, "start"); err != nil {
+		if err := a.changeFlow(config.Flow(name), "start"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -179,7 +179,7 @@ func TestCutLevelChangesReachRunningFlows(t *testing.T) {
 				t.Fatal("cut level did not reach the next window", name, got, want)
 			}
 			a.mu.Lock()
-			unchanged := a.flows[name] == runs[name] && runs[name].status.State == "running"
+			unchanged := a.flows[config.Flow(name)] == runs[config.Flow(name)] && runs[config.Flow(name)].status.State == "running"
 			a.mu.Unlock()
 			if !unchanged {
 				t.Fatal("cut level restarted the flow", name)
@@ -241,6 +241,45 @@ func wantRequirements(t *testing.T, spoken string) []string {
 	return required
 }
 
+func TestInvalidFlowRouteLeavesSettingsUnchanged(t *testing.T) {
+	for _, path := range []string{"/api/flows/bogus/start", "/api/flows/self/pause"} {
+		t.Run(path, func(t *testing.T) {
+			a, err := newApp(t.Context(), t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := cloneSettings(a.settings)
+			s.Flows.Self.Enabled = true
+			if err := a.writeSettings(s); err != nil {
+				t.Fatal(err)
+			}
+			a.settings = s
+			settingsPath := filepath.Join(a.dir, "settings.yaml")
+			before, err := os.ReadFile(settingsPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			w := request(a, http.MethodPost, path, "")
+			// A panic in the request can leave mu locked, which would block close.
+			t.Cleanup(func() {
+				if err := a.close(); err != nil {
+					t.Error(err)
+				}
+			})
+			if w.Code != http.StatusNotFound {
+				t.Errorf("status = %d, want 404: %s", w.Code, w.Body.String())
+			}
+			if !a.settings.Flows.Self.Enabled || a.settings.Flows.World.Enabled {
+				t.Errorf("enabled flags changed: %+v", a.settings.Flows)
+			}
+			if after, err := os.ReadFile(settingsPath); err != nil || !bytes.Equal(after, before) {
+				t.Errorf("settings.yaml changed: %v", err)
+			}
+		})
+	}
+}
+
 func TestMissingDownloadsRejectStartWithoutEnabling(t *testing.T) {
 	for _, flow := range []string{"self", "world"} {
 		t.Run(flow, func(t *testing.T) {
@@ -255,11 +294,11 @@ func TestMissingDownloadsRejectStartWithoutEnabling(t *testing.T) {
 			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "missing downloads:") {
 				t.Fatal(response.Code, response.Body.String())
 			}
-			if got := a.flows[flow].status; got.State != "error" || got.Code != errcode.MissingDownloads {
+			if got := a.flows[config.Flow(flow)].status; got.State != "error" || got.Code != errcode.MissingDownloads {
 				t.Fatal(got)
 			}
 			history, _ := a.events.after(0)
-			if len(history) != 1 || history[0].Flow != flow || history[0].Kind != "error" || history[0].Operation != "start" ||
+			if len(history) != 1 || string(history[0].Flow) != flow || history[0].Kind != "error" || history[0].Operation != "start" ||
 				history[0].Code != errcode.MissingDownloads || !strings.HasPrefix(history[0].Text, "missing downloads:") {
 				t.Fatal(history)
 			}
@@ -273,7 +312,7 @@ func TestMissingDownloadsRejectStartWithoutEnabling(t *testing.T) {
 				state.State = "installed"
 				a.artifacts[id] = state
 			}
-			if got := a.flows[flow].status; got.State != "error" || got.Code != errcode.MissingDownloads || a.flows[flow].cancel != nil {
+			if got := a.flows[config.Flow(flow)].status; got.State != "error" || got.Code != errcode.MissingDownloads || a.flows[config.Flow(flow)].cancel != nil {
 				t.Fatal("artifact availability changed the flow", got)
 			}
 		})
@@ -289,7 +328,7 @@ func TestStartKeepsActiveRun(t *testing.T) {
 				a.artifacts[id] = artifact
 			}
 			var starts atomic.Int32
-			a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(ctx context.Context, _ config.Flow, _ config.Settings) (pipeline.Stages, error) {
 				starts.Add(1)
 				<-ctx.Done()
 				return pipeline.Stages{}, ctx.Err()
@@ -300,7 +339,7 @@ func TestStartKeepsActiveRun(t *testing.T) {
 			waitFor(t, func() bool { return starts.Load() == 1 })
 			a.mu.Lock()
 			run := a.flows["self"]
-			run.status.State = phase
+			run.status.State = flowStatus(phase)
 			a.mu.Unlock()
 			before, _ := a.events.after(0)
 			results := make(chan *httptest.ResponseRecorder, 2)
@@ -313,7 +352,7 @@ func TestStartKeepsActiveRun(t *testing.T) {
 				}
 			}
 			a.mu.Lock()
-			unchanged := a.flows["self"] == run && run.status.State == phase
+			unchanged := a.flows["self"] == run && run.status.State == flowStatus(phase)
 			a.mu.Unlock()
 			if !unchanged || starts.Load() != 1 {
 				t.Fatal("Start replaced an active run")
@@ -343,7 +382,7 @@ func TestFailedStartReleasesContext(t *testing.T) {
 	}
 	contexts := make(chan context.Context, 1)
 	var releases atomic.Int32
-	a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(ctx context.Context, _ config.Flow, _ config.Settings) (pipeline.Stages, error) {
 		contexts <- ctx
 		return pipeline.Stages{Close: func() { releases.Add(1) }}, errors.New("model load failed")
 	}
@@ -384,7 +423,7 @@ func TestFlowReleasesModelsBeforeFinalStatus(t *testing.T) {
 			prepared, closing, finishClose := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			unblock := sync.OnceFunc(func() { close(finishClose) })
 			t.Cleanup(unblock)
-			a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(ctx context.Context, _ config.Flow, _ config.Settings) (pipeline.Stages, error) {
 				stages := pipeline.Stages{
 					Close: func() { close(closing); <-finishClose },
 					Source: recordingSource(func(context.Context, func([]float32) error) error {
@@ -434,7 +473,7 @@ func TestFlowReleasesModelsBeforeFinalStatus(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("flow did not finish after releasing its stages")
 			}
-			if run.status.State != tc.wantState {
+			if string(run.status.State) != tc.wantState {
 				t.Fatalf("final status = %s, want %s", run.status.State, tc.wantState)
 			}
 		})
@@ -448,7 +487,7 @@ func TestFlowReleasesModelsAfterStopOrRestart(t *testing.T) {
 			a.translator = testTranslator(t)
 			prepared := make(chan string, 2)
 			var active, releases atomic.Int32
-			a.prepare = func(ctx context.Context, _ string, s config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(ctx context.Context, _ config.Flow, s config.Settings) (pipeline.Stages, error) {
 				if active.Add(1) != 1 {
 					t.Error("restart loaded another recognizer before releasing the old one")
 				}
@@ -503,7 +542,7 @@ func TestStopEmitsOnce(t *testing.T) {
 				a.artifacts[id] = artifact
 			}
 			ready := make(chan struct{})
-			a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(ctx context.Context, _ config.Flow, _ config.Settings) (pipeline.Stages, error) {
 				close(ready)
 				<-ctx.Done()
 				return pipeline.Stages{}, ctx.Err()
@@ -515,7 +554,7 @@ func TestStopEmitsOnce(t *testing.T) {
 				<-ready
 			}
 			a.mu.Lock()
-			a.flows["world"].status.State = phase
+			a.flows["world"].status.State = flowStatus(phase)
 			if phase == "error" {
 				a.flows["world"].status.Error = "capture failed"
 			}
@@ -571,7 +610,7 @@ func TestStopRacesNormalCompletion(t *testing.T) {
 	}
 	for range 100 {
 		ready, release := make(chan struct{}), make(chan struct{})
-		a.prepare = func(context.Context, string, config.Settings) (pipeline.Stages, error) {
+		a.prepare = func(context.Context, config.Flow, config.Settings) (pipeline.Stages, error) {
 			return pipeline.Stages{
 				Source: recordingSource(func(ctx context.Context, _ func([]float32) error) error {
 					close(ready)
@@ -670,7 +709,7 @@ func TestSettingsAndFlowLifecycle(t *testing.T) {
 		a.artifacts[id] = state
 	}
 	a.mu.Unlock()
-	a.prepare = func(ctx context.Context, name string, s config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(ctx context.Context, name config.Flow, s config.Settings) (pipeline.Stages, error) {
 		starts.Add(1)
 		<-ctx.Done()
 		return pipeline.Stages{}, ctx.Err()
@@ -738,8 +777,8 @@ func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 					s.Flows.World.Enabled = flow == "world"
 					a.settings = s
 					var starts atomic.Int32
-					a.prepare = func(ctx context.Context, name string, _ config.Settings) (pipeline.Stages, error) {
-						if name != flow {
+					a.prepare = func(ctx context.Context, name config.Flow, _ config.Settings) (pipeline.Stages, error) {
+						if string(name) != flow {
 							t.Errorf("settings started the other flow: %s", name)
 						}
 						starts.Add(1)
@@ -748,18 +787,18 @@ func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 					}
 					active := phase == "starting" || phase == "running"
 					if active {
-						if err := a.start(flow, s); err != nil {
+						if err := a.start(config.Flow(flow), s); err != nil {
 							t.Fatal(err)
 						}
 						waitFor(t, func() bool { return starts.Load() == 1 })
 					}
-					initial := flowState{State: phase}
+					initial := flowState{State: flowStatus(phase)}
 					if phase == "error" {
 						initial.Error = "capture failed"
 					}
 					a.mu.Lock()
-					a.flows[flow].status = initial
-					before := a.flows[flow]
+					a.flows[config.Flow(flow)].status = initial
+					before := a.flows[config.Flow(flow)]
 					a.mu.Unlock()
 					s.Flows.Self.Enabled = !s.Flows.Self.Enabled
 					s.Flows.World.Enabled = !s.Flows.World.Enabled
@@ -792,7 +831,7 @@ func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 						waitFor(t, func() bool { return starts.Load() == 2 })
 					}
 					a.mu.Lock()
-					after := a.flows[flow]
+					after := a.flows[config.Flow(flow)]
 					status := after.status
 					a.mu.Unlock()
 					if (before != after) != restart || (!restart && status != initial) {
@@ -806,7 +845,7 @@ func TestSettingsOnlyRestartActiveFlows(t *testing.T) {
 					if flow == other {
 						other = "world"
 					}
-					if a.flows[other].status.State != "stopped" {
+					if a.flows[config.Flow(other)].status.State != "stopped" {
 						t.Fatal("settings started the other flow")
 					}
 				})

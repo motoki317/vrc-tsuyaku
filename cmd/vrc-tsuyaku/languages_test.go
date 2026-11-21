@@ -56,7 +56,7 @@ func TestLanguageAndReadingTimeChangesReachRunningPipeline(t *testing.T) {
 				reading                chatbox.ReadingTime
 			}
 			requests := make(chan translationRequest, 1)
-			a.prepare = func(context.Context, string, config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(context.Context, config.Flow, config.Settings) (pipeline.Stages, error) {
 				return pipeline.Stages{
 					Source: recordingSource(func(ctx context.Context, consume func([]float32) error) error {
 						for {
@@ -83,12 +83,16 @@ func TestLanguageAndReadingTimeChangesReachRunningPipeline(t *testing.T) {
 					},
 				}, nil
 			}
-			if err := a.changeFlow(flow, "start"); err != nil {
+			if err := a.changeFlow(config.Flow(flow), "start"); err != nil {
 				t.Fatal(err)
 			}
-			waitFor(t, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.flows[flow].status.State == "running" })
+			waitFor(t, func() bool {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				return a.flows[config.Flow(flow)].status.State == "running"
+			})
 			a.mu.Lock()
-			run := a.flows[flow]
+			run := a.flows[config.Flow(flow)]
 			s := cloneSettings(a.settings)
 			a.mu.Unlock()
 			for i, change := range tc.changes {
@@ -120,7 +124,7 @@ func TestLanguageAndReadingTimeChangesReachRunningPipeline(t *testing.T) {
 					return count == i+1
 				})
 				a.mu.Lock()
-				unchanged := a.flows[flow] == run && run.status.State == "running"
+				unchanged := a.flows[config.Flow(flow)] == run && run.status.State == "running"
 				a.mu.Unlock()
 				if !unchanged {
 					t.Fatal("change within a recognizer restarted the flow")
@@ -164,19 +168,19 @@ func TestSpokenChangeStopsBeforePublishingAndNeedsDownload(t *testing.T) {
 				a.artifacts[id] = artifact
 			}
 			ready := make(chan struct{})
-			a.prepare = func(ctx context.Context, name string, s config.Settings) (pipeline.Stages, error) {
+			a.prepare = func(ctx context.Context, name config.Flow, s config.Settings) (pipeline.Stages, error) {
 				close(ready)
 				<-ctx.Done()
 				a.mu.Lock()
 				defer a.mu.Unlock()
-				current, _ := a.settings.Flows.Languages(tc.flow)
-				before, _ := s.Flows.Languages(tc.flow)
+				current, _ := a.settings.Flows.Languages(config.Flow(tc.flow))
+				before, _ := s.Flows.Languages(config.Flow(tc.flow))
 				if current != before {
 					t.Error("published new language before old recognizer stopped")
 				}
 				return pipeline.Stages{}, ctx.Err()
 			}
-			if err := a.changeFlow(tc.flow, "start"); err != nil {
+			if err := a.changeFlow(config.Flow(tc.flow), "start"); err != nil {
 				t.Fatal(err)
 			}
 			<-ready
@@ -192,7 +196,7 @@ func TestSpokenChangeStopsBeforePublishingAndNeedsDownload(t *testing.T) {
 				t.Fatal(w.Code, w.Body.String())
 			}
 			a.mu.Lock()
-			status := a.flows[tc.flow].status
+			status := a.flows[config.Flow(tc.flow)].status
 			a.mu.Unlock()
 			if status.State != "error" || !strings.Contains(status.Error, a.artifacts[tc.missing].Artifact.Name) {
 				t.Fatal(status)

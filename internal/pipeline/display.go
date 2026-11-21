@@ -80,10 +80,10 @@ func (d *display) show(ctx context.Context, id uint64, format string, reading ch
 			d.format, d.message = format, &message
 		}
 		if d.send != nil {
-			d.emit(Event{PhraseID: id, Kind: "page", Text: page, SourceLang: message.SourceLang, TargetLang: message.TargetLang})
+			d.emit(Event{PhraseID: id, Kind: KindPage, Text: page, SourceLang: message.SourceLang, TargetLang: message.TargetLang})
 		}
 		if merged {
-			d.emit(Event{PhraseID: id, Kind: "merged", Into: d.firstID, Original: message.Original, Text: message.Translation, SourceLang: message.SourceLang, TargetLang: message.TargetLang})
+			d.emit(Event{PhraseID: id, Kind: KindMerged, Into: d.firstID, Original: message.Original, Text: message.Translation, SourceLang: message.SourceLang, TargetLang: message.TargetLang})
 		}
 	}
 	return nil

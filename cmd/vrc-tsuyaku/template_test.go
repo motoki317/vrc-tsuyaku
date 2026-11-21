@@ -137,7 +137,7 @@ func TestWorldFlowUsesDefaultTemplate(t *testing.T) {
 	a.settings.Chatbox.Template = "{{.Translation}}"
 	originals := []string{strings.Repeat("a", 80), strings.Repeat("b", 80), "c"}
 	i := 0
-	a.prepare = func(context.Context, string, config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(context.Context, config.Flow, config.Settings) (pipeline.Stages, error) {
 		return pipeline.Stages{
 			Source: recordingSource(func(_ context.Context, consume func([]float32) error) error {
 				for range originals {
@@ -222,7 +222,7 @@ func TestTemplateEditsAndErrorsKeepFlowRunning(t *testing.T) {
 	}
 	input := make(chan struct{}, 1)
 	translating, release := make(chan struct{}), make(chan struct{})
-	a.prepare = func(context.Context, string, config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(context.Context, config.Flow, config.Settings) (pipeline.Stages, error) {
 		i := 0
 		return pipeline.Stages{
 			Source: recordingSource(func(ctx context.Context, consume func([]float32) error) error {

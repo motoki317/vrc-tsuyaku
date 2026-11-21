@@ -13,10 +13,23 @@ import (
 
 var latestReleaseURL = "https://api.github.com/repos/" + strings.TrimPrefix(repository, "https://github.com/") + "/releases/latest"
 
+type updateStatus string
+
+const (
+	// updateChecking means the update check has not finished.
+	updateChecking updateStatus = "checking"
+	// updateCurrent means there is no newer release.
+	updateCurrent updateStatus = "current"
+	// updateAvailable means a newer release is available.
+	updateAvailable updateStatus = "available"
+	// updateFailed means the update check failed to determine the latest release.
+	updateFailed updateStatus = "failed"
+)
+
 type updateState struct {
-	State   string `json:"state"`
-	Version string `json:"version"`
-	URL     string `json:"url"`
+	State   updateStatus `json:"state"`
+	Version string       `json:"version"`
+	URL     string       `json:"url"`
 }
 
 func (a *app) checkUpdate(releaseURL string, client *http.Client) {
@@ -25,12 +38,12 @@ func (a *app) checkUpdate(releaseURL string, client *http.Client) {
 		a.mu.Lock()
 		a.update = update
 		a.mu.Unlock()
-		a.emit("", "update", update.State)
+		a.emit("", kindUpdate, string(update.State))
 	})
 }
 
 func fetchUpdate(ctx context.Context, releaseURL string, client *http.Client, version string) updateState {
-	failed := updateState{State: "failed"}
+	failed := updateState{State: updateFailed}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseURL, nil)
@@ -47,7 +60,7 @@ func fetchUpdate(ctx context.Context, releaseURL string, client *http.Client, ve
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return updateState{State: "current"}
+		return updateState{State: updateCurrent}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return failed
@@ -68,7 +81,7 @@ func fetchUpdate(ctx context.Context, releaseURL string, client *http.Client, ve
 		version = "v0.0.0"
 	}
 	if semver.Compare(release.TagName, version) > 0 {
-		return updateState{State: "available", Version: release.TagName, URL: release.HTMLURL}
+		return updateState{State: updateAvailable, Version: release.TagName, URL: release.HTMLURL}
 	}
-	return updateState{State: "current"}
+	return updateState{State: updateCurrent}
 }

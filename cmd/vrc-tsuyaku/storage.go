@@ -26,7 +26,7 @@ func (a *app) deleteDownload(id string) error {
 		a.mu.Unlock()
 		return fmt.Errorf("unknown artifact %q", id)
 	}
-	inUse := state.State == "downloading"
+	inUse := state.State == artifactDownloading
 	active := false
 	for name, run := range a.flows {
 		if run.status.active() {
@@ -61,17 +61,17 @@ func (a *app) deleteDownload(id string) error {
 	state.Error = ""
 	state.Code = ""
 	if err == nil {
-		state.State = "missing"
+		state.State = artifactMissing
 	} else {
 		// RemoveAll can delete some files before an OS error. Do not reuse the remainder.
-		state.State = "missing"
+		state.State = artifactMissing
 		state.Error = withDataDirHint(err).Error()
 		state.Code = errcode.Of(err)
 	}
 	a.mu.Lock()
 	a.artifacts[id] = state
 	a.mu.Unlock()
-	a.emit("", "download", id)
+	a.emit("", kindDownload, id)
 	return err
 }
 

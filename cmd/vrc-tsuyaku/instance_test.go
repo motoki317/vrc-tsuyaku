@@ -103,7 +103,7 @@ func TestInstanceGateAndAutomaticStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	var prepared, downloaded atomic.Int32
-	a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(ctx context.Context, _ config.Flow, _ config.Settings) (pipeline.Stages, error) {
 		prepared.Add(1)
 		<-ctx.Done()
 		return pipeline.Stages{}, ctx.Err()
@@ -178,7 +178,7 @@ func TestInstanceStartBeside(t *testing.T) {
 		a.artifacts[id] = state
 	}
 	var starts atomic.Int32
-	a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(ctx context.Context, _ config.Flow, _ config.Settings) (pipeline.Stages, error) {
 		starts.Add(1)
 		<-ctx.Done()
 		return pipeline.Stages{}, ctx.Err()

@@ -18,6 +18,35 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/vad"
 )
 
+// Kind identifies an event's payload in the event stream.
+type Kind string
+
+const (
+	// KindSpeech carries whether speech started or ended.
+	KindSpeech Kind = "speech"
+	// KindRecognized carries the recognized phrase after the glossary rewrites it.
+	KindRecognized Kind = "recognized"
+	// KindTranslated carries the translation of the recognized phrase.
+	KindTranslated Kind = "translated"
+	// KindPage carries one chatbox page written to VRChat, including earlier phrases if they joined.
+	KindPage Kind = "page"
+	// KindMerged carries the joined translations of the message's phrases.
+	KindMerged Kind = "merged"
+	// KindSent carries empty text once every chatbox page of the phrase is written.
+	KindSent Kind = "sent"
+	// KindError carries the diagnostic text.
+	KindError Kind = "error"
+)
+
+type speechText string
+
+const (
+	// speechStart means the flow hears speech begin.
+	speechStart speechText = "start"
+	// speechEnd means the flow hears speech end.
+	speechEnd speechText = "end"
+)
+
 // Event reports a pipeline result. The app also uses this type for status updates.
 // PhraseID is unique across Run calls and links the recognized, translated,
 // page, merged and sent events for one phrase.
@@ -29,7 +58,7 @@ import (
 type Event struct {
 	PhraseID   uint64       `json:"phraseId,omitempty"`
 	Into       uint64       `json:"into,omitempty"`
-	Kind       string       `json:"kind"`
+	Kind       Kind         `json:"kind"`
 	Code       errcode.Code `json:"code,omitempty"`
 	Text       string       `json:"text"`
 	Original   string       `json:"original,omitempty"`
@@ -119,10 +148,10 @@ func Run(ctx context.Context, s Stages) error {
 		defer close(phrases)
 		var segmenter vad.Segmenter
 		level := leveler{searching: true}
-		speech := func(text string) { emit(Event{Kind: "speech", Text: text}) }
+		speech := func(text speechText) { emit(Event{Kind: KindSpeech, Text: string(text)}) }
 		defer func() {
 			if segmenter.Active() {
-				speech("end")
+				speech(speechEnd)
 			}
 		}()
 		var window, scored [vad.WindowSamples]float32
@@ -164,14 +193,14 @@ func Run(ctx context.Context, s Stages) error {
 				level.heard(power)
 			}
 			if !active && segmenter.Active() {
-				speech("start")
+				speech(speechStart)
 			}
 			if active && (!segmenter.Active() || len(phrase) > 0) {
 				level.ended()
-				speech("end")
+				speech(speechEnd)
 			}
 			if len(phrase) > 0 && segmenter.Active() {
-				speech("start")
+				speech(speechStart)
 			}
 			level.after(segmenter.Active(), p)
 			return publish(phrase)
@@ -203,7 +232,7 @@ func Run(ctx context.Context, s Stages) error {
 			}
 		}
 		if segmenter.Active() {
-			speech("end")
+			speech(speechEnd)
 		}
 		return publish(segmenter.Flush())
 	})
@@ -226,7 +255,7 @@ func Run(ctx context.Context, s Stages) error {
 			}
 			text, settings.Terms = glossary.Rewrite(text, settings.Terms)
 			id := nextPhraseID.Add(1)
-			emit(Event{PhraseID: id, Kind: "recognized", Text: text, SourceLang: source, TargetLang: target})
+			emit(Event{PhraseID: id, Kind: KindRecognized, Text: text, SourceLang: source, TargetLang: target})
 			select {
 			case texts <- result{id: id, original: text, settings: settings}:
 			case <-ctx.Done():
@@ -245,7 +274,7 @@ func Run(ctx context.Context, s Stages) error {
 				return err
 			}
 			r.translation = translated
-			emit(Event{PhraseID: r.id, Kind: "translated", Original: r.original, Text: translated, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
+			emit(Event{PhraseID: r.id, Kind: KindTranslated, Original: r.original, Text: translated, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
 			r.queued = time.Now()
 			select {
 			case translations <- r:
@@ -266,14 +295,14 @@ func Run(ctx context.Context, s Stages) error {
 				if ctx.Err() != nil {
 					return context.Cause(ctx)
 				}
-				emit(Event{PhraseID: r.id, Kind: "error", Code: errcode.Of(err), Text: err.Error(), SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
+				emit(Event{PhraseID: r.id, Kind: KindError, Code: errcode.Of(err), Text: err.Error(), SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
 				if errors.Is(err, chatbox.ErrTemplate) {
 					continue
 				}
 				return err
 			}
 			if s.Send != nil {
-				emit(Event{PhraseID: r.id, Kind: "sent", SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
+				emit(Event{PhraseID: r.id, Kind: KindSent, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang})
 			}
 		}
 		return nil

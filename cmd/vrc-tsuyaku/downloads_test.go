@@ -50,7 +50,7 @@ func pendingDownloadApp(t *testing.T, missing ...string) (*app, *atomic.Int32) {
 		t.Fatal(err)
 	}
 	starts := new(atomic.Int32)
-	a.prepare = func(ctx context.Context, _ string, _ config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(ctx context.Context, _ config.Flow, _ config.Settings) (pipeline.Stages, error) {
 		starts.Add(1)
 		<-ctx.Done()
 		return pipeline.Stages{}, ctx.Err()
@@ -149,12 +149,12 @@ func TestLanguageChangeStartsAfterRecognizerDownload(t *testing.T) {
 			if err := a.translator.Start(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			a.prepare = func(ctx context.Context, name string, s config.Settings) (pipeline.Stages, error) {
-				if name != flow {
+			a.prepare = func(ctx context.Context, name config.Flow, s config.Settings) (pipeline.Stages, error) {
+				if string(name) != flow {
 					t.Errorf("started unrelated flow %s", name)
 				}
 				if starts.Add(1) == 2 {
-					if got, _ := s.Flows.Languages(flow); got != spoken {
+					if got, _ := s.Flows.Languages(config.Flow(flow)); got != spoken {
 						t.Errorf("resumed old recognizer: %s, want %s", got, spoken)
 					}
 				}
@@ -165,10 +165,14 @@ func TestLanguageChangeStartsAfterRecognizerDownload(t *testing.T) {
 					Translate:   func(context.Context, string, pipeline.PhraseSettings) (string, error) { return "", nil },
 				}, nil
 			}
-			if err := a.changeFlow(flow, "start"); err != nil {
+			if err := a.changeFlow(config.Flow(flow), "start"); err != nil {
 				t.Fatal(err)
 			}
-			waitFor(t, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.flows[flow].status.State == "running" })
+			waitFor(t, func() bool {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				return a.flows[config.Flow(flow)].status.State == "running"
+			})
 			s := cloneSettings(a.settings)
 			if flow == "self" {
 				s.Flows.Self.Spoken = spoken
@@ -178,14 +182,18 @@ func TestLanguageChangeStartsAfterRecognizerDownload(t *testing.T) {
 			if err := a.saveSettings(s); err != nil {
 				t.Fatal(err)
 			}
-			if got := a.flows[flow].status; got.Code != errcode.MissingDownloads || got.State != "error" {
+			if got := a.flows[config.Flow(flow)].status; got.Code != errcode.MissingDownloads || got.State != "error" {
 				t.Fatal("language change did not wait for recognizer", got)
 			}
 			if err := a.startDownload(missing, false); err != nil {
 				t.Fatal(err)
 			}
 			a.downloadsWG.Wait()
-			waitFor(t, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.flows[flow].status.State == "running" })
+			waitFor(t, func() bool {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				return a.flows[config.Flow(flow)].status.State == "running"
+			})
 			if starts.Load() != 2 {
 				t.Fatal("flow did not resume once", starts.Load())
 			}
@@ -226,7 +234,7 @@ func TestDownloadCompletionWaitsForAllRequirements(t *testing.T) {
 	waitFor(t, func() bool { return starts.Load() == 2 })
 	for _, flow := range []string{"self", "world"} {
 		a.mu.Lock()
-		status := a.flows[flow].status
+		status := a.flows[config.Flow(flow)].status
 		a.mu.Unlock()
 		if !status.active() || status.Code != "" || status.Error != "" {
 			t.Fatal("retry retained error", status)
@@ -292,7 +300,7 @@ func TestDownloadCompletionObservesStopAndInvalidSettings(t *testing.T) {
 			}
 			if action == "stop" {
 				for _, flow := range []string{"self", "world"} {
-					if err := a.changeFlow(flow, "stop"); err != nil {
+					if err := a.changeFlow(config.Flow(flow), "stop"); err != nil {
 						t.Fatal(err)
 					}
 				}

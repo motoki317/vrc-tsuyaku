@@ -132,7 +132,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 	gate := make(chan struct{})
 	ended := make(chan time.Time, 1)
-	a.source = func(name, _ string) audio.Source {
+	a.source = func(name config.Flow, _ string) audio.Source {
 		if name == "self" {
 			return testSource{gate, samples, ended}
 		}
@@ -200,7 +200,7 @@ func TestEndToEnd(t *testing.T) {
 	for _, kind := range []string{"recognized", "translated", "page"} {
 		found := false
 		for _, e := range history {
-			if e.Flow == "self" && e.Kind == kind {
+			if e.Flow == "self" && string(e.Kind) == kind {
 				found = true
 			}
 		}

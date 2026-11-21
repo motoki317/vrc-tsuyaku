@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/chatbox"
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
 	"github.com/motoki317/vrc-tsuyaku/internal/errcode"
+	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
 	"github.com/motoki317/vrc-tsuyaku/web"
 )
 
@@ -123,8 +125,8 @@ func (a *app) handler() http.Handler {
 		writeJSON(w, a.snapshot())
 	})
 	mux.HandleFunc("POST /api/flows/{name}/{action}", func(w http.ResponseWriter, r *http.Request) {
-		name, action := r.PathValue("name"), r.PathValue("action")
-		if (name != "self" && name != "world") || (action != "start" && action != "stop") {
+		name, action := config.Flow(r.PathValue("name")), flowAction(r.PathValue("action"))
+		if !slices.Contains(config.FlowNames(), name) || (action != flowStart && action != flowStop) {
 			http.NotFound(w, r)
 			return
 		}
@@ -283,7 +285,10 @@ func (a *app) streamEvents(w http.ResponseWriter, r *http.Request) {
 			if err := rc.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
 				return
 			}
-			if _, err := io.WriteString(w, "{\"kind\":\"exit\"}\n"); err == nil {
+			exit := struct {
+				Kind pipeline.Kind `json:"kind"`
+			}{Kind: kindExit}
+			if err := json.NewEncoder(w).Encode(exit); err == nil {
 				_ = rc.Flush()
 			}
 			return

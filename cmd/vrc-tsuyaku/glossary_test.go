@@ -28,14 +28,14 @@ func TestGlossaryChangesReachBothRunningFlows(t *testing.T) {
 		settings   pipeline.PhraseSettings
 	}
 	recognitions, translations := make(chan call, 1), make(chan call, 1)
-	a.prepare = func(_ context.Context, name string, _ config.Settings) (pipeline.Stages, error) {
+	a.prepare = func(_ context.Context, name config.Flow, _ config.Settings) (pipeline.Stages, error) {
 		return pipeline.Stages{
 			Source: recordingSource(func(ctx context.Context, consume func([]float32) error) error {
 				for {
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
-					case <-inputs[name]:
+					case <-inputs[string(name)]:
 						samples := make([]float32, 512*24)
 						for i := range 512 * 8 {
 							samples[i] = 1
@@ -48,14 +48,14 @@ func TestGlossaryChangesReachBothRunningFlows(t *testing.T) {
 			}),
 			Probability: func(_ context.Context, samples []float32) (float32, error) { return samples[0], nil },
 			Recognize: func(_ context.Context, _ []float32, settings pipeline.PhraseSettings) (string, error) {
-				recognitions <- call{flow: name, settings: settings}
+				recognitions <- call{flow: string(name), settings: settings}
 				if name == "self" {
 					return "ききょう", nil
 				}
 				return "LILTOON", nil
 			},
 			Translate: func(_ context.Context, text string, settings pipeline.PhraseSettings) (string, error) {
-				translations <- call{name, text, settings}
+				translations <- call{string(name), text, settings}
 				return "translation", nil
 			},
 		}, nil
@@ -72,12 +72,16 @@ func TestGlossaryChangesReachBothRunningFlows(t *testing.T) {
 	}
 	runs := make(map[string]*flowRun)
 	for _, name := range []string{"self", "world"} {
-		if err := a.changeFlow(name, "start"); err != nil {
+		if err := a.changeFlow(config.Flow(name), "start"); err != nil {
 			t.Fatal(err)
 		}
-		waitFor(t, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.flows[name].status.State == "running" })
+		waitFor(t, func() bool {
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			return a.flows[config.Flow(name)].status.State == "running"
+		})
 		a.mu.Lock()
-		runs[name] = a.flows[name]
+		runs[name] = a.flows[config.Flow(name)]
 		a.mu.Unlock()
 	}
 	for _, word := range []string{"桔梗", "菊響", ""} {
@@ -94,7 +98,7 @@ func TestGlossaryChangesReachBothRunningFlows(t *testing.T) {
 		}
 		for _, name := range []string{"self", "world"} {
 			inputs[name] <- struct{}{}
-			source, target := s.Flows.Languages(name)
+			source, target := s.Flows.Languages(config.Flow(name))
 			wantTerms := glossary.Terms(s.Glossary, source, target)
 			wantText := "ききょう"
 			if name == "world" {
@@ -113,7 +117,7 @@ func TestGlossaryChangesReachBothRunningFlows(t *testing.T) {
 				t.Fatalf("%s glossary %q: recognition %+v, translation %+v, want %q with %+v", name, word, recognized, translated, wantText, wantTerms)
 			}
 			a.mu.Lock()
-			unchanged := a.flows[name] == runs[name] && runs[name].status.State == "running"
+			unchanged := a.flows[config.Flow(name)] == runs[name] && runs[name].status.State == "running"
 			a.mu.Unlock()
 			if !unchanged {
 				t.Fatalf("glossary change restarted %s", name)

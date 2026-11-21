@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
+	"github.com/motoki317/vrc-tsuyaku/internal/config"
 )
 
 func TestFlowSources(t *testing.T) {
@@ -105,7 +106,7 @@ func TestWorldCapture(t *testing.T) {
 
 func isolateWorldCapture(t *testing.T, a *app, player string) {
 	t.Helper()
-	a.source = func(name, _ string) audio.Source {
+	a.source = func(name config.Flow, _ string) audio.Source {
 		if name != "world" {
 			t.Errorf("world capture check tried to open %s", name)
 			return audio.Application("vrc-tsuyaku-test-forbidden-source")

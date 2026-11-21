@@ -7,6 +7,18 @@ import (
 	"time"
 
 	"github.com/motoki317/vrc-tsuyaku/internal/config"
+	"github.com/motoki317/vrc-tsuyaku/internal/pipeline"
+)
+
+type settingsText string
+
+const (
+	// settingsSaved means the app saved the settings.
+	settingsSaved settingsText = "saved"
+	// settingsReloaded means the app loaded an external edit.
+	settingsReloaded settingsText = "reloaded"
+	// settingsChanged means the app stopped a flow without saving because settingsError is set.
+	settingsChanged settingsText = "changed"
 )
 
 type settingsFileState struct {
@@ -86,8 +98,8 @@ func (a *app) reloadSettingsLocked() {
 		a.mu.Lock()
 		a.settingsError = message
 		a.mu.Unlock()
-		a.emit("", "error", message)
+		a.emit("", pipeline.KindError, message)
 		return
 	}
-	a.applySettings(a.preserveControls(s), "reloaded")
+	a.applySettings(a.preserveControls(s), settingsReloaded)
 }
