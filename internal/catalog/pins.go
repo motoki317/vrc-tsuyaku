@@ -3,6 +3,15 @@
 
 package catalog
 
+// When changing a pin, verify the new revision's license and keep its URL and any embedded text in sync.
+// If the accepted terms change, the acceptance key must change so old consent does not carry over.
+// For a Hugging Face model, select an immutable commit and get LFS sizes and SHA-256 hashes from
+// https://huggingface.co/api/models/<repo>/tree/<commit>. For ordinary Git files, fetch the bytes at
+// that commit, match their Git blob IDs against the API, and record their sizes and SHA-256 hashes.
+// For GitHub releases, fetch each archive and match its size and SHA-256 against the release API before hashing its selected members.
+// Fetch the onnx-asr wheel and match its size and SHA-256 against https://pypi.org/pypi/onnx-asr/<version>/json.
+// Record the size and SHA-256 of onnx_asr/preprocessors/data/nemo128.onnx extracted from that wheel.
+// For Silero, fetch the graph at the selected tag's commit and compute its size and SHA-256 from those bytes.
 const (
 	haasBase       = "https://huggingface.co/motoki317/Haas-ja-v1.0-onnx/resolve/1cd4824d0f733b67bb4820adfdd0a38a0f17a55b/"
 	parakeetBase   = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/0bbb45a3365852604aef28b538a8f066f4ccaa85/"

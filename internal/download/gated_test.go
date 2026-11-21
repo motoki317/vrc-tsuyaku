@@ -12,6 +12,10 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 )
 
+// TestPinnedLinuxDownloads needs a writable parent directory in VRC_TSUYAKU_TEST_DOWNLOAD_DIR.
+// It downloads Silero, llama.cpp and ONNX Runtime into a temporary subdirectory and removes it at the end.
+//
+//	nix develop -c env VRC_TSUYAKU_TEST_DOWNLOAD_DIR=/path/to/writable/test-directory go test ./internal/download -run '^TestPinnedLinuxDownloads$' -v -count=1 -timeout=15m
 func TestPinnedLinuxDownloads(t *testing.T) {
 	base := os.Getenv("VRC_TSUYAKU_TEST_DOWNLOAD_DIR")
 	if base == "" {

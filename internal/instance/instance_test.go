@@ -101,6 +101,11 @@ func TestRegistryCreatesOnlyClaimedSlots(t *testing.T) {
 	wantFiles("0.lock", "1.lock", "guard.lock")
 }
 
+// TestMembershipLifecycle exercises the platform's file locks. To run the registry
+// suite on Windows, cross-compile on Linux, then run it from the binary's directory on Windows.
+//
+//	nix develop -c env GOOS=windows go test -c -o instance.test.exe ./internal/instance
+//	.\instance.test.exe -test.v -test.timeout=10m
 func TestMembershipLifecycle(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

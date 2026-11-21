@@ -93,6 +93,8 @@ func (m *Manager) acquire(ctx context.Context) error {
 // Directory returns the artifact directory without checking files or accessing the network.
 // goos validates the catalog lookup but does not affect the path. One data directory
 // holds one OS's artifacts.
+// For manual installation, copy each file into this directory under its catalog File.Path.
+// On Linux, each catalog file marked Executable must have execute permission.
 func (m *Manager) Directory(id, goos string) (string, error) {
 	if _, err := catalog.Lookup(id, goos); err != nil {
 		return "", err
@@ -145,6 +147,8 @@ func (m *Manager) Remove(id, goos string) error {
 // any network request. Missing acceptance returns ErrLicenseRequired.
 // The caller must invoke Download only in response to the user's download action.
 // notify, if nonnil, runs synchronously and must not call this Manager's methods.
+// On Windows, stop llama-server before replacing its files. Restart the app before
+// replacing a resident ONNX Runtime DLL, which Engine.Close leaves loaded.
 func (m *Manager) Download(ctx context.Context, id, goos string, notify func(Progress)) error {
 	a, err := catalog.Lookup(id, goos)
 	if err != nil {
@@ -264,9 +268,9 @@ func publish(root *os.Root, stage, id string) error {
 	return nil
 }
 
-// CheckInstalled hashes every required file without network access. Call it at
-// startup and cache the result for the UI and flow starts. A nil Download result
-// already establishes the installed state without another hash check.
+// CheckInstalled hashes every required file without network access. Hashing large models
+// can take seconds, so cache the startup result for the UI and flow starts.
+// A nil Download result already establishes the installed state without another hash check.
 // Missing or corrupt files and Linux executables without execute permission return
 // false. I/O and cancellation errors are reported.
 func (m *Manager) CheckInstalled(ctx context.Context, id, goos string) (bool, error) {
