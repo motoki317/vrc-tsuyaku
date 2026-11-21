@@ -2,8 +2,20 @@ package translate
 
 import "slices"
 
-// History holds recent translations from one flow. Its zero value is ready to
-// use. Calls that share a History must run in order and never concurrently.
+const (
+	// Cap the number of short turns independently of the prompt's token budget.
+	historyTurns = 10
+	// Reserve the rest of the slot for the current phrase, glossary and answer.
+	historyTokens = 400
+
+	// Trim to half of both limits in one batch. Between trims, the retained turns
+	// stay at the start of each request so llama-server can reuse the cached prefix.
+	historyTrimTurns  = historyTurns / 2
+	historyTrimTokens = historyTokens / 2
+)
+
+// History holds recent phrase and translation pairs for one flow. Its zero
+// value is ready to use. Calls that share a History must run sequentially in phrase order.
 type History struct {
 	source, target string
 	turns          []historyTurn
@@ -23,9 +35,8 @@ func (h *History) append(original, translation string, tokens int) {
 	if len(h.turns) <= historyTurns && total <= historyTokens {
 		return
 	}
-	// Drop several turns at once so subsequent requests can reuse the prompt prefix.
 	first := 0
-	for len(h.turns)-first > historyTurns/2 || total > historyTokens/2 {
+	for len(h.turns)-first > historyTrimTurns || total > historyTrimTokens {
 		total -= h.turns[first].tokens
 		first++
 	}
