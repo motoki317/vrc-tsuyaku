@@ -60,6 +60,16 @@ func TestHaasConfidenceCut(t *testing.T) {
 	checkConfidenceCut(t, h, testTone(9600, 440), haasMinConfidence)
 }
 
+// TestHaasLifecycle checks session sharing and engine reuse with an fp32 clip.
+//
+//   - VRC_TSUYAKU_TEST_ORT_LIB names the pinned ONNX Runtime CPU shared library.
+//   - VRC_TSUYAKU_TEST_HAAS_BUNDLE names the Haas bundle with the fp32 encoder.
+//   - VRC_TSUYAKU_TEST_HAAS_WAV_DIR contains the test WAV clips.
+//   - VRC_TSUYAKU_TEST_HAAS_REF_FP32 names the Python fp32 JSONL reference.
+//
+// See [TestHaasCPUParity] for clip and reference formats, reference generation and the native Windows commands.
+//
+//	nix develop -c go test ./internal/asr -run '^TestHaasLifecycle$' -v -count=1 -timeout=45m
 func TestHaasLifecycle(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	bundle := requireEnv(t, "VRC_TSUYAKU_TEST_HAAS_BUNDLE")

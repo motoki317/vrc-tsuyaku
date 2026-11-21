@@ -7,6 +7,10 @@ import (
 	ort "github.com/getcharzp/onnxruntime_purego"
 )
 
+// TestDecoderCheckpoints uses synthetic tensors with the pinned ONNX Runtime CPU
+// shared library named by VRC_TSUYAKU_TEST_ORT_LIB.
+//
+//	nix develop -c go test ./internal/asr -run '^TestDecoderCheckpoints$' -v -count=1 -timeout=10m
 func TestDecoderCheckpoints(t *testing.T) {
 	e, err := NewEngine(requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB"))
 	if err != nil {

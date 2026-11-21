@@ -13,6 +13,8 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/audio"
 )
 
+// Only a person runs record against a real microphone, including the default.
+// Automated microphone checks must name a test source made from a null sink.
 func record(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("record", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -52,6 +54,7 @@ func record(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	}
 	source := audio.Microphone(*microphone)
 	if *application != "" {
+		// Under Proton, if VRChat.exe has no stream, try -app VRChat as an unverified product-name match.
 		source = audio.Application(*application)
 	}
 	return recordFile(ctx, source, duration, flags.Arg(0))

@@ -18,8 +18,17 @@ func TestApplicationCancelled(t *testing.T) {
 	}
 }
 
-// The two test players must emit 440 Hz and 1000 Hz into a named null sink.
-// They must refuse to play if that sink is missing.
+// TestApplicationIsolation checks that capture keeps only the selected player's tone.
+// VRC_TSUYAKU_TEST_APPLICATION names the 440 Hz player's executable or, on Linux, its application.name.
+//
+// On Linux, load a uniquely named PulseAudio null sink and start two players
+// with distinct names. One plays 440 Hz and the other 1000 Hz. Both must select
+// that sink by name and exit if it is missing. Both streams must set
+// PA_STREAM_DONT_MOVE so the server cannot move them to the default output.
+// Stop both players before unloading the sink.
+// Only a person runs the playback check on Windows because it can play audible sound.
+//
+//	nix develop -c env VRC_TSUYAKU_TEST_APPLICATION='<name>' go test -v -timeout=10m ./internal/audio -run '^TestApplicationIsolation$'
 func TestApplicationIsolation(t *testing.T) {
 	name := os.Getenv("VRC_TSUYAKU_TEST_APPLICATION")
 	if name == "" {
@@ -55,6 +64,10 @@ func TestApplicationIsolation(t *testing.T) {
 	t.Logf("%d samples: selected 440 Hz %g, rejected 1000 Hz %g", len(samples), wanted, other)
 }
 
+// TestApplicationAbsent checks that capture rejects an absent application without playback.
+// Set VRC_TSUYAKU_TEST_APPLICATION_ABSENT=1 to enable it. Linux needs a running audio server.
+//
+//	nix develop -c env VRC_TSUYAKU_TEST_APPLICATION_ABSENT=1 go test -v -timeout=10m ./internal/audio -run '^TestApplicationAbsent$'
 func TestApplicationAbsent(t *testing.T) {
 	if os.Getenv("VRC_TSUYAKU_TEST_APPLICATION_ABSENT") == "" {
 		t.Skip("set VRC_TSUYAKU_TEST_APPLICATION_ABSENT for the no-playback process lookup check")

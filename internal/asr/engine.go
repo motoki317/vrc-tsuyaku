@@ -1,3 +1,6 @@
+// Package asr runs speech recognition and voice activity detection on the CPU.
+// Open one [Engine] per process and load a recognizer for the chosen language.
+// Pass each phrase to [Recognizer.Transcribe] and use a separate [SileroStream] for each capture stream.
 package asr
 
 import (

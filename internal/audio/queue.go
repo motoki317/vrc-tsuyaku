@@ -8,6 +8,9 @@ import (
 
 var errCaptureOverflow = errors.New("audio capture buffer overflow")
 
+// captureQueueSamples bounds the backlog to one second of audio so a stalled consumer cannot grow the queue indefinitely.
+const captureQueueSamples = SampleRate
+
 // Bound queued audio by sample count, since packet sizes vary by device.
 // Producers never wait for the consumer, so they can keep draining the OS buffer.
 type captureQueue struct {
@@ -27,7 +30,7 @@ func (q *captureQueue) push(samples []float32) error {
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if len(samples) > SampleRate-len(q.samples) {
+	if len(samples) > captureQueueSamples-len(q.samples) {
 		return errCaptureOverflow
 	}
 	q.samples = append(q.samples, samples...)

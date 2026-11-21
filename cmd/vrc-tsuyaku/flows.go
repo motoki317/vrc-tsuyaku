@@ -67,6 +67,7 @@ func (r *flowRun) meter(level float64) {
 
 func flowSource(name config.Flow, microphoneID string) audio.Source {
 	if name == config.World {
+		// Wine can name the stream after the product, but VRChat under Proton is untested, so that name is unverified.
 		return audio.Application("VRChat.exe", "VRChat")
 	}
 	return audio.Microphone(microphoneID)

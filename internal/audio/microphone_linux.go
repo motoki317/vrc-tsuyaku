@@ -135,6 +135,7 @@ func (p *pulsePackets) receive(message any) {
 	}
 }
 
+// connectPulse also works with PipeWire's pipewire-pulse service because it serves the same Unix socket protocol.
 func connectPulse(ctx context.Context, callback func(any)) (*proto.Client, func(), error) {
 	server := os.Getenv("PULSE_SERVER")
 	if server == "" {

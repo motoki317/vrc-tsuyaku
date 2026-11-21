@@ -30,6 +30,21 @@ func testMicrophone(t *testing.T) Source {
 	return Microphone(id)
 }
 
+// TestMicrophone checks capture from the source named by VRC_TSUYAKU_TEST_MICROPHONE.
+// On Linux, use a remap source of a null sink monitor. The example names must
+// be unused, and both module loads must succeed before the test can run.
+// Only a person runs these checks on Windows because it has no built-in null capture device.
+//
+//	(
+//	    set -e
+//	    sink_module=$(pactl load-module module-null-sink sink_name=vrc_test)
+//	    trap 'pactl unload-module "$sink_module"' EXIT
+//	    (
+//	        source_module=$(pactl load-module module-remap-source source_name=vrc_test_mic master=vrc_test.monitor)
+//	        trap 'pactl unload-module "$source_module"' EXIT
+//	        nix develop -c env VRC_TSUYAKU_TEST_MICROPHONE=vrc_test_mic go test -v -timeout=10m ./internal/audio -run '^TestMicrophone(Continuous|ConsumerStall)?$'
+//	    )
+//	)
 func TestMicrophone(t *testing.T) {
 	source := testMicrophone(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -62,6 +77,11 @@ func TestMicrophone(t *testing.T) {
 	})
 }
 
+// TestMicrophoneConsumerStall checks capture during consumer stalls.
+// Use the [TestMicrophone] setup with the command below. VRC_TSUYAKU_TEST_MICROPHONE names its null-sink test source.
+// Only a person runs this on Windows because it has no built-in null capture device.
+//
+//	nix develop -c env VRC_TSUYAKU_TEST_MICROPHONE=vrc_test_mic go test -v -timeout=10m ./internal/audio -run '^TestMicrophoneConsumerStall$'
 func TestMicrophoneConsumerStall(t *testing.T) {
 	source := testMicrophone(t)
 	for _, stall := range []time.Duration{750 * time.Millisecond, 1250 * time.Millisecond} {
@@ -105,6 +125,11 @@ func TestMicrophoneConsumerStall(t *testing.T) {
 	}
 }
 
+// TestMicrophoneContinuous checks sustained capture from the test source.
+// Use the [TestMicrophone] setup with the command below. VRC_TSUYAKU_TEST_MICROPHONE names its null-sink test source.
+// Only a person runs this on Windows because it has no built-in null capture device.
+//
+//	nix develop -c env VRC_TSUYAKU_TEST_MICROPHONE=vrc_test_mic go test -v -timeout=10m ./internal/audio -run '^TestMicrophoneContinuous$'
 func TestMicrophoneContinuous(t *testing.T) {
 	source := testMicrophone(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
