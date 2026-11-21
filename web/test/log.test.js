@@ -162,12 +162,12 @@ test('only live pills, translations and skips announce, and running resolves err
   emit('error', undefined, { flow: 'world', text: 'other' });
   await vi.advanceTimersByTimeAsync(50);
   flush();
-  expect(app.announcement()).toBe("Others' voices: Stopped by an error other");
+  expect(app.announcement()).toBe("My voice: Stopped by an error problem\nOthers' voices: Stopped by an error other");
   emit('state', undefined, { text: 'running' });
   emit('translated', 9, { text: 'Hi' });
   await vi.advanceTimersByTimeAsync(50);
   flush();
-  expect(app.announcement()).toBe('My voice: Hi');
+  expect(app.announcement()).toBe('My voice: On\nMy voice: Hi');
   expect(log.rows[2].resolved).toBe(true);
   expect(log.rows[3].resolved).toBeUndefined();
   emit('skipped', 10, { flow: 'world', text: '' });
@@ -268,14 +268,30 @@ test('a stream gap closes pending phrases in both flows and phrase events issue 
   await listening;
 });
 
-test('a second live event leaves the preceding announcement audible', async () => {
+test('events within 50 ms share an announcement and a later repeat clears it first', async () => {
   emit('error', undefined, { text: 'problem' });
   await vi.advanceTimersByTimeAsync(25);
   emit('translated', 1, { text: 'Hello' });
   await vi.advanceTimersByTimeAsync(25);
   flush();
-  expect(app.announcement()).toBe('My voice: Stopped by an error problem');
-  await vi.advanceTimersByTimeAsync(25);
+  expect(app.announcement()).toBe('My voice: Stopped by an error problem\nMy voice: Hello');
+  emit('translated', 2, { text: 'Hello' });
+  await vi.advanceTimersByTimeAsync(50);
   flush();
   expect(app.announcement()).toBe('My voice: Hello');
+  emit('translated', 3, { text: 'Hello' });
+  await vi.advanceTimersByTimeAsync(49);
+  flush();
+  expect(app.announcement()).toBe('');
+  await vi.advanceTimersByTimeAsync(1);
+  flush();
+  expect(app.announcement()).toBe('My voice: Hello');
+});
+
+test('a translation and an identical skip burst announce together', async () => {
+  emit('translated', 1, { flow: 'world', text: 'Hello' });
+  for (const id of [2, 3, 4]) emit('skipped', id, { flow: 'world', text: '' });
+  await vi.advanceTimersByTimeAsync(50);
+  flush();
+  expect(app.announcement()).toBe("Others' voices: Hello\nOthers' voices: Skipped");
 });

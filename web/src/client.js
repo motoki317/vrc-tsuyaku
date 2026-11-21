@@ -29,9 +29,17 @@ export function createClient() {
   const language = createMemo(() => languageSetting() || browserLanguage());
   const t = (key, vars) => translate(language(), key, vars);
   const [announcement, setAnnouncement] = createSignal('');
+  const pendingAnnouncements = new Set();
   function announce(text) {
+    const alreadyPending = pendingAnnouncements.size > 0;
+    pendingAnnouncements.add(text);
+    if (alreadyPending) return;
     setAnnouncement('');
-    setTimeout(() => setAnnouncement(text), 50);
+    setTimeout(() => {
+      const combined = [...pendingAnnouncements].join('\n');
+      pendingAnnouncements.clear();
+      setAnnouncement(combined);
+    }, 50);
   }
   const log = createLog({ t, announce });
   const names = createMemo(() => new Intl.DisplayNames(language(), { type: 'language' }));
