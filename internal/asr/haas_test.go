@@ -48,6 +48,12 @@ func TestClosedEngine(t *testing.T) {
 	}
 }
 
+// TestHaasConfidenceCut checks that Haas suppresses a low-confidence transcript
+// from a synthetic tone. It needs no WAV directory or reference file.
+// VRC_TSUYAKU_TEST_ORT_LIB names the pinned ONNX Runtime CPU shared library.
+// VRC_TSUYAKU_TEST_HAAS_BUNDLE names the Haas bundle with the int8 encoder.
+//
+//	nix develop -c go test ./internal/asr -run '^TestHaasConfidenceCut$' -v -count=1 -timeout=10m
 func TestHaasConfidenceCut(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	bundle := requireEnv(t, "VRC_TSUYAKU_TEST_HAAS_BUNDLE")

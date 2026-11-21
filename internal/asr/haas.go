@@ -35,7 +35,12 @@ const (
 	haasFrameMultiple = 16
 )
 
-// haasMinConfidence is the lowest phrase confidence at which Haas returns text.
+// At -0.3, Haas rejects 108 of 117 noise transcripts and drops 26 of 48
+// synthesized Japanese fillers. At -0.4, Haas would reject 89 of the noise
+// transcripts and keep three short answers and one garbled-name clip that
+// -0.3 drops. The name clip falls below -0.3 with and without hints.
+//
+// See decodeConfident for the cutoff sweep method.
 const haasMinConfidence = -0.3
 
 // Haas recognizes Japanese with the exported FastConformer encoder, prediction and joint networks.

@@ -192,6 +192,14 @@ func TestParakeetV3CPUParity(t *testing.T) {
 	}
 }
 
+// TestParakeetConfidenceCut checks that each Parakeet version suppresses a
+// low-confidence transcript from synthetic tones. It needs no WAV directory
+// or reference file.
+// VRC_TSUYAKU_TEST_ORT_LIB names the pinned ONNX Runtime CPU shared library.
+// VRC_TSUYAKU_TEST_PARAKEET_BUNDLE names the pinned Parakeet v2 int8 bundle.
+// VRC_TSUYAKU_TEST_PARAKEET_V3_BUNDLE names the pinned Parakeet v3 int8 bundle.
+//
+//	nix develop -c go test ./internal/asr -run '^TestParakeetConfidenceCut$' -v -count=1 -timeout=10m
 func TestParakeetConfidenceCut(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	for _, tc := range []struct {

@@ -106,7 +106,8 @@ func TestConfidenceCut(t *testing.T) {
 
 func testTone(samples int, frequencies ...float64) []float32 {
 	audio := make([]float32, samples)
-	amplitude := 0.08 / math.Sqrt(float64(len(frequencies))) // About -25 dBFS RMS.
+	// Keep the same level near the pipeline's -25 dBFS phrase target across tone counts.
+	amplitude := 0.08 / math.Sqrt(float64(len(frequencies)))
 	for i := range audio {
 		for _, hz := range frequencies {
 			audio[i] += float32(amplitude * math.Sin(2*math.Pi*hz*float64(i)/16000))
