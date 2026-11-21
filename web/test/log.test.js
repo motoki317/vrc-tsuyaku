@@ -61,13 +61,57 @@ test('recognition, translation, merge and delivery keep each message at its firs
   expect(log.rows[0]).toMatchObject({ status: 'failed', code: 'template', error: 'invalid' });
 });
 
-test('eviction bounds the log and a merged replay can start without its original bubble', () => {
+test('eviction bounds the log and drops a replayed message older than the first row', () => {
   for (let i = 1; i <= 302; i++) emit('recognized', i);
   emit('merged', 304, { into: 1, original: 'replayed', text: 'translation' });
   flush();
   expect(log.rows).toHaveLength(300);
-  expect(log.rows[0].phraseId).toBe(4);
-  expect(log.rows.at(-1)).toMatchObject({ phraseId: 304, message: 1, original: 'replayed' });
+  expect(log.rows[0].phraseId).toBe(3);
+  expect(log.rows.at(-1).phraseId).toBe(302);
+});
+
+test.each([
+  ['translated', 2, {}, 2],
+  ['merged', 4, { into: 1 }, 1],
+])('replay inserts a %s message before a later skipped phrase', (kind, phraseId, extra, message) => {
+  const time = '2026-10-10T12:01:00Z';
+  emit('skipped', 3, { flow: 'world', time });
+  emit(kind, phraseId, { time, original: 'source', text: 'translation', ...extra });
+  flush();
+  expect(log.rows.map(row => row.phraseId)).toEqual([phraseId, 3]);
+  expect(log.rows[0]).toMatchObject({ message, original: 'source', translation: 'translation' });
+});
+
+test('replay inserts a late translation after a message merged into an earlier bubble', () => {
+  const time = '2026-10-10T12:01:00Z';
+  emit('translated', 1, { time, original: 'a', text: 'A' });
+  emit('recognized', 4, { time, text: 'b' });
+  emit('translated', 4, { time, original: 'b', text: 'B' });
+  emit('merged', 4, { time, into: 1, original: 'ab', text: 'AB' });
+  emit('translated', 3, { time, flow: 'world', original: 'c', text: 'C' });
+  flush();
+  expect(log.rows.map(row => row.phraseId)).toEqual([4, 3]);
+  expect(log.rows[0]).toMatchObject({ message: 1, translation: 'AB' });
+});
+
+test('replay reorders a translated row when it merges into a missing first phrase', () => {
+  const time = '2026-10-10T12:01:00Z';
+  emit('skipped', 3, { flow: 'world', time });
+  emit('translated', 4, { time, original: 'b', text: 'B' });
+  emit('merged', 4, { time, into: 1, original: 'ab', text: 'AB' });
+  flush();
+  expect(log.rows.map(row => row.phraseId)).toEqual([4, 3]);
+  expect(log.rows[0]).toMatchObject({ message: 1, translation: 'AB' });
+});
+
+test('replay keeps an already ordered merge ahead of a later state pill', () => {
+  const time = '2026-10-10T12:01:00Z';
+  emit('translated', 4, { time, original: 'b', text: 'B' });
+  emit('state', undefined, { time, flow: 'world', text: 'stopped' });
+  emit('merged', 4, { time, into: 1, original: 'ab', text: 'AB' });
+  flush();
+  expect(log.rows[0]).toMatchObject({ phraseId: 4, message: 1, translation: 'AB' });
+  expect(log.rows[1]).toMatchObject({ flow: 'world', pill: 'off' });
 });
 
 test('speech ends on recognition or timeout and an older phrase cannot hide a new start', async () => {
@@ -256,10 +300,11 @@ test('a stream gap closes pending phrases in both flows and phrase events issue 
   send(5, 'error', 'self', 9);
   send(7, 'speech', 'world');
   await settle();
-  expect(log.rows.map(r => r.phraseId)).toEqual([7, 8, 9]);
-  expect(log.rows[0].unfinished).toBe(true);
-  expect(log.rows[1].status).toBe('unfinished');
-  expect(log.rows[2].status).toBe('failed');
+  expect(log.rows.map(r => r.phraseId)).toEqual([9, 7, 8]);
+  const [merged, recognized, translated] = log.rows;
+  expect(merged.status).toBe('failed');
+  expect(recognized.unfinished).toBe(true);
+  expect(translated.status).toBe('unfinished');
   expect(get.mock.calls.map(([url]) => url)).toEqual(['/api/events', '/api/state']);
   send(8, 'state', 'world');
   await settle();

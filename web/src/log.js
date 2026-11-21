@@ -9,24 +9,25 @@ const logLimit = 300;
 
 function updatePhrase(list, e) {
   const { kind, phraseId, flow, time, text } = e;
-  let index = list.findIndex(row => row.phraseId === phraseId);
-  if (index === -1) {
+  const index = list.findIndex(row => row.phraseId === phraseId);
+  let phrase;
+  if (index !== -1) {
+    phrase = list[index];
+  } else {
     if (!['recognized', 'translated', 'merged', 'skipped'].includes(kind)) return;
     const row = { phraseId, flow, time };
-    if (kind === 'skipped') {
-      list.push({ ...row, skipped: true });
-      return;
-    }
-    index =
-      list.push({
-        ...row,
-        message: phraseId,
-        source: e.sourceLang,
-        target: e.targetLang,
-        original: kind === 'recognized' ? text : e.original,
-      }) - 1;
+    phrase =
+      kind === 'skipped'
+        ? { ...row, skipped: true }
+        : {
+            ...row,
+            message: phraseId,
+            source: e.sourceLang,
+            target: e.targetLang,
+            original: kind === 'recognized' ? text : e.original,
+          };
   }
-  const phrase = list[index];
+  const previousMessage = phrase.message;
   if (kind === 'translated' || kind === 'merged') {
     phrase.translation = text;
     phrase.unfinished = false;
@@ -38,7 +39,8 @@ function updatePhrase(list, e) {
       phrase.original = e.original;
       if (shown >= 0) {
         list[shown] = phrase;
-        list.splice(index, 1);
+        if (index !== -1) list.splice(index, 1);
+        return;
       }
     }
   } else if (kind === 'sent') phrase.status = 'sent';
@@ -46,6 +48,18 @@ function updatePhrase(list, e) {
     phrase.status = 'failed';
     phrase.code = e.code;
     phrase.error = text;
+  }
+  if (index === -1 || previousMessage !== phrase.message) {
+    const key = phrase.message ?? phrase.phraseId;
+    const next = list.findIndex(row => (row.message ?? row.phraseId) > key);
+    const destination = next === -1 ? list.length : next;
+    if (index !== -1) {
+      // A merge uses an earlier phrase's ID, so the row only moves earlier.
+      // Leave an already ordered row ahead of later state pills.
+      if (destination >= index) return;
+      list.splice(index, 1);
+    }
+    list.splice(destination, 0, phrase);
   }
 }
 
