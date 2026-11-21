@@ -12,6 +12,11 @@ from haas_constants import BLANK
 
 
 def write_vocab(tokenizer_path: Path, output_path: Path) -> None:
+    """The pinned tokenizer has <unk> at ID 0 and byte pieces at IDs 1–256.
+
+    Its other 2815 entries are normal pieces. The Go decoder can keep them
+    all because the tokenizer has no control pieces.
+    """
     tokenizer = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
     size = tokenizer.get_piece_size()
     if size != BLANK:

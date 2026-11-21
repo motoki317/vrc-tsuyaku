@@ -100,7 +100,7 @@ func (p *Parakeet) tokens(ctx context.Context, audio []float32, words []string) 
 	}
 	defer d.close()
 	return greedyTDT(ctx, len(encoded)/1024, tdtConfig{
-		blank: p.blank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: 10, hints: p.hints.compile(words),
+		blank: p.blank, durations: []int{0, 1, 2, 3, 4}, maxSymbols: tdtMaxSymbolsPerFrame, hints: p.hints.compile(words),
 	}, d)
 }
 

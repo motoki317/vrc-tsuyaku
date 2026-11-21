@@ -15,6 +15,9 @@ import (
 	"math"
 )
 
+// Match NeMo's TDT cap so zero-duration predictions cannot hold a frame indefinitely.
+const tdtMaxSymbolsPerFrame = 10
+
 // decodeConfident returns no text for a phrase whose confidence is under
 // threshold, because the models also write text, with low confidence, for
 // sound that is not words.

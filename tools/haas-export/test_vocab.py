@@ -83,6 +83,14 @@ class VocabularyTests(unittest.TestCase):
 
 class GatedVocabularyTests(unittest.TestCase):
     def test_encoded_manifest_texts(self):
+        """Compare detokenization against SentencePiece with the exported tokenizer.
+
+        VRC_TSUYAKU_TEST_HAAS_TOKENIZER names tokenizer.model from export_onnx.py.
+        VRC_TSUYAKU_TEST_HAAS_MANIFEST names a UTF-8 JSONL file with at least
+        20 rows, each with a text string. These inputs alone suffice.
+
+        Run uv run --locked python -m unittest discover -v from tools/haas-export/.
+        """
         tokenizer_path = os.environ.get("VRC_TSUYAKU_TEST_HAAS_TOKENIZER")
         manifest_path = os.environ.get("VRC_TSUYAKU_TEST_HAAS_MANIFEST")
         if not tokenizer_path or not manifest_path:
