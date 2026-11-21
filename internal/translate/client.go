@@ -14,13 +14,18 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/glossary"
 )
 
-// Translate sends one phrase as the only user turn and returns trimmed text.
-// It rejects empty or whitespace-only phrases. Calls can run concurrently after
-// Start succeeds. Translate reports a server exit as an error without relaunching
-// it. Call Start to relaunch.
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// Translate sends a phrase with its flow's recent turns and returns trimmed text.
+// A nil history sends a single turn. Calls with separate histories can run
+// concurrently after Start succeeds. Call Start again after a server exit.
+// Translate rejects empty and whitespace-only phrases.
 // A response that reaches the token limit returns an error instead of partial text.
 // An empty source omits source_lang so that PLaMo detects the input language.
-func (s *Supervisor) Translate(ctx context.Context, source, target, phrase string, terms []glossary.Term) (string, error) {
+func (s *Supervisor) Translate(ctx context.Context, source, target, phrase string, terms []glossary.Term, history *History) (string, error) {
 	if strings.TrimSpace(phrase) == "" {
 		return "", errors.New("translation phrase is empty")
 	}
@@ -56,36 +61,27 @@ func (s *Supervisor) Translate(ctx context.Context, source, target, phrase strin
 		}
 		languages["glossary"] = pairs
 	}
-	body, err := json.Marshal(map[string]any{
+	var messages []chatMessage
+	if history != nil {
+		if history.source != source || history.target != target {
+			*history = History{source: source, target: target}
+		}
+		messages = make([]chatMessage, 0, 2*len(history.turns)+1)
+		for _, turn := range history.turns {
+			messages = append(messages, chatMessage{"user", turn.original}, chatMessage{"assistant", turn.translation})
+		}
+	}
+	messages = append(messages, chatMessage{"user", phrase})
+	data, err := run.postJSON(ctx, address+"/v1/chat/completions", "translate phrase", "translation", map[string]any{
 		"model":                catalog.TranslationAlias,
-		"messages":             []map[string]string{{"role": "user", "content": phrase}},
+		"messages":             messages,
 		"chat_template_kwargs": languages,
 		"temperature":          0, "max_tokens": answerTokens, "stream": false,
-		"stop": []string{"<|plamo:tag|>", "<|plamo:bos|>"},
+		"cache_prompt": true,
+		"stop":         []string{"<|plamo:tag|>", "<|plamo:bos|>"},
 	})
 	if err != nil {
 		return "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address+"/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := run.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("translate phrase: %w", errors.Join(err, run.child.exitError()))
-	}
-	defer resp.Body.Close()
-	const maxResponse = 1 << 20
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
-	if err != nil {
-		return "", fmt.Errorf("read translation: %w", errors.Join(err, run.child.exitError()))
-	}
-	if len(data) > maxResponse {
-		return "", errors.New("translation response exceeds 1 MiB")
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("translation HTTP %d: %.4096s", resp.StatusCode, data)
 	}
 	var result struct {
 		Choices []struct {
@@ -108,5 +104,65 @@ func (s *Supervisor) Translate(ctx context.Context, source, target, phrase strin
 	if text == "" {
 		return "", errors.New("translation response contains no text")
 	}
+	const reservedMarkup = "<|plamo:"
+	// PLaMo's chat template rejects reserved markup in history messages.
+	if history == nil || strings.Contains(phrase, reservedMarkup) || strings.Contains(text, reservedMarkup) {
+		return text, nil
+	}
+	tokens, err := run.countTokens(ctx, address, phrase, text)
+	if err != nil {
+		return "", err
+	}
+	history.append(phrase, text, tokens+turnTags)
 	return text, nil
+}
+
+func (r *serverRun) countTokens(ctx context.Context, address, phrase, translation string) (int, error) {
+	data, err := r.postJSON(ctx, address+"/tokenize", "tokenize translation", "tokenization", map[string]any{
+		"content":       []string{phrase, translation},
+		"add_special":   false,
+		"parse_special": false,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var result struct {
+		Tokens []int `json:"tokens"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return 0, fmt.Errorf("decode tokenization: %w", err)
+	}
+	if result.Tokens == nil {
+		return 0, errors.New("tokenization response contains no token array")
+	}
+	return len(result.Tokens), nil
+}
+
+func (r *serverRun) postJSON(ctx context.Context, url, action, response string, payload any) ([]byte, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", action, errors.Join(err, r.child.exitError()))
+	}
+	defer resp.Body.Close()
+	const maxResponse = 1 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", response, errors.Join(err, r.child.exitError()))
+	}
+	if len(data) > maxResponse {
+		return nil, fmt.Errorf("%s response exceeds 1 MiB", response)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s HTTP %d: %.4096s", response, resp.StatusCode, data)
+	}
+	return data, nil
 }

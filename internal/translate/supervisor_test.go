@@ -37,8 +37,8 @@ type fakeReply struct {
 }
 
 type recordedRequest struct {
-	Method, ContentType string
-	Body                json.RawMessage
+	Path, Method, ContentType string
+	Body                      json.RawMessage
 }
 
 type fakeRecord struct {
@@ -127,7 +127,7 @@ func fakeServer() error {
 		}
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
-	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+	handleRequest := func(w http.ResponseWriter, r *http.Request) {
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -136,19 +136,22 @@ func fakeServer() error {
 		mu.Lock()
 		file, err := os.OpenFile(filepath.Join(cfg.Directory, "requests.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 		if err == nil {
-			err = json.NewEncoder(file).Encode(recordedRequest{r.Method, r.Header.Get("Content-Type"), data})
+			err = json.NewEncoder(file).Encode(recordedRequest{r.URL.Path, r.Method, r.Header.Get("Content-Type"), data})
 			file.Close()
 		}
-		arrivals++
-		if arrivals == 2 {
-			close(paired)
+		waitForPair := cfg.Concurrent && r.URL.Path == "/v1/chat/completions"
+		if waitForPair {
+			arrivals++
+			if arrivals == 2 {
+				close(paired)
+			}
 		}
 		mu.Unlock()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		if cfg.Concurrent {
+		if waitForPair {
 			select {
 			case <-paired:
 			case <-r.Context().Done():
@@ -156,7 +159,12 @@ func fakeServer() error {
 			}
 		}
 		reply := fakeReply{Status: http.StatusOK, Body: `{"choices":[{"message":{"content":" translated text "}}]}`}
-		if data, err := os.ReadFile(filepath.Join(cfg.Directory, "reply.json")); err == nil {
+		replyFile := "reply.json"
+		if r.URL.Path == "/tokenize" {
+			reply = fakeReply{Status: http.StatusOK, Body: `{"tokens":[1,2]}`}
+			replyFile = "tokens.json"
+		}
+		if data, err := os.ReadFile(filepath.Join(cfg.Directory, replyFile)); err == nil {
 			if err := json.Unmarshal(data, &reply); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
@@ -171,7 +179,9 @@ func fakeServer() error {
 		}
 		w.WriteHeader(reply.Status)
 		_, _ = w.Write([]byte(reply.Body))
-	})
+	}
+	mux.HandleFunc("/v1/chat/completions", handleRequest)
+	mux.HandleFunc("/tokenize", handleRequest)
 	return http.Serve(l, mux)
 }
 
@@ -322,7 +332,7 @@ func TestStartupWithTakenPort(t *testing.T) {
 	if record.TakenAddress == "" || record.TakenAddress == record.Address {
 		t.Fatalf("server did not avoid the occupied port: %+v", record)
 	}
-	if _, err := s.Translate(ctx, "ja", "en", "hello", nil); err != nil {
+	if _, err := s.Translate(ctx, "ja", "en", "hello", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -349,7 +359,7 @@ func TestStartupFailureAndCancellation(t *testing.T) {
 			go func() { started <- s.Start(ctx) }()
 			readRecord(t, dir)
 			if noAddress {
-				if _, err := s.Translate(ctx, "ja", "en", "hello", nil); err == nil || !strings.Contains(err.Error(), "listening address") {
+				if _, err := s.Translate(ctx, "ja", "en", "hello", nil, nil); err == nil || !strings.Contains(err.Error(), "listening address") {
 					t.Fatalf("translated before the address arrived: %v", err)
 				}
 			}

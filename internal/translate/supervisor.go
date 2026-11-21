@@ -24,9 +24,18 @@ const (
 	translationSlots = 2
 	slotTokens       = 2048
 	answerTokens     = 512
-	// A term costs its two words' Unicode code points plus one. A budget of 240
-	// such units allows at most 4*240 = 960 tokens: at most four per code point
-	// and about three per pair. The rest of the slot holds the phrase and answer.
+	historyTurns     = 10
+	historyTokens    = 400
+	// PLaMo's tags around one history turn take 14 tokens for ja to en and
+	// 18 for zh-hant to zh-hant, the most over the target languages.
+	// TestPLaMoTranslation checks the bound against the real server.
+	turnTags = 18
+	// A slot's 2048 tokens hold the answer (512), the history (400), the
+	// glossary (at most 960) and the current phrase (at least the other 176).
+	// A term costs its two words' Unicode code points plus one. A code point
+	// takes at most four tokens, one per UTF-8 byte, and the plus one pays
+	// four tokens for the term's tags, which take about three. So 240 units
+	// take at most 960 tokens.
 	termBudget = 240
 )
 

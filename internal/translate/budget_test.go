@@ -28,7 +28,7 @@ func TestTranslationTermBudget(t *testing.T) {
 		{[]glossary.Term{exact, last}, []glossary.Term{exact}},
 		{[]glossary.Term{first, second, third, fourth, fifth}, []glossary.Term{first, second, third, fifth}},
 	} {
-		if _, err := s.Translate(t.Context(), "ja", "en", "phrase", tc.terms); err != nil {
+		if _, err := s.Translate(t.Context(), "ja", "en", "phrase", tc.terms, nil); err != nil {
 			t.Fatal(err)
 		}
 		assertRequestTerms(t, requests(t, dir, i+1)[i].Body, tc.want)
@@ -53,7 +53,7 @@ func TestTranslationTermBudget(t *testing.T) {
 	if len(matched) != 200 {
 		t.Fatalf("matched %d terms", len(matched))
 	}
-	if _, err := s.Translate(t.Context(), "ja", "en", string(text), matched); err != nil {
+	if _, err := s.Translate(t.Context(), "ja", "en", string(text), matched, nil); err != nil {
 		t.Fatal(err)
 	}
 	// The first seven one-character sources cost 34 each. The eighth exceeds 240.
