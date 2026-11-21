@@ -22,6 +22,44 @@ Its vocabulary has no byte pieces.
 Call `Engine.LoadSilero(catalog.SileroModel(directory))` once, then `NewStream()` for each audio stream.
 Pass each 512-sample window to `Probability(ctx, audio)` and reset the stream when capture restarts.
 
+## Phrase confidence
+
+`Transcribe` returns an empty string for a phrase whose confidence is under the recognizer's threshold: `haasMinConfidence` for Haas, and `parakeetMinConfidence` for both Parakeet versions.
+The models write text for sound that is not words, such as `うん。` or `Uh` for a noise, and they write it with low confidence.
+
+Confidence is the mean natural-log probability of the phrase's tokens.
+A token's log-probability is the log-softmax of the scores from which the decoder picked it: every vocabulary token and the blank, without the bonuses of the [word hints](#word-hints).
+A token that a hint picked in place of the model's own choice does not count.
+With no token to count, the confidence is 0, so the phrase keeps its text.
+
+The thresholds come from one measurement of the int8 models on the CPU, after [`amplifyPhrase`](../pipeline/level.go) raised each phrase's level as the pipeline does.
+Haas heard Japanese audio and Parakeet English audio.
+Each cell counts the phrases under the threshold in the column header, out of the phrases for which the model wrote text.
+
+Speech, where each counted phrase is lost:
+
+| Audio | Haas, −0.3 | Parakeet v2, −0.7 | Parakeet v3, −0.7 |
+| --- | --- | --- | --- |
+| Audiobook speech, cut at its pauses | 0 of 118 | 0 of 60 | 1 of 44. v3 also wrote no text for 16 more of the 60 phrases, with or without the cut |
+| 60 synthesized chat sentences: clean, with white noise 15 dB under the speech, and after an Opus round trip | 0 of 180 | 0 of 180 | 0 of 180 |
+| Synthesized sentences with avatar names (120 Japanese, 60 English), in the same three conditions | 1 of 360 | 0 of 180 | 0 of 180 |
+| The same sentences with the names as word hints | 1 of 360 | 0 of 180 | 0 of 180 |
+| Synthesized short answers, such as `はい`, `だめ`, `Yes.` and `No.`, clean and with the noise, counting only those that the model heard right | 3 of 119 | 0 of 149 | 0 of 150 |
+
+Sound that is not words, where each counted text is removed:
+
+| Audio | Haas, −0.3 | Parakeet v2, −0.7 | Parakeet v3, −0.7 |
+| --- | --- | --- | --- |
+| Noise, hum, tone, buzz, clicks and bursts | 108 of 117 | 41 of 72 | 9 of 43 |
+| The audiobook speech low-passed at 350 Hz, a stand-in for humming | 76 of 118 | 0 of 60. v2 still transcribes the words, so this row does not test v2 | no text for any of the 60 |
+
+- Haas drops three short answers: `ダメ!` and `本当に。` at −0.32 and `オネガイシマス` at −0.37. Its dropped name sentence is one clip, with and without hints, with the name garbled. At −0.4, Haas would drop none of the speech in the first table, and 89 instead of 108 of the 117 texts for noise.
+- Parakeet scores clear speech lower than Haas does: v2 wrote `Yes.` as low as −0.45, `No.` as low as −0.66, and "Is that LaSyusha or Rurune?" at −0.47. At −0.3, v2 would drop 16 of its 149 short answers and v3 12 of its 150.
+- For noise, v2 writes `Mm-hmm.` at −0.35 to −0.08, higher than its lowest `Yes.`, so a threshold that keeps `Yes.` keeps `Mm-hmm.` too. Its `Uh` and `Yeah.` score −0.79 or lower.
+- For noise, v3 writes `Yeah.` and `Mm.` at −0.73 to −0.28. At −0.6, v3 would drop 23 of those 43 texts and none of the speech that it heard right, but v2 shares `parakeetMinConfidence`, and its `No.` at −0.66 would go. The v3 audiobook phrase under −0.7 is a loop, "and the wheel and the wheel", at −1.17.
+- Fillers that the speaker really says, such as `うん` and `Hmm.`, are speech: the cut removes one only when the model is unsure of it. Haas dropped 26 of 48 synthesized Japanese fillers.
+- Not measured: casual speech into a headset microphone, a person's murmurs, and Parakeet v3 on languages other than English.
+
 ## Word hints
 
 Haas and Parakeet take no prompt, so `Transcribe` favours the words in `words` while it decodes.
@@ -55,6 +93,8 @@ Use the Linux path for `VRC_TSUYAKU_TEST_ORT_LIB`; copy the Windows runtime dire
 Haas and Parakeet transcript tests read nonempty JSONL reference files.
 Each row has `id` (a unique clip identifier), `hyp` (the expected transcript) and `ref` (the human transcript).
 The corresponding audio file is `<id>.wav`.
+
+`TestHaasConfidenceCut` and `TestParakeetConfidenceCut` need no WAV directory and no reference file: only `VRC_TSUYAKU_TEST_ORT_LIB` and the bundle variable of each model in the tables below. A Haas bundle with only the int8 encoder is enough.
 
 ### Haas
 

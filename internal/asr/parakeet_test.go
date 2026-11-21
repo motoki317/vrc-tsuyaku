@@ -154,6 +154,34 @@ func TestParakeetV3CPUParity(t *testing.T) {
 	}
 }
 
+func TestParakeetConfidenceCut(t *testing.T) {
+	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
+	for _, tc := range []struct {
+		name, env string
+		model     string
+		samples   int
+		hz        []float64
+	}{
+		{"v2", "VRC_TSUYAKU_TEST_PARAKEET_BUNDLE", catalog.Parakeet, 9600, []float64{440}},
+		{"v3", "VRC_TSUYAKU_TEST_PARAKEET_V3_BUNDLE", catalog.ParakeetV3, 16000, []float64{50, 150}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bundle := requireEnv(t, tc.env)
+			e, err := NewEngine(lib)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer e.Close()
+			p, release, err := e.LoadParakeet(catalog.ParakeetBundle(tc.model, bundle))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			checkConfidenceCut(t, p, testTone(tc.samples, tc.hz...), parakeetMinConfidence)
+		})
+	}
+}
+
 func TestParakeetLifecycle(t *testing.T) {
 	lib := requireEnv(t, "VRC_TSUYAKU_TEST_ORT_LIB")
 	bundle := requireEnv(t, "VRC_TSUYAKU_TEST_PARAKEET_BUNDLE")

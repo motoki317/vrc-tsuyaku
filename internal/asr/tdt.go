@@ -1,7 +1,10 @@
 // Reimplements NeMo 2.7.3 greedy Token-and-Duration Transducer (TDT) decoding
 // (Apache-2.0),
 // https://github.com/NVIDIA/NeMo.
-// No upstream source code is copied.
+// Judging a phrase by the mean log-probability of its tokens against a
+// threshold follows avg_logprob and logprob_threshold of OpenAI Whisper (MIT),
+// https://github.com/openai/whisper/blob/86098128c0b4f24f0e2aa2994de830614b474227/whisper/transcribe.py.
+// No source code of either project is copied.
 // See ../../THIRD_PARTY_NOTICES.md.
 
 package asr
@@ -11,6 +14,16 @@ import (
 	"fmt"
 	"math"
 )
+
+// decodeConfident returns no text for a phrase whose confidence is under
+// threshold, because the models also write text, with low confidence, for
+// sound that is not words.
+func (v vocabulary) decodeConfident(tokens []int, confidence, threshold float64) (string, error) {
+	if confidence < threshold {
+		return "", nil
+	}
+	return v.decode(tokens)
+}
 
 // A decoder owns one phrase's prediction state. Scores computes candidate token
 // and duration scores. Accept commits a token. A checkpoint restore replaces the state.

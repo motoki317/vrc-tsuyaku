@@ -15,6 +15,9 @@ import (
 	"github.com/motoki317/vrc-tsuyaku/internal/catalog"
 )
 
+// parakeetMinConfidence is the lowest phrase confidence at which Parakeet returns text.
+const parakeetMinConfidence = -0.7
+
 // Parakeet recognizes speech with the int8 Parakeet TDT 0.6B v2 or v3 networks.
 type Parakeet struct {
 	mu                              sync.RWMutex
@@ -69,11 +72,11 @@ func (p *Parakeet) close() {
 
 // Transcribe follows the audio, concurrency and cancellation contract of [Recognizer].
 func (p *Parakeet) Transcribe(ctx context.Context, audio []float32, words []string) (string, error) {
-	tokens, _, err := p.tokens(ctx, audio, words)
+	tokens, confidence, err := p.tokens(ctx, audio, words)
 	if err != nil {
 		return "", err
 	}
-	return p.vocab.decode(tokens)
+	return p.vocab.decodeConfident(tokens, confidence, parakeetMinConfidence)
 }
 
 func (p *Parakeet) tokens(ctx context.Context, audio []float32, words []string) ([]int, float64, error) {
