@@ -25,11 +25,22 @@ var ErrLicenseRequired = errors.New("license acceptance required")
 // staging directory could not be removed. The error includes the remaining path.
 var ErrCleanup = errors.New("artifact installed but cleanup failed")
 
-// Progress reports downloaded source bytes across the artifact. The download and
-// verify phases repeat for each source. Extraction runs in verify without increasing
-// Downloaded or Total. The installed phase follows publication.
+// Phase is the stage reported in a download progress snapshot.
+type Phase string
+
+const (
+	// PhaseDownload reports a source download and its byte counts.
+	PhaseDownload Phase = "download"
+	// PhaseVerify reports verification and extraction of the source's installed files without advancing byte counts.
+	PhaseVerify Phase = "verify"
+	// PhaseInstalled reports that the artifact has been published.
+	PhaseInstalled Phase = "installed"
+)
+
+// Progress reports downloaded source bytes across the artifact. Download and verify repeat for each source.
 type Progress struct {
-	ArtifactID, Phase string
+	ArtifactID        string
+	Phase             Phase
 	Downloaded, Total int64
 }
 
@@ -221,7 +232,7 @@ func (m *Manager) install(ctx context.Context, a catalog.Artifact, notify func(P
 		for _, s := range a.Sources {
 			total += s.Size
 		}
-		notify(Progress{ArtifactID: a.ID, Phase: "installed", Downloaded: total, Total: total})
+		notify(Progress{ArtifactID: a.ID, Phase: PhaseInstalled, Downloaded: total, Total: total})
 	}
 	return err
 }
