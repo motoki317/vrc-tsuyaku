@@ -118,6 +118,7 @@
   "state.stoppedByError": "エラーで停止",
   "state.tabState": "{tab}：{state}",
   "state.translating": "翻訳中",
+  "state.skipped": "スキップ",
   "state.unfinished": "中断",
   "state.upToDate": "最新版を使用中",
   "state.updateAvailable": "アップデートあり",

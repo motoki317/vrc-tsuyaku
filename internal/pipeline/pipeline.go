@@ -4,6 +4,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,6 +27,8 @@ const (
 	KindSpeech Kind = "speech"
 	// KindRecognized carries the recognized phrase after the glossary rewrites it.
 	KindRecognized Kind = "recognized"
+	// KindSkipped carries empty text for a phrase the waiting queue dropped.
+	KindSkipped Kind = "skipped"
 	// KindTranslated carries the translation of the recognized phrase.
 	KindTranslated Kind = "translated"
 	// KindPage carries one chatbox page written to VRChat, including earlier phrases if they joined.
@@ -50,6 +53,8 @@ const (
 // Event reports a pipeline result. The app also uses this type for status updates.
 // PhraseID is unique across Run calls and links the recognized, translated,
 // page, merged and sent events for one phrase.
+// A skipped event carries its own phrase ID and empty text. It has no languages
+// because Run drops the phrase before it snapshots settings.
 // A message is one or more phrases that Run's last stage shows together.
 // Into names the message's first phrase and stays fixed over a chain of merges.
 // A merged event carries the joined originals and translations in Original and Text.
@@ -85,6 +90,7 @@ type PhraseSettings struct {
 // Run waits for nothing and emits no page or sent events, but still joins
 // phrases into messages and emits merged.
 // Emit must be safe for concurrent calls and must not block the pipeline.
+// The capture callback emits speech events.
 // CutLevel is optional and reads the cut level in dBFS once per window.
 // A nil CutLevel, or a return value of 0, selects the automatic gain.
 // Meter is optional and must not block. Run calls it from one goroutine in capture order.
@@ -105,24 +111,29 @@ type Stages struct {
 	Emit        func(Event)
 }
 
-// Run preserves phrase order. Up to 64 translated phrases can wait for Send so
-// chatbox reading time does not delay recognition or translation. Other stages
-// are unbuffered, and a full send buffer applies backpressure to capture.
+// Run recognizes waiting phrases in order. Up to 64 translated phrases can wait
+// for Send so chatbox reading time does not delay recognition or translation.
+// A full send buffer stalls translation and recognition. Capture keeps running
+// and drops the oldest waiting phrase when the waiting queue fills.
+// The recognition stage emits skipped events in phrase order before recognizing
+// the next kept phrase, which starts a new message.
 // With Send, a template error skips that phrase's send and emits an error event.
 // Without Send, a template error emits no event, and no later phrase joins a message from before that phrase.
 // Reading time and the message that a phrase can join last for this Run only.
 // For other errors, Run cancels every stage and waits for all stages to end.
 // Cancellation discards capture's queued audio, the partial VAD window and the
-// segmenter's pending phrase, along with translated phrases waiting for Send.
+// segmenter's pending phrase, along with phrases waiting for recognition or Send
+// and any skipped events the recognition stage has yet to reach.
 // A finite test source can return nil to end input.
-// Run then pads the partial VAD window with zeros and flushes the final phrase.
+// Run drains waiting phrases and recognizes the final phrase after padding any
+// partial VAD window with zeros.
 func Run(ctx context.Context, s Stages) error {
 	if s.Source == nil || s.Probability == nil || s.Recognize == nil || s.Settings == nil || s.Translate == nil {
 		return errors.New("pipeline requires a source, VAD, recognizer, settings and translator")
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	phrases := make(chan []float32)
+	phrases := &phraseQueue{ready: make(chan struct{}, 1)}
 	texts := make(chan result)
 	translations := make(chan result, 64)
 	emit := func(e Event) {
@@ -138,7 +149,10 @@ func Run(ctx context.Context, s Stages) error {
 			}
 		})
 	}
-	start(func() error { return segment(ctx, s, phrases, emit) })
+	start(func() error {
+		defer close(phrases.ready)
+		return segment(ctx, s, phrases, emit)
+	})
 	start(func() error { return recognize(ctx, s, phrases, texts, emit) })
 	start(func() error { return translate(ctx, s, texts, translations, emit) })
 	start(func() error { return show(ctx, s, translations, emit) })
@@ -151,12 +165,59 @@ type result struct {
 	original, translation string
 	settings              PhraseSettings
 	queued                time.Time
+	followsSkip           bool
 }
 
-// segment reads captured audio and emits speech events and audio phrases.
-// A clean end to capture flushes the final phrase. The stage closes phrases when it returns.
-func segment(ctx context.Context, s Stages, phrases chan<- []float32, emit func(Event)) error {
-	defer close(phrases)
+// Keep the queue short because each waiting phrase delays the newest subtitle
+// by one more translation during overload.
+const maxWaitingPhrases = 2
+
+type phraseQueue struct {
+	mu      sync.Mutex
+	waiting [][]float32
+	skipped int
+	ready   chan struct{}
+}
+
+func (q *phraseQueue) push(phrase []float32, dropOldest bool) {
+	q.mu.Lock()
+	if dropOldest && len(q.waiting) == maxWaitingPhrases {
+		q.waiting = slices.Delete(q.waiting, 0, 1)
+		q.skipped++
+	}
+	q.waiting = append(q.waiting, phrase)
+	q.mu.Unlock()
+	select {
+	case q.ready <- struct{}{}:
+	default:
+	}
+}
+
+func (q *phraseQueue) take(ctx context.Context) ([]float32, int) {
+	for {
+		// Taking a phrase also claims the skips that precede it.
+		q.mu.Lock()
+		if len(q.waiting) > 0 {
+			phrase := q.waiting[0]
+			q.waiting = slices.Delete(q.waiting, 0, 1)
+			skipped := q.skipped
+			q.skipped = 0
+			q.mu.Unlock()
+			return phrase, skipped
+		}
+		q.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, 0
+		case _, ok := <-q.ready:
+			if !ok {
+				return nil, 0
+			}
+		}
+	}
+}
+
+func segment(ctx context.Context, s Stages, phrases *phraseQueue, emit func(Event)) error {
 	var segmenter vad.Segmenter
 	level := leveler{searching: true}
 	speech := func(text speechText) { emit(Event{Kind: KindSpeech, Text: string(text)}) }
@@ -167,17 +228,13 @@ func segment(ctx context.Context, s Stages, phrases chan<- []float32, emit func(
 	}()
 	var window, scored [vad.WindowSamples]float32
 	n := 0
-	publish := func(phrase []float32) error {
+	inputEnded := false
+	publish := func(phrase []float32) {
 		if len(phrase) == 0 {
-			return nil
+			return
 		}
 		amplifyPhrase(phrase)
-		select {
-		case phrases <- phrase:
-			return nil
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		}
+		phrases.push(phrase, !inputEnded)
 	}
 	score := func() error {
 		var cutLevel float64
@@ -214,7 +271,8 @@ func segment(ctx context.Context, s Stages, phrases chan<- []float32, emit func(
 			speech(speechStart)
 		}
 		level.after(segmenter.Active(), p)
-		return publish(phrase)
+		publish(phrase)
+		return nil
 	}
 	err := s.Source.Capture(ctx, func(chunk []float32) error {
 		for len(chunk) > 0 {
@@ -236,6 +294,8 @@ func segment(ctx context.Context, s Stages, phrases chan<- []float32, emit func(
 	if err != nil {
 		return err
 	}
+	// Keep the final audio because no more capture callbacks can add to the backlog.
+	inputEnded = true
 	if n > 0 {
 		clear(window[n:])
 		if err := score(); err != nil {
@@ -245,18 +305,28 @@ func segment(ctx context.Context, s Stages, phrases chan<- []float32, emit func(
 	if segmenter.Active() {
 		speech(speechEnd)
 	}
-	return publish(segmenter.Flush())
+	publish(segmenter.Flush())
+	return nil
 }
 
 // recognize reads audio phrases and snapshots settings for each phrase.
 // For transcripts with a letter or digit, it emits a recognized event and sends the rewritten transcript with its settings.
 // It closes texts when input ends or the stage returns an error.
-func recognize(ctx context.Context, s Stages, phrases <-chan []float32, texts chan<- result, emit func(Event)) error {
+func recognize(ctx context.Context, s Stages, phrases *phraseQueue, texts chan<- result, emit func(Event)) error {
 	defer close(texts)
-	for phrase := range phrases {
+	followsSkip := false
+	for {
+		phrase, skipped := phrases.take(ctx)
 		if err := ctx.Err(); err != nil {
-			return err
+			return context.Cause(ctx)
 		}
+		if phrase == nil {
+			return nil
+		}
+		for range skipped {
+			emit(Event{Kind: KindSkipped, PhraseID: nextPhraseID.Add(1)})
+		}
+		followsSkip = followsSkip || skipped > 0
 		settings := s.Settings()
 		source, target := settings.SourceLang, settings.TargetLang
 		text, err := s.Recognize(ctx, phrase, settings)
@@ -272,12 +342,12 @@ func recognize(ctx context.Context, s Stages, phrases <-chan []float32, texts ch
 		id := nextPhraseID.Add(1)
 		emit(Event{PhraseID: id, Kind: KindRecognized, Text: text, SourceLang: source, TargetLang: target})
 		select {
-		case texts <- result{id: id, original: text, settings: settings}:
+		case texts <- result{id: id, original: text, settings: settings, followsSkip: followsSkip}:
+			followsSkip = false
 		case <-ctx.Done():
 			return context.Cause(ctx)
 		}
 	}
-	return nil
 }
 
 // translate reads recognized phrases and emits a translated event before it queues each result.
@@ -311,6 +381,9 @@ func show(ctx context.Context, s Stages, translations <-chan result, emit func(E
 	for r := range translations {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if r.followsSkip {
+			display.breakJoin()
 		}
 		message := chatbox.Message{Original: r.original, Translation: r.translation, SourceLang: r.settings.SourceLang, TargetLang: r.settings.TargetLang}
 		if err := display.show(ctx, r.id, r.settings.Template, r.settings.ReadingTime, message, r.queued); err != nil {

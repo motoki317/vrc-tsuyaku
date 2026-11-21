@@ -24,6 +24,10 @@ type display struct {
 	readUntil time.Time
 }
 
+func (d *display) breakJoin() {
+	d.message = nil
+}
+
 // show times each page from the write that first showed it because the queue can delay that write.
 // VRChat can hide the message sooner under the viewer's Chatbox Display Duration, which caps at 60 seconds.
 func (d *display) show(ctx context.Context, id uint64, format string, reading chatbox.ReadingTime, message chatbox.Message, queued time.Time) error {
@@ -32,7 +36,7 @@ func (d *display) show(ctx context.Context, id uint64, format string, reading ch
 	if err != nil {
 		if d.send == nil {
 			// The web UI still shows the phrase as its own bubble, so a later phrase must not join the message before it.
-			d.message = nil
+			d.breakJoin()
 			return nil
 		}
 		return err

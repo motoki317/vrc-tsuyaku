@@ -10,6 +10,16 @@ const now = '2026-10-10T12:01:02Z';
 function emit(kind, phraseId, extra = {}) {
   log.event({ flow: 'self', time: now, kind, phraseId, ...extra }, Date.parse(now));
 }
+function renderLog() {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  return render(() => TranslationLog({ app }), document.body);
+}
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
   vi.setSystemTime(new Date(now));
@@ -84,8 +94,67 @@ test('speech ends on recognition or timeout and an older phrase cannot hide a ne
   expect(log.speech.self).toBe('');
 });
 
-test('only live pills and translations announce, and running resolves errors for its own flow', async () => {
+test('skips clear ending speech for their own flow and keep their place in the log', () => {
+  for (const flow of ['self', 'world']) {
+    emit('speech', undefined, { flow, text: 'start' });
+    emit('speech', undefined, { flow, text: 'end' });
+  }
+  flush();
+  expect(log.speech.self).toBe('ending');
+  expect(log.speech.world).toBe('ending');
+  log.follow(false);
+  emit('skipped', 1, { flow: 'world', text: '' });
+  flush();
+  expect(log.speech.world).toBe('');
+  expect(log.speech.self).toBe('ending');
+  expect(log.rows[0]).toEqual({ phraseId: 1, flow: 'world', time: now, skipped: true });
+  expect(log.empty()).toBe(false);
+  emit('speech', undefined, { text: 'start' });
+  emit('skipped', 2, { text: '' });
+  emit('recognized', 3, { text: 'Next phrase' });
+  flush();
+  expect(log.speech.self).toBe('open');
+  expect(log.rows.map(row => row.phraseId)).toEqual([1, 2, 3]);
+  expect(log.unread()).toBe(3);
+});
+
+test('skipped bubbles display only a localized icon and no delivery status', () => {
+  const unmount = renderLog();
+  try {
+    emit('skipped', 1, { flow: 'world', text: '' });
+    emit('skipped', 2, { text: '' });
+    emit('recognized', 3, { text: 'Next phrase' });
+    flush();
+    const [world, self, next] = document.querySelectorAll('#log-list > li');
+    expect(world.classList.contains('world')).toBe(true);
+    expect(self.classList.contains('self')).toBe(true);
+    expect(log.rows[1]).toEqual({ phraseId: 2, flow: 'self', time: now, skipped: true });
+    for (const [row, label] of [
+      [world, "Others' voices: Skipped"],
+      [self, 'My voice: Skipped'],
+    ]) {
+      const bubble = row.querySelector('.bubble');
+      expect(bubble.textContent).toBe('');
+      expect(bubble.querySelector(`[role="img"][aria-label="${label}"] use`).getAttribute('href')).toBe(
+        '#i-skip-forward',
+      );
+    }
+    expect(self.querySelector('.delivery')).toBeNull();
+    expect(next.querySelector('.bubble').textContent).toBe('Next phrase');
+    const state = fixture();
+    state.settings.UI.Language = 'ja';
+    app.apply(state);
+    flush();
+    expect(world.querySelector('.bubble [role="img"]').getAttribute('aria-label')).toBe('相手の声：スキップ');
+    expect(self.querySelector('.bubble [role="img"]').getAttribute('aria-label')).toBe('自分の声：スキップ');
+  } finally {
+    unmount();
+  }
+});
+
+test('only live pills, translations and skips announce, and running resolves errors for its own flow', async () => {
   log.event({ kind: 'state', flow: 'world', text: 'stopped', time: now }, Date.parse(now) + 1);
+  log.event({ kind: 'skipped', flow: 'world', phraseId: 8, text: '', time: now }, Date.parse(now) + 1);
   await vi.advanceTimersByTimeAsync(50);
   flush();
   expect(app.announcement()).toBe('');
@@ -93,14 +162,18 @@ test('only live pills and translations announce, and running resolves errors for
   emit('error', undefined, { flow: 'world', text: 'other' });
   await vi.advanceTimersByTimeAsync(50);
   flush();
-  expect(app.announcement()).toBe("Others' voices: Stopped by an error other");
+  expect(app.announcement()).toBe("My voice: Stopped by an error problem\nOthers' voices: Stopped by an error other");
   emit('state', undefined, { text: 'running' });
   emit('translated', 9, { text: 'Hi' });
   await vi.advanceTimersByTimeAsync(50);
   flush();
-  expect(app.announcement()).toBe('My voice: Hi');
-  expect(log.rows[1].resolved).toBe(true);
-  expect(log.rows[2].resolved).toBeUndefined();
+  expect(app.announcement()).toBe('My voice: On\nMy voice: Hi');
+  expect(log.rows[2].resolved).toBe(true);
+  expect(log.rows[3].resolved).toBeUndefined();
+  emit('skipped', 10, { flow: 'world', text: '' });
+  await vi.advanceTimersByTimeAsync(50);
+  flush();
+  expect(app.announcement()).toBe("Others' voices: Skipped");
 });
 
 test('stopping one flow closes only its pending phrases', () => {
@@ -124,14 +197,7 @@ test('recognition counts unread phrases until following resumes', () => {
 });
 
 test('the log follows new bubbles until the player scrolls up, then resumes at the bottom', () => {
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  );
-  const unmount = render(() => TranslationLog({ app }), document.body);
+  const unmount = renderLog();
   try {
     const viewport = document.getElementById('log');
     let height = 700,
@@ -202,14 +268,30 @@ test('a stream gap closes pending phrases in both flows and phrase events issue 
   await listening;
 });
 
-test('a second live event leaves the preceding announcement audible', async () => {
+test('events within 50 ms share an announcement and a later repeat clears it first', async () => {
   emit('error', undefined, { text: 'problem' });
   await vi.advanceTimersByTimeAsync(25);
   emit('translated', 1, { text: 'Hello' });
   await vi.advanceTimersByTimeAsync(25);
   flush();
-  expect(app.announcement()).toBe('My voice: Stopped by an error problem');
-  await vi.advanceTimersByTimeAsync(25);
+  expect(app.announcement()).toBe('My voice: Stopped by an error problem\nMy voice: Hello');
+  emit('translated', 2, { text: 'Hello' });
+  await vi.advanceTimersByTimeAsync(50);
   flush();
   expect(app.announcement()).toBe('My voice: Hello');
+  emit('translated', 3, { text: 'Hello' });
+  await vi.advanceTimersByTimeAsync(49);
+  flush();
+  expect(app.announcement()).toBe('');
+  await vi.advanceTimersByTimeAsync(1);
+  flush();
+  expect(app.announcement()).toBe('My voice: Hello');
+});
+
+test('a translation and an identical skip burst announce together', async () => {
+  emit('translated', 1, { flow: 'world', text: 'Hello' });
+  for (const id of [2, 3, 4]) emit('skipped', id, { flow: 'world', text: '' });
+  await vi.advanceTimersByTimeAsync(50);
+  flush();
+  expect(app.announcement()).toBe("Others' voices: Hello\nOthers' voices: Skipped");
 });

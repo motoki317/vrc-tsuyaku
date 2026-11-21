@@ -258,15 +258,16 @@ func TestDisplayMaximumWait(t *testing.T) {
 func TestDisplayBacklog(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()
-		s.Source = fakeSource(20)
+		const translationTime = 8 * time.Second
+		s.Source = fakeSource(20, func() { time.Sleep(translationTime) })
 		s.Settings = func() PhraseSettings {
 			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Translation}}"}
 		}
 		s.Translate = func(context.Context, string, PhraseSettings) (string, error) {
-			time.Sleep(8 * time.Second)
+			time.Sleep(translationTime)
 			return strings.Repeat("a", 154), nil
 		}
-		r := displayRecord{start: time.Now().Add(8 * time.Second)}
+		r := displayRecord{start: time.Now().Add(translationTime)}
 		s.Send = r.send
 		if err := Run(t.Context(), s); err != nil {
 			t.Fatal(err)
@@ -275,7 +276,7 @@ func TestDisplayBacklog(t *testing.T) {
 			t.Fatalf("pages = %d, want 40", len(r.pages))
 		}
 		for i := range 20 {
-			queued := time.Duration(i) * 8 * time.Second
+			queued := time.Duration(i) * translationTime
 			firstDeadline := queued + 14*time.Second
 			if i > 0 {
 				firstDeadline = max(firstDeadline, r.times[2*i-1])
@@ -324,7 +325,7 @@ func TestDisplaySkippedPhrasePreservesMessage(t *testing.T) {
 func TestDisplayCancellationDuringReadingTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()
-		s.Source = fakeSource(2)
+		s.Source = fakeSource(2, nil)
 		s.Settings = func() PhraseSettings {
 			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Translation}}"}
 		}
@@ -366,7 +367,7 @@ func TestDisplayStateEndsWithRun(t *testing.T) {
 		r := displayRecord{start: time.Now()}
 		for _, text := range []string{strings.Repeat("a", 100), "b"} {
 			s := fakeStages()
-			s.Source = fakeSource(1)
+			s.Source = fakeSource(1, nil)
 			s.Settings = func() PhraseSettings {
 				return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Translation}}"}
 			}

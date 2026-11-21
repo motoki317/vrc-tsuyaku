@@ -23,13 +23,23 @@ type sourceFunc func(context.Context, func([]float32) error) error
 
 func (s sourceFunc) Capture(ctx context.Context, f func([]float32) error) error { return s(ctx, f) }
 
-func fakeSource(phrases int) sourceFunc {
-	return sourceFunc(func(ctx context.Context, consume func([]float32) error) error {
-		for range phrases {
-			samples := make([]float32, 512*24)
-			for i := range 512 * 8 {
-				samples[i] = 1
+func phraseAudio(voice, silence int) []float32 {
+	samples := make([]float32, voice+silence)
+	for i := range voice {
+		samples[i] = 1
+	}
+	return samples
+}
+
+// Pace capture when the test needs every phrase. Capture can outrun recognition
+// and drop waiting phrases.
+func fakeSource(phrases int, pace func()) sourceFunc {
+	return sourceFunc(func(_ context.Context, consume func([]float32) error) error {
+		for i := range phrases {
+			if i > 0 && pace != nil {
+				pace()
 			}
+			samples := phraseAudio(512*8, 512*16)
 			for len(samples) > 0 {
 				n := min(317, len(samples))
 				if err := consume(samples[:n]); err != nil {
@@ -42,9 +52,10 @@ func fakeSource(phrases int) sourceFunc {
 	})
 }
 
+// The default source uses synctest.Wait and requires a synctest.Test bubble.
 func fakeStages() Stages {
 	return Stages{
-		Source:      fakeSource(3),
+		Source:      fakeSource(3, synctest.Wait),
 		Probability: func(_ context.Context, x []float32) (float32, error) { return x[0], nil },
 		Recognize:   func(_ context.Context, _ []float32, _ PhraseSettings) (string, error) { return "text", nil },
 		Settings: func() PhraseSettings {
@@ -115,7 +126,7 @@ func TestDropsTranscriptsWithoutLettersOrDigits(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				s := fakeStages()
-				s.Source = fakeSource(len(tc.texts))
+				s.Source = fakeSource(len(tc.texts), synctest.Wait)
 				s.Settings = func() PhraseSettings {
 					return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Original}}"}
 				}
@@ -163,7 +174,8 @@ func TestSlowSendBuffersTranslations(t *testing.T) {
 		s.Settings = func() PhraseSettings {
 			return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), Template: "{{.Original}}"}
 		}
-		s.Source = fakeSource(10)
+		const phrases, interval = 10, time.Millisecond
+		s.Source = fakeSource(phrases, func() { time.Sleep(interval) })
 		i := 0
 		s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
 			i++
@@ -184,6 +196,7 @@ func TestSlowSendBuffersTranslations(t *testing.T) {
 		}
 		done := make(chan error, 1)
 		go func() { done <- Run(t.Context(), s) }()
+		time.Sleep(phrases * interval)
 		synctest.Wait()
 		if translated != 10 || len(got) != 0 {
 			t.Fatalf("translated = %d, sent = %v", translated, got)
@@ -203,7 +216,8 @@ func TestSlowSendBuffersTranslations(t *testing.T) {
 func TestCancellationDiscardsBufferedTranslations(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := fakeStages()
-		s.Source = fakeSource(100)
+		const phrases, interval = 100, time.Millisecond
+		s.Source = fakeSource(phrases, func() { time.Sleep(interval) })
 		ctx, cancel := context.WithCancelCause(t.Context())
 		defer cancel(nil)
 		sends := 0
@@ -212,22 +226,31 @@ func TestCancellationDiscardsBufferedTranslations(t *testing.T) {
 			<-ctx.Done()
 			return nil
 		}
-		translated := 0
+		translated, recognized, skipped := 0, 0, 0
 		s.Emit = func(e Event) {
-			if e.Kind == "translated" {
+			switch e.Kind {
+			case KindTranslated:
 				translated++
+			case KindRecognized:
+				recognized++
+			case KindSkipped:
+				skipped++
 			}
 		}
 		done := make(chan error, 1)
 		go func() { done <- Run(ctx, s) }()
+		time.Sleep(phrases * interval)
 		synctest.Wait()
 		if translated != 66 || sends != 1 {
 			t.Fatalf("translated = %d, sends = %d, want 66 and 1: one in Send, 64 buffered and one blocked handoff", translated, sends)
 		}
+		if recognized != 67 || skipped != 0 {
+			t.Fatalf("recognized = %d, skipped = %d, want 67 and 0: the recognition handoff is still blocked", recognized, skipped)
+		}
 		want := errors.New("stop buffered send")
 		cancel(want)
-		if err := <-done; !errors.Is(err, want) || sends != 1 {
-			t.Fatalf("Run = %v, sends = %d", err, sends)
+		if err := <-done; !errors.Is(err, want) || sends != 1 || translated != 66 {
+			t.Fatalf("after cancellation: Run = %v, sends = %d, translated = %d", err, sends, translated)
 		}
 	})
 }
@@ -250,10 +273,7 @@ func TestSpeechEvents(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := fakeStages()
 			s.Source = sourceFunc(func(_ context.Context, consume func([]float32) error) error {
-				samples := make([]float32, 512*(tc.voice+tc.silent))
-				for i := range 512 * tc.voice {
-					samples[i] = 1
-				}
+				samples := phraseAudio(512*tc.voice, 512*tc.silent)
 				return consume(samples)
 			})
 			if tc.emptyText {
@@ -446,47 +466,49 @@ func TestSpokenCodeSurvivesOmittedTranslationSource(t *testing.T) {
 		{"auto", ""}, {"pt", ""}, {"sv", ""},
 	} {
 		t.Run(tc.spoken, func(t *testing.T) {
-			s := fakeStages()
-			s.Settings = func() PhraseSettings {
-				return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: tc.spoken, TargetLang: "ja", Template: chatbox.DefaultTemplate}
-			}
-			translated, sent := 0, 0
-			s.Translate = func(_ context.Context, phrase string, settings PhraseSettings) (string, error) {
-				source, target := settings.SourceLang, settings.TargetLang
-				if source != tc.source || target != "ja" || phrase == "" {
-					t.Errorf("translation request: %q, %q, %q", source, target, phrase)
+			synctest.Test(t, func(t *testing.T) {
+				s := fakeStages()
+				s.Settings = func() PhraseSettings {
+					return PhraseSettings{ReadingTime: chatbox.DefaultReadingTime(), SourceLang: tc.spoken, TargetLang: "ja", Template: chatbox.DefaultTemplate}
 				}
-				translated++
-				return "translation", nil
-			}
-			s.Send = func(_ context.Context, page string) error {
-				if !strings.HasPrefix(page, "["+tc.spoken+"] ") || !strings.Contains(page, "\n[ja] ") {
-					t.Errorf("chatbox page: %q", page)
+				translated, sent := 0, 0
+				s.Translate = func(_ context.Context, phrase string, settings PhraseSettings) (string, error) {
+					source, target := settings.SourceLang, settings.TargetLang
+					if source != tc.source || target != "ja" || phrase == "" {
+						t.Errorf("translation request: %q, %q, %q", source, target, phrase)
+					}
+					translated++
+					return "translation", nil
 				}
-				sent++
-				return nil
-			}
-			var eventsMu sync.Mutex
-			var events []Event
-			s.Emit = func(e Event) {
-				if e.Kind == "speech" {
-					return
+				s.Send = func(_ context.Context, page string) error {
+					if !strings.HasPrefix(page, "["+tc.spoken+"] ") || !strings.Contains(page, "\n[ja] ") {
+						t.Errorf("chatbox page: %q", page)
+					}
+					sent++
+					return nil
 				}
-				eventsMu.Lock()
-				defer eventsMu.Unlock()
-				events = append(events, e)
-			}
-			if err := Run(t.Context(), s); err != nil {
-				t.Fatal(err)
-			}
-			if translated != 3 || sent != 3 || len(events) != 14 {
-				t.Fatal(translated, sent, events)
-			}
-			for _, e := range events {
-				if e.SourceLang != tc.spoken || e.TargetLang != "ja" {
-					t.Fatalf("event lost spoken code: %+v", e)
+				var eventsMu sync.Mutex
+				var events []Event
+				s.Emit = func(e Event) {
+					if e.Kind == "speech" {
+						return
+					}
+					eventsMu.Lock()
+					defer eventsMu.Unlock()
+					events = append(events, e)
 				}
-			}
+				if err := Run(t.Context(), s); err != nil {
+					t.Fatal(err)
+				}
+				if translated != 3 || sent != 3 || len(events) != 14 {
+					t.Fatal(translated, sent, events)
+				}
+				for _, e := range events {
+					if e.SourceLang != tc.spoken || e.TargetLang != "ja" {
+						t.Fatalf("event lost spoken code: %+v", e)
+					}
+				}
+			})
 		})
 	}
 }
@@ -620,23 +642,25 @@ func TestTemplateErrorContinuesToNextPhrase(t *testing.T) {
 func TestFailureCancelsCapture(t *testing.T) {
 	for _, stage := range []string{"vad", "recognize", "translate", "send"} {
 		t.Run(stage, func(t *testing.T) {
-			s := fakeStages()
-			want := errors.New(stage)
-			switch stage {
-			case "vad":
-				s.Probability = func(context.Context, []float32) (float32, error) { return 0, want }
-			case "recognize":
-				s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { return "", want }
-			case "translate":
-				s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return "", want }
-			case "send":
-				s.Send = func(context.Context, string) error { return want }
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
-			if err := Run(ctx, s); !errors.Is(err, want) {
-				t.Fatalf("got %v", err)
-			}
+			synctest.Test(t, func(t *testing.T) {
+				s := fakeStages()
+				want := errors.New(stage)
+				switch stage {
+				case "vad":
+					s.Probability = func(context.Context, []float32) (float32, error) { return 0, want }
+				case "recognize":
+					s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { return "", want }
+				case "translate":
+					s.Translate = func(context.Context, string, PhraseSettings) (string, error) { return "", want }
+				case "send":
+					s.Send = func(context.Context, string) error { return want }
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				if err := Run(ctx, s); !errors.Is(err, want) {
+					t.Fatalf("got %v", err)
+				}
+			})
 		})
 	}
 }
@@ -859,48 +883,51 @@ func TestRunAutomaticGainBoundaries(t *testing.T) {
 		}, 2, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for range 2 {
-				s := fakeStages()
-				var current block
-				s.Source = sourceFunc(func(_ context.Context, consume func([]float32) error) error {
-					for _, b := range tc.blocks {
-						current = b
-						for range b.windows {
-							if err := consume(levelWindow(b.db)); err != nil {
-								return err
+			synctest.Test(t, func(t *testing.T) {
+				for range 2 {
+					s := fakeStages()
+					var current block
+					s.Source = sourceFunc(func(_ context.Context, consume func([]float32) error) error {
+						for _, b := range tc.blocks {
+							current = b
+							for range b.windows {
+								if err := consume(levelWindow(b.db)); err != nil {
+									return err
+								}
 							}
+							synctest.Wait()
+						}
+						return nil
+					})
+					reads, scores := 0, 0
+					s.CutLevel = func() float64 { reads++; return current.cut }
+					s.Probability = func(_ context.Context, window []float32) (float32, error) {
+						scores++
+						power, _ := measureLevel(window)
+						nearLevel(t, powerDB(power), max(-240, current.db+current.wantGain))
+						return current.probability, nil
+					}
+					var speech []string
+					s.Emit = func(e Event) {
+						if e.Kind == "speech" {
+							speech = append(speech, e.Text)
 						}
 					}
-					return nil
-				})
-				reads, scores := 0, 0
-				s.CutLevel = func() float64 { reads++; return current.cut }
-				s.Probability = func(_ context.Context, window []float32) (float32, error) {
-					scores++
-					power, _ := measureLevel(window)
-					nearLevel(t, powerDB(power), max(-240, current.db+current.wantGain))
-					return current.probability, nil
-				}
-				var speech []string
-				s.Emit = func(e Event) {
-					if e.Kind == "speech" {
-						speech = append(speech, e.Text)
+					recognized := 0
+					s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { recognized++; return "", nil }
+					if err := Run(t.Context(), s); err != nil {
+						t.Fatal(err)
+					}
+					if reads != scores || recognized != tc.phrases || len(speech) != 2*tc.speechPairs {
+						t.Fatal("cut reads, scores, recognized, speech:", reads, scores, recognized, speech)
+					}
+					for i, event := range speech {
+						if event != []string{"start", "end"}[i%2] {
+							t.Fatal("unbalanced speech", speech)
+						}
 					}
 				}
-				recognized := 0
-				s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) { recognized++; return "", nil }
-				if err := Run(t.Context(), s); err != nil {
-					t.Fatal(err)
-				}
-				if reads != scores || recognized != tc.phrases || len(speech) != 2*tc.speechPairs {
-					t.Fatal("cut reads, scores, recognized, speech:", reads, scores, recognized, speech)
-				}
-				for i, event := range speech {
-					if event != []string{"start", "end"}[i%2] {
-						t.Fatal("unbalanced speech", speech)
-					}
-				}
-			}
+			})
 		})
 	}
 }

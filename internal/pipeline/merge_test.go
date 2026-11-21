@@ -56,7 +56,7 @@ func (l *eventLog) phraseKinds(id uint64) []string {
 
 func timedStages(originals []string, interval time.Duration) Stages {
 	s := fakeStages()
-	s.Source = fakeSource(len(originals))
+	s.Source = fakeSource(len(originals), synctest.Wait)
 	i := 0
 	s.Recognize = func(context.Context, []float32, PhraseSettings) (string, error) {
 		text := originals[i]
@@ -227,6 +227,8 @@ func TestFailedMergeWriteEmitsNoMerge(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				s := timedStages([]string{"a", "b"}, 0)
+				// The test calls synctest.Wait itself. A concurrent Wait in the source panics.
+				s.Source = fakeSource(2, nil)
 				ctx, cancel := context.WithCancelCause(t.Context())
 				defer cancel(nil)
 				want := errors.New("merge write stopped")

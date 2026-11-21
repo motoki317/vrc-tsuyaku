@@ -118,6 +118,7 @@
   "state.stoppedByError": "Stopped by an error",
   "state.tabState": "{tab}: {state}",
   "state.translating": "Translating",
+  "state.skipped": "Skipped",
   "state.unfinished": "Not finished",
   "state.upToDate": "Up to date",
   "state.updateAvailable": "Update available",
