@@ -2,44 +2,23 @@
 
 [English](https://github.com/motoki317/vrc-tsuyaku/blob/main/docs/install.md)
 
-VRC Tsuyakuは、Windows 11、またはWindows 10 バージョン2004（2020年5月の更新）以降で動きます。どちらも64ビット版が必要です。モデルを保存するために、約4GBの空き容量が必要です。
+VRC Tsuyakuは64ビット版のWindows 11と、バージョン2004以降の64ビット版のWindows 10で動きます。
 
 ## インストールと起動
 
 1. [vrc-tsuyaku-windows.zip](https://github.com/motoki317/vrc-tsuyaku/releases/latest/download/vrc-tsuyaku-windows.zip)をダウンロードします。
-2. zipファイルを右クリックして「すべて展開」を選び、「展開」を押します。`vrc-tsuyaku.exe`の入った`vrc-tsuyaku-windows`フォルダーができます。
-3. このフォルダーを、デスクトップなど、ずっと置いておける場所に移します。アプリは設定とモデルをこのフォルダーに保存します。そのため、`Program Files`には置かないでください。OneDriveがデスクトップをバックアップしている場合は、`C:\vrc-tsuyaku-windows`など、OneDriveの外に置いてください。
-4. フォルダーの中の`vrc-tsuyaku.exe`をダブルクリックします。
+2. zipファイルの中の`vrc-tsuyaku.exe`を、ずっと置いておける場所に新しいフォルダーを作って入れます。アプリは設定とモデルをこのフォルダーに保存するので、`Program Files`やOneDriveがバックアップするフォルダーには置かないでください。
+3. `vrc-tsuyaku.exe`をダブルクリックします。アプリに署名がないため、Windowsが「WindowsによってPCが保護されました」と表示します。「詳細情報」を押してから「実行」を押してください。
 
-初めて起動するときは、アプリに署名がないため、Windowsが「WindowsによってPCが保護されました」と表示します。「詳細情報」を押してから「実行」を押してください。
+アプリがブラウザーで操作画面を開きます。ここから先は操作画面に沿って進めます。
 
-起動すると黒いコンソールウィンドウが開き、アプリがブラウザーで操作画面を開きます。操作画面のタブかコンソールウィンドウを閉じるとアプリは終了するので、使っているあいだは両方を開いたままにしてください。操作画面が開かないときは、コンソールウィンドウに表示されたアドレスをブラウザーで開きます。
-
-## 翻訳の準備
-
-初めて起動したときは、操作画面に2つの行が表示されます。
-
-- 「自分の声」は、マイクに向かって話した内容を翻訳し、VRChatのチャットボックスに書き込みます。
-- 「相手の声」は、VRChatで聞こえる声を翻訳し、操作画面に表示します。
-
-1. 各行の言語を確かめます。左が話す言語、右が翻訳先の言語です。最初は、「自分の声」が日本語から英語へ、「相手の声」が英語から日本語へ翻訳します。必要なら変更してから、「すべてダウンロード」を押します。
-2. 翻訳モデルPLaMoのライセンスが表示されます。18歳以上の場合か、保護者が同意している場合にだけ、「同意してダウンロード」を押してください。
-3. ダウンロードが終わったら「次へ」を押します。操作画面が「翻訳」画面に切り替わります。
-4. VRChatを起動します。それから「自分の声」と「相手の声」の一方か両方をオンにします。
+![「すべてダウンロード」がある最初の画面](https://raw.githubusercontent.com/motoki317/vrc-tsuyaku/main/docs/assets/setup.ja.png)
 
 チャットボックスに何も表示されないときは、VRChatのOSCをオンにしてください。アクションメニューでOptions、OSC、Enabledの順に選びます。
 
-## 終了
-
-操作画面のタブを閉じるか、操作画面の右上にある「終了」を押すか、コンソールウィンドウを閉じます。タブを閉じると、約5秒後にアプリが終了します。
-
-## すでに起動しているとき
-
-前に同じフォルダーから起動したVRC Tsuyakuが動いたまま、もう一度起動すると、新しく起動したほうは待機し、どうするかを操作画面で尋ねます。メモリを節約するには、「前のVRC Tsuyakuを終了して、こちらを起動」を押してください。前のVRC Tsuyakuを別のフォルダーから起動していた場合、アプリは尋ねず、両方が動きます。
-
 ## 更新
 
-新しいバージョンが出ると、「設定」の「このアプリについて」にそのことが表示されます。アプリを終了し、手順1のリンクから新しいzipファイルをダウンロードします。フォルダーの`vrc-tsuyaku.exe`を、新しいzipファイルの中のものに置き換えます。設定とモデルはフォルダーに残るので、ダウンロードし直す必要はありません。
+アプリを終了し、zipファイルをもう一度ダウンロードして、フォルダーの`vrc-tsuyaku.exe`をその中のものに置き換えます。設定とモデルはそのまま残ります。
 
 ## アンインストール
 
@@ -47,11 +26,4 @@ VRC Tsuyakuは、Windows 11、またはWindows 10 バージョン2004（2020年5
 
 ## Linux
 
-[vrc-tsuyaku-linux.tar.gz](https://github.com/motoki317/vrc-tsuyaku/releases/latest/download/vrc-tsuyaku-linux.tar.gz)をダウンロードして、次のコマンドを実行します。
-
-```sh
-tar -xzf vrc-tsuyaku-linux.tar.gz
-./vrc-tsuyaku/vrc-tsuyaku
-```
-
-PulseAudio、または`pipewire-pulse`を入れたPipeWireが必要です。
+[vrc-tsuyaku-linux.tar.gz](https://github.com/motoki317/vrc-tsuyaku/releases/latest/download/vrc-tsuyaku-linux.tar.gz)をダウンロードして展開し、`vrc-tsuyaku/vrc-tsuyaku`を実行します。PulseAudio、または`pipewire-pulse`を入れたPipeWireが必要です。Linuxでの「相手の声」はテスト用の再生プログラムでしか試しておらず、Proton上のVRChatでは試していません。

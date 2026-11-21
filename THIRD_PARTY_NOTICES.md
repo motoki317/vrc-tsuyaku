@@ -90,7 +90,7 @@ These files copy no Haas-ASR source code. The generated ONNX files contain conve
 The app downloads the Haas bundle from [motoki317/Haas-ja-v1.0-onnx](https://huggingface.co/motoki317/Haas-ja-v1.0-onnx).
 
 Neither the pinned Haas-ASR checkout nor the Haas-ja-v1.0 model repository contains a NOTICE file.
-[The Apache-2.0 license text](tools/haas-export/licenses/Apache-2.0.txt) is Haas-ASR's LICENSE file. The export steps in `tools/haas-export/README.md` copy it into the Haas ONNX bundle as `LICENSE`.
+[The Apache-2.0 license text](tools/haas-export/licenses/Apache-2.0.txt) is Haas-ASR's LICENSE file. `tools/haas-export/export.sh` copies it into the Haas ONNX bundle as `LICENSE`.
 
 [Haas-ASR license text](cmd/vrc-tsuyaku/notices/other/Haas-ASR@acc614f68769dcbfae9dba96b48439c4a66295af/LICENSE).
 
